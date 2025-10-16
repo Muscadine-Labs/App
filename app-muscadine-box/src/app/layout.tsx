@@ -7,7 +7,10 @@ import { cookieToInitialState } from 'wagmi'
 import { Providers } from './providers'
 import { config } from './config'
 
+
 const inter = Inter({ subsets: ['latin'] })
+
+
 
 export const metadata: Metadata = {
   title: 'Muscadine Vault',
@@ -28,9 +31,9 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        <Providers initialState={initialState}>
-          <AppLayout>{children}</AppLayout>
-        </Providers>
+          <Providers initialState={initialState}>
+              <AppLayout>{children}</AppLayout>
+          </Providers>
       </body>
     </html>
   )

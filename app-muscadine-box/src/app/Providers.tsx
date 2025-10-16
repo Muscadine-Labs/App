@@ -4,6 +4,13 @@ import { ReactNode, useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
 import { config } from './config'
+import { ApolloClient, HttpLink, InMemoryCache } from "@apollo/client";
+import { ApolloProvider } from '@apollo/client/react'
+
+export const client = new ApolloClient({
+    link: new HttpLink({ uri: "https://api.morpho.org/graphql" }),
+    cache: new InMemoryCache(),
+  });
 
 type Props = {
   children: ReactNode
@@ -14,6 +21,7 @@ export function Providers({ children, initialState }: Props) {
   const [queryClient] = useState(() => new QueryClient())
 
   return (
+    <ApolloProvider client={client}>
     <WagmiProvider
       config={config}
       initialState={initialState} // undefined in dev is fine
@@ -22,5 +30,6 @@ export function Providers({ children, initialState }: Props) {
         {children}
       </QueryClientProvider>
     </WagmiProvider>
+    </ApolloProvider>
   )
 }
