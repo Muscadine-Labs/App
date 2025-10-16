@@ -22,7 +22,7 @@ export default function VaultNav({ vaults, activeVaultAddress, onVaultSelect }: 
           className={`
             px-16 py-2 text-sm font-semibold rounded-full transition-colors duration-200
             ${activeVaultAddress === vault.address
-              ? 'bg-[var(--accent)] text-white' // Style for the active button
+              ? '!bg-[var(--accent)] text-white' // Style for the active button
               : 'text-foreground-secondary hover:bg-background' // Style for inactive buttons
             }
           `}

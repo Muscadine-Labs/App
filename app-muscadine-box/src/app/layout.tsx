@@ -4,7 +4,7 @@ import './globals.css'
 import { AppLayout } from '@/components/AppLayout'
 import { headers } from 'next/headers'
 import { cookieToInitialState } from 'wagmi'
-import { Providers } from './providers'
+import { Providers } from './Providers'
 import { config } from './config'
 
 

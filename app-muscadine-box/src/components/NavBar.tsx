@@ -1,6 +1,5 @@
 import ConnectButton from "./ConnectButton";
 import Image from "next/image";
-import { ThemeToggler } from "./ThemeButton";
 
 export function NavBar() {
     return (
