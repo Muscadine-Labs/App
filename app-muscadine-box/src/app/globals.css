@@ -47,8 +47,10 @@
 }
 
 :root {
-  --navbar-width: 160px; /* 40 * 4 = 160px (w-40) */
-  --navbar-collapsed-width: 40px;
+  --navbar-width: 200px; /* 40 * 4 = 160px (w-40) */
+  --navbar-collapsed-width: 40px; /* 16 * 4 = 64px (w-16) */
+  --main-margin-left: var(--navbar-width);
+  --main-width: calc(100vw - var(--navbar-width));
 }
 
 * {
@@ -61,7 +63,7 @@
     --background: #0d1117;           /* Dark background */
     --surface: #161b22;              /* Dark surface */
     --surface-elevated: #21262d;     /* Elevated surface (cards, modals) */
-    --surface-hover: #21262d;        /* Hover state for surface */
+    --surface-hover: #31373f;        /* Hover state for surface */
     --surface-active: #30363d;       /* Active/pressed state */
     
     /* Border Colors - Dark Theme */
@@ -81,7 +83,7 @@
     --primary-active: #1f6feb;        /* Primary active */
     --primary-subtle: #0d419d;       /* Primary background */
     
-    --accent: #bc8cff;               /* Accent color */
+    --accent: #985cec;               /* Accent color */
     --accent-hover: #d2a8ff;          /* Accent hover */
     --accent-subtle: #2d1b69;         /* Accent background */
     

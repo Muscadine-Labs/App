@@ -7,7 +7,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex justify-end">
       <NavBar />
-      <main className="ml-20 w-[calc(100vw-var(--navbar-width))]">
+      <main className="ml-[var(--main-margin-left)] w-[var(--main-width)] transition-all duration-300">
             {children}
       </main>
     </div>

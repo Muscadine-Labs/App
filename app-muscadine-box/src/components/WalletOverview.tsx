@@ -23,7 +23,7 @@ export default function WalletOverview() {
             currency: 'USD'
         }) : null;
     return (
-        <div className="flex flex-col items-start justify-start w-full h-full bg-[var(--surface)] rounded-lg px-8 py-4 gap-6 min-w-md overflow-x-auto">
+        <div className="flex flex-col items-start justify-start w-full h-full bg-[var(--surface)] rounded-lg px-8 py-4 gap-6 overflow-x-auto">
             <div className="flex items-center gap-2">
                 {isConnected && walletInfo?.icon && (
                     <Image 
