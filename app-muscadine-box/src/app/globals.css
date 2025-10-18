@@ -3,17 +3,47 @@
 :root {
   color-scheme: light dark;
 
-  --background: #f6f8fa;          /* rgb(246, 248, 250) */
-  --surface: #e8e8e8;             /* rgb(255, 255, 255) */
-  --surface-hover: #c4c4c4;       /* slightly lighter than surface for hover */
-  --border: #d0d7de;              /* rgb(208, 215, 222) */
-  --foreground: #1f2328;          /* rgb(31, 35, 40) */
-  --foreground-secondary: #57606a;/* rgb(87, 96, 106) */
-  --primary: #0969da;             /* rgb(9, 105, 218) */
-  --primary-hover: #0550ae;       /* rgb(5, 80, 174) */
-  --accent: #8250df;              /* rgb(130, 80, 223) */
-  --success: #1a7f37;             /* rgb(26, 127, 55) */
-  --danger: #cf222e;              /* rgb(207, 34, 46) */
+  /* Base Colors */
+  --background: #ffffff;          /* Pure white background */
+  --surface: #f6f8fa;             /* Light gray surface */
+  --surface-elevated: #ffffff;    /* Elevated surface (cards, modals) */
+  --surface-hover: #f0f3f6;       /* Hover state for surface */
+  --surface-active: #e8ecf0;      /* Active/pressed state */
+  
+  /* Border Colors */
+  --border: #d0d7de;              /* Default border */
+  --border-subtle: #e1e4e8;       /* Subtle borders */
+  --border-strong: #8b949e;       /* Strong borders */
+  
+  /* Text Colors */
+  --foreground: #1f2328;          /* Primary text */
+  --foreground-secondary: #57606a;/* Secondary text */
+  --foreground-muted: #8b949e;    /* Muted text */
+  --foreground-disabled: #b1bac4; /* Disabled text */
+  
+  /* Interactive Colors */
+  --primary: #0969da;             /* Primary brand color */
+  --primary-hover: #0550ae;       /* Primary hover */
+  --primary-active: #033d82;     /* Primary active */
+  --primary-subtle: #dbeafe;     /* Primary background */
+  
+  --accent: #8250df;              /* Accent color */
+  --accent-hover: #6f42c1;        /* Accent hover */
+  --accent-subtle: #f3f0ff;      /* Accent background */
+  
+  /* Status Colors */
+  --success: #1a7f37;            /* Success color */
+  --success-subtle: #dafbe1;     /* Success background */
+  --warning: #bf8700;            /* Warning color */
+  --warning-subtle: #fff8c5;     /* Warning background */
+  --danger: #cf222e;             /* Danger color */
+  --danger-subtle: #ffebe9;      /* Danger background */
+  --info: #0969da;               /* Info color */
+  --info-subtle: #dbeafe;        /* Info background */
+  
+  /* Overlay Colors */
+  --overlay: rgba(0, 0, 0, 0.1);  /* Light overlay */
+  --overlay-strong: rgba(0, 0, 0, 0.3); /* Strong overlay */
 }
 
 :root {
@@ -27,17 +57,47 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0d1117;           /* rgb(13, 17, 23) */
-    --surface: #20252a;              /* rgb(22, 27, 34) */
-    --surface-hover: #2a3138;        /* slightly lighter than dark surface for hover */
-    --border: #30363d;               /* rgb(48, 54, 61) */
-    --foreground: #e6edf3;           /* rgb(230, 237, 243) */
-    --foreground-secondary: #8b949e; /* rgb(139, 148, 158) */
-    --primary: #58a6ff;              /* rgb(88, 166, 255) */
-    --primary-hover: #79b8ff;        /* rgb(121, 184, 255) */
-    --accent: #bc8cff;               /* rgb(188, 140, 255) */
-    --success: #56d364;              /* rgb(86, 211, 100) */
-    --danger: #f85149;               /* rgb(248, 81, 73) */
+    /* Base Colors - Dark Theme */
+    --background: #0d1117;           /* Dark background */
+    --surface: #161b22;              /* Dark surface */
+    --surface-elevated: #21262d;     /* Elevated surface (cards, modals) */
+    --surface-hover: #21262d;        /* Hover state for surface */
+    --surface-active: #30363d;       /* Active/pressed state */
+    
+    /* Border Colors - Dark Theme */
+    --border: #30363d;               /* Default border */
+    --border-subtle: #21262d;        /* Subtle borders */
+    --border-strong: #8b949e;         /* Strong borders */
+    
+    /* Text Colors - Dark Theme */
+    --foreground: #f0f6fc;           /* Primary text */
+    --foreground-secondary: #8b949e;   /* Secondary text */
+    --foreground-muted: #6e7681;      /* Muted text */
+    --foreground-disabled: #484f58;   /* Disabled text */
+    
+    /* Interactive Colors - Dark Theme */
+    --primary: #58a6ff;              /* Primary brand color */
+    --primary-hover: #79b8ff;         /* Primary hover */
+    --primary-active: #1f6feb;        /* Primary active */
+    --primary-subtle: #0d419d;       /* Primary background */
+    
+    --accent: #bc8cff;               /* Accent color */
+    --accent-hover: #d2a8ff;          /* Accent hover */
+    --accent-subtle: #2d1b69;         /* Accent background */
+    
+    /* Status Colors - Dark Theme */
+    --success: #56d364;              /* Success color */
+    --success-subtle: #0d4429;       /* Success background */
+    --warning: #e3b341;              /* Warning color */
+    --warning-subtle: #5d4e00;       /* Warning background */
+    --danger: #f85149;               /* Danger color */
+    --danger-subtle: #5d1a1a;        /* Danger background */
+    --info: #58a6ff;                 /* Info color */
+    --info-subtle: #0d419d;          /* Info background */
+    
+    /* Overlay Colors - Dark Theme */
+    --overlay: rgba(0, 0, 0, 0.3);   /* Dark overlay */
+    --overlay-strong: rgba(0, 0, 0, 0.6); /* Strong dark overlay */
   }
 }
 

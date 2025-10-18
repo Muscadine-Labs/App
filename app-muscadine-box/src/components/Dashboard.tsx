@@ -1,4 +1,4 @@
-import VaultsSection from "./VaultsSection";
+import MainDashboardSection from "./MainDashboardSection";
 import WalletOverview from "./WalletOverview";
 
 export default function Dashboard() {
@@ -12,12 +12,12 @@ export default function Dashboard() {
                         <WalletOverview />
                     </div>
                     <div className="rounded-lg pr-4 pt-4">
-                        <VaultsSection />
+                        
                     </div>
                     
                     {/* Second row - spans both columns */}
                     <div className="col-span-2 rounded-lg pb-4 px-4">
-                        <VaultsSection />
+                        <MainDashboardSection />
                     </div>
                 </div>
             </div>

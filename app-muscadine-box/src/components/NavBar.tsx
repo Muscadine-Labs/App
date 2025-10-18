@@ -10,15 +10,48 @@ export function NavBar() {
             </div>
             <div className="flex flex-col items-center justify-center gap-2 mt-6">
                 <button className="flex items-center justify-start gap-2 w-full p-2">
-                    <Image src="/home-24.svg" alt="Muscadine" width={16} height={16} />
+                <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    viewBox="0 0 24 24" 
+                    className="w-4 h-4 text-foreground"
+                    fill="currentColor"
+                    >
+                    <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+                </svg>
                     <p className="text-xs">Home</p>
                 </button>
                 <button className="flex items-center justify-start gap-2 w-full p-2">
-                    <Image src="/vaults-24.svg" alt="Muscadine" width={16} height={16} />
+                <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    viewBox="0 0 24 24" 
+                    className="w-4 h-4" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                    >
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                    <rect x="7" y="8" width="10" height="8" rx="1" ry="1"/>
+                    <path d="M12 8v8"/>
+                    <path d="M8 12h8"/>
+                    </svg>
                     <p className="text-xs">Vaults</p>
                 </button>
                 <button className="flex items-center justify-start gap-2 w-full p-2">
-                    <Image src="/learn-24.svg" alt="Muscadine" width={16} height={16} />
+                <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                viewBox="0 0 24 24" 
+                className="w-4 h-4" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round"
+                >
+                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                </svg>
                     <p className="text-xs">Learn</p>
                 </button>
 
