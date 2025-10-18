@@ -1,4 +1,3 @@
-import Beams from "./Beams";
 import ConnectButton from "./ConnectButton";
 import Image from "next/image";
 

@@ -1,19 +1,30 @@
-import ConnectButton from "./ConnectButton";
 import Image from "next/image";
-import { ThemeToggler } from "./ThemeButton";
+import Link from "next/link";
 
 export function NavBar() {
     return (
-        <header>
-            <div className="flex justify-between items-center fixed px-4 py-3 top-0 left-0 right-0 z-50">
-                <div className="flex items-center gap-2">
-                    <Image src="/favicon.png" alt="Muscadine" width={32} height={32} className="rounded-full"/>
-                    <h1 className="text-2xl">Muscadine</h1>
-                </div>
-
-                <ConnectButton />
+        <div id="navbar" className="flex flex-col fixed top-0 left-0 w-[var(--navbar-width)] h-screen bg-[var(--background)] p-4">
+            <div className="flex items-center justify-start gap-2 p-2">
+                <Image src="/favicon.png" alt="Muscadine" width={16} height={16} className="rounded-full"/>
+                <Link href="https://muscadine.box" className="text-xs">Muscadine</Link>
             </div>
-        </header>
-    )
-}
-export default NavBar;
+            <div className="flex flex-col items-center justify-center gap-2 mt-6">
+                <button className="flex items-center justify-start gap-2 w-full p-2">
+                    <Image src="/home-24.svg" alt="Muscadine" width={16} height={16} />
+                    <p className="text-xs">Home</p>
+                </button>
+                <button className="flex items-center justify-start gap-2 w-full p-2">
+                    <Image src="/vaults-24.svg" alt="Muscadine" width={16} height={16} />
+                    <p className="text-xs">Vaults</p>
+                </button>
+                <button className="flex items-center justify-start gap-2 w-full p-2">
+                    <Image src="/learn-24.svg" alt="Muscadine" width={16} height={16} />
+                    <p className="text-xs">Learn</p>
+                </button>
+
+            </div>
+        </div>
+
+
+
+    )};

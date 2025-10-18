@@ -1,6 +1,6 @@
 // config.ts
-import { createConfig, http, createStorage, cookieStorage } from 'wagmi'
-import { mainnet, sepolia, base } from 'wagmi/chains'
+import { createStorage, cookieStorage } from 'wagmi'
+import { base } from 'wagmi/chains'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 import { createAppKit } from '@reown/appkit/react'
 
@@ -11,7 +11,7 @@ if (!projectId) throw new Error('REOWN_PROJECT_ID is not set')
 const metadata = {
   name: 'Muscadine',
   description: 'Muscadine App',
-  url: 'https://yourapp.com',
+  url: 'https://muscadine.box',
   icons: ['/favicon.png'],
 }
 
@@ -22,14 +22,14 @@ export const wagmiAdapter = new WagmiAdapter({
       }),
       ssr: true,
   projectId,
-  networks: [mainnet, sepolia, base],
+  networks: [base],
 })
 
 // AppKit instance
 export const appKit = createAppKit({
   adapters: [wagmiAdapter],
   projectId,
-  networks: [mainnet, sepolia, base],
+  networks: [base],
   metadata,
 })
 

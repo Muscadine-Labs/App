@@ -4,9 +4,9 @@ import './globals.css'
 import { AppLayout } from '@/components/AppLayout'
 import { headers } from 'next/headers'
 import { cookieToInitialState } from 'wagmi'
-import { Providers } from './providers'
+import { Providers } from './Providers'
 import { config } from './config'
-
+import { PriceProvider } from './PriceContext'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -32,7 +32,9 @@ export default async function RootLayout({
     <html lang="en">
       <body className={inter.className}>
           <Providers initialState={initialState}>
+              <PriceProvider>
               <AppLayout>{children}</AppLayout>
+              </PriceProvider>
           </Providers>
       </body>
     </html>
