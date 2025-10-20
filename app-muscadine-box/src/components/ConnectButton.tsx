@@ -12,9 +12,10 @@ import { useNotifications } from '@/contexts/NotificationContext';
 
 interface ConnectButtonProps {
     isCollapsed?: boolean;
+    centerContent?: boolean;
 }
 
-export default function ConnectButton({ isCollapsed = false }: ConnectButtonProps) {
+export default function ConnectButton({ isCollapsed = false, centerContent = false }: ConnectButtonProps) {
     const { address, isConnected } = useAppKitAccount();
     const { open } = useAppKit();
     const { disconnect } = useDisconnect();
@@ -56,12 +57,14 @@ export default function ConnectButton({ isCollapsed = false }: ConnectButtonProp
         return (
             <div className="relative" ref={dropdownRef}>
                 {/* Main button to toggle the dropdown */}
+                <div className="flex justify-center w-full">
                 <button
                     onClick={() => setIsDropdownOpen(prev => !prev)}
-                    className={`flex items-center gap-2 w-full p-2 rounded transition-colors ${
-                        isCollapsed ? 'justify-center' : 'justify-start'
+                    className={`flex items-center gap-2 p-2 rounded transition-color ${
+                        isCollapsed ? 'justify-center' : ' justify-start w-full'
                     } hover:bg-[var(--surface-hover)]`}
                 >
+                    
                     {/* Wallet icon - always show */}
                     <svg 
                         xmlns="http://www.w3.org/2000/svg" 
@@ -78,7 +81,7 @@ export default function ConnectButton({ isCollapsed = false }: ConnectButtonProp
                     </svg>
                     {!isCollapsed && <span className="text-xs">{truncatedAddress}</span>}
                 </button>
-
+                </div>
                 
                 {isDropdownOpen && (
                     <div className="absolute top-full left-0 mt-2 w-72 bg-[var(--surface)] border border-[var(--border-subtle)] rounded-xl shadow-lg overflow-hidden">
@@ -164,7 +167,7 @@ export default function ConnectButton({ isCollapsed = false }: ConnectButtonProp
         <button
             onClick={() => open()}
             className={`flex items-center gap-2 w-full p-2 rounded transition-colors ${
-                isCollapsed ? 'justify-center' : 'justify-start'
+                centerContent ? 'justify-center' : (isCollapsed ? 'justify-center' : 'justify-start')
             } hover:bg-[var(--surface-hover)]`}
         >
             {/* Wallet icon */}

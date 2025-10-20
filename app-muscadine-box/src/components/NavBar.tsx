@@ -35,44 +35,37 @@ export function NavBar() {
     return (
         <div 
             id="navbar" 
-            className={`flex flex-col fixed top-0 left-0 h-screen bg-[var(--background)] py-4 transition-all duration-300 ${
-                isCollapsed ? 'w-[var(--navbar-collapsed-width)] pl-2' : 'w-[var(--navbar-width)] pl-4 justify-start'
+            className={`flex flex-col fixed top-0 left-0 h-screen bg-[var(--background-muted)] py-4 transition-all duration-300 border-r border-[var(--border)] ${
+                isCollapsed ? 'w-[var(--navbar-collapsed-width)] p-3' : 'w-[var(--navbar-width)] p-4'
             }`}
         >
-            {/* Header with ConnectButton and toggle button */}
+            {/* Header with ConnectButton */}
             <div className="flex items-center justify-between">
-                <div className="flex-1">
+                <div className="flex-1" onClick={(e) => e.stopPropagation()}>
                     <ConnectButton isCollapsed={isCollapsed} />
                 </div>
-                
-                <button 
+            </div>
+
+            {/* Vertical Toggle Bar - Positioned on right border, centered vertically */}
+            <div className="absolute right-0 top-1/2 transform -translate-y-1/2">
+                <button
                     onClick={toggleCollapse}
-                    className="hover:bg-[var(--surface-hover)] rounded transition-colors -mr-2 p-1"
+                    className="w-2 h-20 bg-[var(--border)] hover:bg-[var(--border-strong)] rounded-full transition-colors flex items-center justify-center group translate-x-1/2"
                 >
-                    <svg 
-                        xmlns="http://www.w3.org/2000/svg" 
-                        viewBox="0 0 24 24" 
-                        className="w-4 h-4"
-                        fill="none" 
-                        stroke="currentColor" 
-                        strokeWidth="2" 
-                        strokeLinecap="round" 
-                        strokeLinejoin="round"
-                    >
-                        <path d={isCollapsed ? "M9 18l6-6-6-6" : "M15 18l-6-6 6-6"}/>
-                    </svg>
+                    <div className="w-2 h-2 bg-[var(--foreground-secondary)] rounded-full opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
             </div>
 
             <div className="flex flex-col justify-between h-full gap-2">
-                <nav className="flex flex-col items-center justify-center gap-2 mt-6" role="navigation" aria-label="Main navigation">
+                <nav className="flex flex-col items-center justify-center gap-2 mt-6 w-full" role="navigation" aria-label="Main navigation">
                     {navigationItems.map((item) => (
-                        <NavLink 
-                            key={item.id}
-                            item={item}
-                            isActive={isActive(item)}
-                            isCollapsed={isCollapsed}
-                        />
+                        <div key={item.id} onClick={(e) => e.stopPropagation()} className="w-full">
+                            <NavLink 
+                                item={item}
+                                isActive={isActive(item)}
+                                isCollapsed={isCollapsed}
+                            />
+                        </div>
                     ))}
                 </nav>
 

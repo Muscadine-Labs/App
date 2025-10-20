@@ -13,8 +13,8 @@ export default function Dashboard() {
     return (
         <div className="w-full bg-[var(--background)] h-screen flex">
             {/* Main Dashboard Area - Scrollable */}
-            <div className={`flex-1 overflow-y-auto transition-all duration-300 ${isRightSidebarCollapsed ? 'mr-12' : 'mr-80'}`}>
-                <div className={`grid gap-4 h-full ${isNavbarCollapsed ? 'pl-6 p-4' : 'p-4'}`} style={{gridTemplateRows: 'auto 1fr'}}>
+            <div className={`flex-1 overflow-y-auto transition-all duration-300`}>
+                <div className={`grid gap-4 h-full ${isNavbarCollapsed ? 'p-4' : 'p-4'}`} style={{gridTemplateRows: 'auto 1fr'}}>
                     {/* Top Row - Fixed Height */}
                     <div className="rounded-lg h-40">
                         <WalletOverview />
@@ -40,13 +40,7 @@ export default function Dashboard() {
                         </div>
                     </div>
                 </div>
-            </div>
-            
-            {/* Right Sidebar - Fixed and Collapsible */}
-            <RightSidebar 
-                isCollapsed={isRightSidebarCollapsed}
-                onToggle={() => setIsRightSidebarCollapsed(!isRightSidebarCollapsed)}
-            />
+            </div>  
         </div>
     );
 }
