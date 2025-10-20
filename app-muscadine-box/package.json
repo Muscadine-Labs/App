@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@apollo/client": "^4.0.7",
+    "@floating-ui/react": "^0.27.16",
     "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^9.4.0",
     "@reown/appkit": "^1.8.10",

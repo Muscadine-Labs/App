@@ -1,5 +1,8 @@
 import { Vault, getVaultLogo } from '../types/vault';
 import Image from 'next/image';
+import { useVaultData } from '../contexts/VaultDataContext';
+import { formatSmartCurrency } from '../lib/formatter';
+import CopiableAddress from './CopiableAddress';
 interface VaultListCardProps {
     vault: Vault;
     onClick?: (vault: Vault) => void;
@@ -7,6 +10,9 @@ interface VaultListCardProps {
 }
 
 export default function VaultListCard({ vault, onClick, isSelected }: VaultListCardProps) {
+    const { getVaultData, isLoading } = useVaultData();
+    const vaultData = getVaultData(vault.address);
+    const loading = isLoading(vault.address);
 
     return (
         <div 
@@ -25,19 +31,40 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
                         alt={`${vault.symbol} logo`}
                         width={32}
                         height={32}
-                        className="w-full h-full object-contain"
+                        className={`w-full h-full object-contain ${
+                            vault.symbol === 'WETH' ? 'scale-75' : ''
+                        }`}
                     />
                 </div>
                 <div className="flex flex-col">
                     <h3 className="text-sm font-semibold text-foreground">{vault.name}</h3>
-                    <p className="text-xs text-foreground-secondary font-mono">
-                        {`${vault.address.slice(0, 6)}...${vault.address.slice(-4)}`}
-                    </p>
+                    <div onClick={(e) => e.stopPropagation()}>
+                        <CopiableAddress 
+                            address={vault.address}
+                            className="text-xs text-foreground-secondary"
+                            truncateLength={6}
+                        />
+                    </div>
                 </div>
             </div>
 
-
-            
+            {/* Right side - Vault stats or loading indicator */}
+            <div className="flex items-center gap-2">
+                {loading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[var(--primary)]"></div>
+                ) : vaultData ? (
+                    <div className="flex flex-col items-end">
+                        <span className="text-sm font-semibold text-[var(--success)]">
+                            {(vaultData.apy * 100).toFixed(2)}% APY
+                        </span>
+                        <span className="text-xs text-foreground-secondary">
+                            {formatSmartCurrency(vaultData.totalValueLocked)} TVL
+                        </span>
+                    </div>
+                ) : (
+                    <span className="text-xs text-foreground-muted">No data</span>
+                )}
+            </div>
         </div>
     )
 }

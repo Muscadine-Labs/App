@@ -53,6 +53,32 @@ export function formatTokenAmount(
 }
 
 /**
+ * Smart currency formatter that shows the most appropriate format based on value size.
+ * @param value - The number or string to format.
+ * @returns A formatted currency string with appropriate precision (e.g., "$20", "$1.2K", "$2.5M").
+ */
+export function formatSmartCurrency(value: number | string): string {
+  const numberValue = Number(value);
+  if (isNaN(numberValue)) return '$0';
+  
+  const absValue = Math.abs(numberValue);
+  
+  if (absValue < 1000) {
+    // Show exact amount for values under $1,000
+    return `$${numberValue.toFixed(2)}`;
+  } else if (absValue < 1000000) {
+    // Show in thousands with 1 decimal place
+    return `$${(numberValue / 1000).toFixed(1)}K`;
+  } else if (absValue < 1000000000) {
+    // Show in millions with 1 decimal place
+    return `$${(numberValue / 1000000).toFixed(1)}M`;
+  } else {
+    // Show in billions with 1 decimal place
+    return `$${(numberValue / 1000000000).toFixed(1)}B`;
+  }
+}
+
+/**
  * Truncates an Ethereum address for concise display.
  * @param address - The full address string.
  * @returns A truncated address string (e.g., "0x1234...5678").

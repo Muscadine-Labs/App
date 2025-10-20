@@ -32,8 +32,8 @@ export function PriceProvider({ children }: { children: ReactNode }) {
           return JSON.parse(cachedData);
         }
 
-        // Fetch fresh data from API
-        const response = await fetch('/api/prices');
+        // Fetch fresh data from API (now using dynamic symbols)
+        const response = await fetch('/api/prices?symbols=BTC,ETH');
         if (!response.ok) {
           // If API fails but we have cached data (even stale), use it
           if (cachedData) {
@@ -56,8 +56,8 @@ export function PriceProvider({ children }: { children: ReactNode }) {
     });
   
     const prices = {
-      btc: data?.bitcoin || null,
-      eth: data?.ethereum || null,
+      btc: data?.btc || null,
+      eth: data?.eth || null,
       loading: isLoading,
       error: error?.message || null
     };

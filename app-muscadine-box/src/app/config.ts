@@ -60,6 +60,10 @@ export const appKit = createAppKit({
   projectId,
   networks: [base],
   metadata,
+  featuredWalletIds: [
+    'fd20dc426fb37566d803205b19bbc1d4096b248ac04548e3cfb6b3a38bd033aa',
+    '18388be9ac2d02726dbac9777c96efaac06d744b2f6d580fccdd4127a6d01fd1'
+  ]   
 })
 
 // Export adapter’s Wagmi config for Providers

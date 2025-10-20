@@ -1,35 +1,162 @@
 'use client';
 
 import { useAppKitAccount, useWalletInfo } from '@reown/appkit/react';
-import { useBalance } from 'wagmi';
 import Image from 'next/image';
-import { usePrices } from '@/app/PriceContext';
+import ConnectButton from './ConnectButton';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { useWallet } from '@/contexts/WalletContext';
+import { formatNumber, formatCurrency } from '@/lib/formatter';
+import {
+    useFloating,
+    autoUpdate,
+    offset,
+    flip,
+    shift,
+    useClick,
+    useDismiss,
+    useRole,
+    useInteractions,
+    FloatingPortal,
+} from '@floating-ui/react';
 
 export default function WalletOverview() {
     const { address, isConnected } = useAppKitAccount();
     const { walletInfo } = useWalletInfo();
-    const { data: balance } = useBalance({
-        address: address as `0x${string}`,
-        query: { enabled: !!address }
+    const { totalUsdValue, liquidUsdValue, morphoUsdValue, tokenBalances, loading: walletLoading } = useWallet();
+    const [isMounted, setIsMounted] = useState(false);
+    const [totalAssetsOpen, setTotalAssetsOpen] = useState(false);
+    const [liquidAssetsOpen, setLiquidAssetsOpen] = useState(false);
+    const [morphoVaultsOpen, setMorphoVaultsOpen] = useState(false);
+    const [totalAssetsTooltipOpen, setTotalAssetsTooltipOpen] = useState(false);
+    const [liquidAssetsTooltipOpen, setLiquidAssetsTooltipOpen] = useState(false);
+    const [morphoVaultsTooltipOpen, setMorphoVaultsTooltipOpen] = useState(false);
+
+    // Floating UI setup for Total Assets dropdown
+    const totalAssets = useFloating({
+        open: totalAssetsOpen,
+        onOpenChange: setTotalAssetsOpen,
+        middleware: [offset(8), flip(), shift({ padding: 8 })],
+        whileElementsMounted: autoUpdate,
     });
-    
+    const totalAssetsInteractions = useInteractions([
+        useClick(totalAssets.context),
+        useDismiss(totalAssets.context),
+        useRole(totalAssets.context),
+    ]);
+
+    // Floating UI setup for Liquid Assets dropdown
+    const liquidAssets = useFloating({
+        open: liquidAssetsOpen,
+        onOpenChange: setLiquidAssetsOpen,
+        middleware: [offset(8), flip(), shift({ padding: 8 })],
+        whileElementsMounted: autoUpdate,
+    });
+    const liquidAssetsInteractions = useInteractions([
+        useClick(liquidAssets.context),
+        useDismiss(liquidAssets.context),
+        useRole(liquidAssets.context),
+    ]);
+
+    // Floating UI setup for Morpho Vaults dropdown
+    const morphoVaults = useFloating({
+        open: morphoVaultsOpen,
+        onOpenChange: setMorphoVaultsOpen,
+        middleware: [offset(8), flip(), shift({ padding: 8 })],
+        whileElementsMounted: autoUpdate,
+    });
+    const morphoVaultsInteractions = useInteractions([
+        useClick(morphoVaults.context),
+        useDismiss(morphoVaults.context),
+        useRole(morphoVaults.context),
+    ]);
+
+    // Floating UI setup for Total Assets tooltip
+    const totalAssetsTooltip = useFloating({
+        open: totalAssetsTooltipOpen,
+        onOpenChange: setTotalAssetsTooltipOpen,
+        middleware: [offset(8), flip(), shift({ padding: 8 })],
+        whileElementsMounted: autoUpdate,
+    });
+    const totalAssetsTooltipInteractions = useInteractions([
+        useClick(totalAssetsTooltip.context),
+        useDismiss(totalAssetsTooltip.context),
+        useRole(totalAssetsTooltip.context),
+    ]);
+
+    // Floating UI setup for Liquid Assets tooltip
+    const liquidAssetsTooltip = useFloating({
+        open: liquidAssetsTooltipOpen,
+        onOpenChange: setLiquidAssetsTooltipOpen,
+        middleware: [offset(8), flip(), shift({ padding: 8 })],
+        whileElementsMounted: autoUpdate,
+    });
+    const liquidAssetsTooltipInteractions = useInteractions([
+        useClick(liquidAssetsTooltip.context),
+        useDismiss(liquidAssetsTooltip.context),
+        useRole(liquidAssetsTooltip.context),
+    ]);
+
+    // Floating UI setup for Morpho Vaults tooltip
+    const morphoVaultsTooltip = useFloating({
+        open: morphoVaultsTooltipOpen,
+        onOpenChange: setMorphoVaultsTooltipOpen,
+        middleware: [offset(8), flip(), shift({ padding: 8 })],
+        whileElementsMounted: autoUpdate,
+    });
+    const morphoVaultsTooltipInteractions = useInteractions([
+        useClick(morphoVaultsTooltip.context),
+        useDismiss(morphoVaultsTooltip.context),
+        useRole(morphoVaultsTooltip.context),
+    ]);
+
+    // Prevent hydration mismatch by only rendering client-side content after mount
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+
+    if (!isMounted) {
+        // Return a simple loading state during SSR
+        return (
+            <div className="flex flex-col items-center justify-center w-full h-full bg-[var(--surface)] rounded-lg px-8 py-4 gap-6">
+                <div className="animate-pulse">
+                    <div className="h-8 w-48 bg-[var(--background-elevated)] rounded mb-4"></div>
+                    <div className="h-4 w-64 bg-[var(--background-elevated)] rounded"></div>
+                </div>
+            </div>
+        );
+    }
+
+    if (!isConnected) {
+        return (
+            <div className="flex flex-col items-center justify-center w-full h-full bg-[var(--surface)] rounded-lg px-8 py-4 gap-6">
+                <div className="flex flex-col items-center gap-4">
+                    
+                    <p className="text-[var(--foreground-secondary)] text-center max-w-md">
+                        Connect your wallet to view your balance, track your investments in Morpho vaults, and manage your portfolio.
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
+    // Connected state - show wallet stats
     const truncatedAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '';
-    const formattedBalance = balance ? 
-    parseFloat(balance.formatted).toString() : '0';
-    const { eth: ethPrice, loading: priceLoading } = usePrices();
+    const usdcBalance = tokenBalances.find(token => token.symbol === 'USDC');
+    const ethBalance = tokenBalances.find(token => token.symbol === 'ETH');
     
-    // Check if we have cached data in localStorage to avoid flashing
-    const hasCachedData = typeof window !== 'undefined' && localStorage.getItem('crypto-prices');
+    // Find the asset with the highest USD value for liquid assets
+    const sortedLiquidAssets = [...tokenBalances].sort((a, b) => b.usdValue - a.usdValue);
+    const primaryLiquidAsset = sortedLiquidAssets[0];
     
-    const usdValue = ethPrice && balance ? 
-        (parseFloat(balance.formatted) * ethPrice).toLocaleString('en-US', {
-            style: 'currency',
-            currency: 'USD'
-        }) : null;
+    // For total assets, use the same primary asset as liquid assets (since we're not including Morpho in the asset list)
+    const primaryTotalAsset = primaryLiquidAsset;
+    
+
     return (
         <div className="flex flex-col items-start justify-start w-full h-full bg-[var(--surface)] rounded-lg px-8 py-4 gap-6 overflow-x-auto">
             <div className="flex items-center gap-2">
-                {isConnected && walletInfo?.icon && (
+                {walletInfo?.icon && (
                     <Image 
                         src={walletInfo.icon} 
                         alt={walletInfo.name || 'Wallet'} 
@@ -39,7 +166,7 @@ export default function WalletOverview() {
                     />
                 )}
                 <h1>
-                    Wallet {isConnected && truncatedAddress && (
+                    Wallet {truncatedAddress && (
                         <span className="text-sm font-normal text-gray-500 ml-1">
                             ({truncatedAddress})
                         </span>
@@ -48,30 +175,252 @@ export default function WalletOverview() {
             </div>
             <div className="flex items-start justify-between w-full">
                 <div className="flex flex-col items-start">
-                    <h1 className="text-md text-left">
-                        Balance
-                    </h1>
-                    <h1 className="text-3xl font-bold">
-                        {priceLoading && !hasCachedData ? '$0.00' : (usdValue || `$${formattedBalance} USD`)}
-                    </h1>
+                        <h1 className="text-md text-left text-[var(--foreground-secondary)]">
+                            Total Assets
+                        </h1>
+                    
+                    <div 
+                        ref={totalAssets.refs.setReference}
+                        {...totalAssetsInteractions.getReferenceProps()}
+                        className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                    >
+                        <h1 className="text-3xl font-bold">
+                            {walletLoading ? 'Loading...' : (
+                                primaryTotalAsset 
+                                    ? `${formatNumber(primaryTotalAsset.formatted, {
+                                        minimumFractionDigits: 0,
+                                        maximumFractionDigits: primaryTotalAsset.symbol === 'ETH' ? 4 : 2,
+                                    })} ${primaryTotalAsset.symbol}`
+                                    : '0.00'
+                            )}
+                        </h1>
+                        <svg 
+                            width="16" 
+                            height="16" 
+                            viewBox="0 0 24 24" 
+                            fill="none" 
+                            className={`transition-transform ${totalAssetsOpen ? 'rotate-180' : ''}`}
+                        >
+                            <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                    </div>
                 </div>
                 <div className="flex flex-col items-start">
-                    <h1 className="text-md text-left">
-                        Value in Morpho
-                    </h1>
-                    <h1 className="text-3xl font-bold">
-                        $0.00
-                    </h1>
+                    
+                        <h1 className="text-md text-left text-[var(--foreground-secondary)]">
+                            Liquid Assets
+                        </h1>
+              
+                    <div 
+                        ref={liquidAssets.refs.setReference}
+                        {...liquidAssetsInteractions.getReferenceProps()}
+                        className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                    >
+                        <h1 className="text-3xl font-bold">
+                            {walletLoading ? 'Loading...' : (
+                                primaryLiquidAsset 
+                                    ? `${formatNumber(primaryLiquidAsset.formatted, {
+                                        minimumFractionDigits: 0,
+                                        maximumFractionDigits: primaryLiquidAsset.symbol === 'ETH' ? 4 : 2,
+                                    })} ${primaryLiquidAsset.symbol}`
+                                    : '0.00'
+                            )}
+                        </h1>
+                        <svg 
+                            width="16" 
+                            height="16" 
+                            viewBox="0 0 24 24" 
+                            fill="none" 
+                            className={`transition-transform ${liquidAssetsOpen ? 'rotate-180' : ''}`}
+                        >
+                            <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                    </div>
                 </div>
                 <div className="flex flex-col items-start">
-                    <h1 className="text-md text-left">
-                       Interest Earned
-                    </h1>
-                    <h1 className="text-3xl font-bold">
-                        $0.00
-                    </h1>
-                </div>
+                        <h1 className="text-md text-left text-[var(--foreground-secondary)]">
+                           In Morpho Vaults
+                        </h1>
+                   <div 
+                        ref={morphoVaults.refs.setReference}
+                        {...morphoVaultsInteractions.getReferenceProps()}
+                        className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                    >
+                       <h1 className="text-3xl font-bold text-[var(--success)]">
+                           {walletLoading ? 'Loading...' : morphoUsdValue}
+                       </h1>
+                       <svg 
+                            width="16" 
+                            height="16" 
+                            viewBox="0 0 24 24" 
+                            fill="none" 
+                            className={`transition-transform ${morphoVaultsOpen ? 'rotate-180' : ''}`}
+                        >
+                            <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                   </div>
+               </div>
             </div>
+            
+            {/* Total Assets Dropdown */}
+            {isMounted && totalAssetsOpen && (
+                <FloatingPortal>
+                    <div 
+                        ref={totalAssets.refs.setFloating}
+                        style={totalAssets.floatingStyles}
+                        {...totalAssetsInteractions.getFloatingProps()}
+                        className="bg-[var(--surface-elevated)] rounded-lg p-3 shadow-lg border border-[var(--border-subtle)] min-w-[200px] z-[9999]"
+                    >
+                    <div className="flex flex-col gap-2">
+                        {sortedLiquidAssets.map((asset) => (
+                            <div key={asset.symbol} className="flex justify-between items-center py-1">
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-medium text-[var(--foreground)]">
+                                        {asset.symbol}
+                                    </span>
+                                    <span className="text-xs text-[var(--foreground-secondary)]">
+                                        {formatNumber(asset.formatted, {
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: asset.symbol === 'ETH' ? 4 : 2,
+                                        })}
+                                    </span>
+                                </div>
+                                <span className="text-sm text-[var(--foreground)]">
+                                    {formatCurrency(asset.usdValue)}
+                                </span>
+                            </div>
+                        ))}
+                        <div className="border-t border-[var(--border-subtle)] pt-2 mt-1">
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm font-semibold text-[var(--foreground)]">
+                                    Total
+                                </span>
+                                <span className="text-sm font-semibold text-[var(--foreground)]">
+                                    {liquidUsdValue}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </FloatingPortal>
+            )}
+
+            {/* Liquid Assets Dropdown */}
+            {isMounted && liquidAssetsOpen && (
+                <FloatingPortal>
+                    <div 
+                        ref={liquidAssets.refs.setFloating}
+                        style={liquidAssets.floatingStyles}
+                        {...liquidAssetsInteractions.getFloatingProps()}
+                        className="bg-[var(--surface-elevated)] rounded-lg p-3 shadow-lg border border-[var(--border-subtle)] min-w-[200px] z-[9999]"
+                    >
+                    <div className="flex flex-col gap-2">
+                        {sortedLiquidAssets.map((asset) => (
+                            <div key={asset.symbol} className="flex justify-between items-center py-1">
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-medium text-[var(--foreground)]">
+                                        {asset.symbol}
+                                    </span>
+                                    <span className="text-xs text-[var(--foreground-secondary)]">
+                                        {formatNumber(asset.formatted, {
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: asset.symbol === 'ETH' ? 4 : 2,
+                                        })}
+                                    </span>
+                                </div>
+                                <span className="text-sm text-[var(--foreground)]">
+                                    {formatCurrency(asset.usdValue)}
+                                </span>
+                            </div>
+                        ))}
+                        <div className="border-t border-[var(--border-subtle)] pt-2 mt-1">
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm font-semibold text-[var(--foreground)]">
+                                    Total
+                                </span>
+                                <span className="text-sm font-semibold text-[var(--foreground)]">
+                                    {liquidUsdValue}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </FloatingPortal>
+            )}
+
+            {/* Morpho Vaults Dropdown */}
+            {isMounted && morphoVaultsOpen && (
+                <FloatingPortal>
+                    <div 
+                        ref={morphoVaults.refs.setFloating}
+                        style={morphoVaults.floatingStyles}
+                        {...morphoVaultsInteractions.getFloatingProps()}
+                        className="bg-[var(--surface-elevated)] rounded-lg p-3 shadow-lg border border-[var(--border-subtle)] min-w-[200px] z-[9999]"
+                    >
+                    <div className="flex flex-col gap-2">
+                        <div className="text-sm text-[var(--foreground-secondary)]">
+                            Vault positions coming soon...
+                        </div>
+                        <div className="border-t border-[var(--border-subtle)] pt-2 mt-1">
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm font-semibold text-[var(--foreground)]">
+                                    Total
+                                </span>
+                                <span className="text-sm font-semibold text-[var(--foreground)]">
+                                    {morphoUsdValue}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                </FloatingPortal>
+            )}
+
+            {/* Tooltips */}
+            {isMounted && totalAssetsTooltipOpen && (
+                <FloatingPortal>
+                    <div 
+                        ref={totalAssetsTooltip.refs.setFloating}
+                        style={totalAssetsTooltip.floatingStyles}
+                        {...totalAssetsTooltipInteractions.getFloatingProps()}
+                        className="bg-[var(--surface-elevated)] rounded-lg p-2 shadow-lg border border-[var(--border-subtle)] z-[9999]"
+                    >
+                        <p className="text-xs text-[var(--foreground-secondary)]">
+                            In your wallet
+                        </p>
+                    </div>
+                </FloatingPortal>
+            )}
+
+            {isMounted && liquidAssetsTooltipOpen && (
+                <FloatingPortal>
+                    <div 
+                        ref={liquidAssetsTooltip.refs.setFloating}
+                        style={liquidAssetsTooltip.floatingStyles}
+                        {...liquidAssetsTooltipInteractions.getFloatingProps()}
+                        className="bg-[var(--surface-elevated)] rounded-lg p-2 shadow-lg border border-[var(--border-subtle)] z-[9999]"
+                    >
+                        <p className="text-xs text-[var(--foreground-secondary)]">
+                            Available to use
+                        </p>
+                    </div>
+                </FloatingPortal>
+            )}
+
+            {isMounted && morphoVaultsTooltipOpen && (
+                <FloatingPortal>
+                    <div 
+                        ref={morphoVaultsTooltip.refs.setFloating}
+                        style={morphoVaultsTooltip.floatingStyles}
+                        {...morphoVaultsTooltipInteractions.getFloatingProps()}
+                        className="bg-[var(--surface-elevated)] rounded-lg p-2 shadow-lg border border-[var(--border-subtle)] z-[9999]"
+                    >
+                        <p className="text-xs text-[var(--foreground-secondary)]">
+                            Earning yield
+                        </p>
+                    </div>
+                </FloatingPortal>
+            )}
         </div>
     )
 }

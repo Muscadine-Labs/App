@@ -4,10 +4,23 @@ import { useState } from "react";
 import VaultDetailed from "./VaultDetailed";
 import { Vault } from "../types/vault";
 import { useNavBar } from "@/contexts/NavBarContext";
+import { useVaultListPreloader } from "@/hooks/useVaultDataFetch";
+import { VAULTS } from "@/lib/vaults";
 
 export default function Dashboard() {
     const [selectedVault, setSelectedVault] = useState<Vault | null>(null);
     const { isCollapsed: isNavbarCollapsed } = useNavBar();
+
+    // Get vault list for preloading
+    const vaults: Vault[] = Object.values(VAULTS).map((vault) => ({
+        address: vault.address,
+        name: vault.name,
+        symbol: vault.symbol,
+        chainId: vault.chainId,
+    }));
+
+    // Preload vault data when dashboard loads
+    useVaultListPreloader(vaults);
     return (
         <div className="w-full bg-[var(--background)] h-screen flex">
             {/* Main Dashboard Area - Scrollable */}

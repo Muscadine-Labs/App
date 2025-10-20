@@ -18,10 +18,8 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
     const handleVaultClick = (vault: Vault) => {
         // If the clicked vault is already selected, deselect it
         if (vault.address === selectedVaultAddress) {
-            console.log('Deselecting vault:', vault);
             onVaultSelect(null);
         } else {
-            console.log('Selected vault:', vault);
             onVaultSelect(vault);
         }
     };

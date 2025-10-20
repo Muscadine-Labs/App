@@ -8,21 +8,21 @@ export interface Vault {
     
     // Financial Metrics
     totalValueLocked?: number; // TVL in USD
-    apy?: number; // Annual Percentage Yield
+    apy?: number; // Annual Percentage Yield (net)
+    netApyWithoutRewards?: number; // Net APY without reward incentives
+    rewardsApr?: number; // Rewards APR from incentives
+    rewardSymbol?: string; // Symbol of reward token
     apyChange?: number; // APY change (positive/negative)
     totalDeposits?: number; // Total deposits in USD
     currentLiquidity?: number; // Available liquidity in USD
     sharePrice?: number; // Current vault share price
     
-    // Risk Metrics
-    riskLevel?: 'low' | 'medium' | 'high';
-    collateralizationRatio?: number;
-    liquidationThreshold?: number;
-    maxLTV?: number; // Maximum loan-to-value ratio
+    // Security & Risk
+    whitelisted?: boolean; // Whether vault is whitelisted by Morpho
+    timelockDuration?: number; // Timelock in seconds
     
-    // Status & Operations
+    // Status
     status?: 'active' | 'paused' | 'deprecated';
-    timelockDuration?: number; // Hours
     
     // Curator Information
     curator?: string;
@@ -51,14 +51,14 @@ export interface MorphoVaultData extends Vault {
     // All fields are required for Morpho vaults
     totalValueLocked: number;
     apy: number;
+    netApyWithoutRewards: number;
+    rewardsApr: number;
+    rewardSymbol: string;
     apyChange: number;
     totalDeposits: number;
     currentLiquidity: number;
     sharePrice: number;
-    riskLevel: 'low' | 'medium' | 'high';
-    collateralizationRatio: number;
-    liquidationThreshold: number;
-    maxLTV: number;
+    whitelisted: boolean;
     timelockDuration: number;
     guardianAddress: string;
     oracleAddress: string;

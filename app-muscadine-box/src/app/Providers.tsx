@@ -6,6 +6,9 @@ import { WagmiProvider } from 'wagmi'
 import { config } from './config'
 import { ApolloClient, HttpLink, InMemoryCache } from "@apollo/client";
 import { ApolloProvider } from '@apollo/client/react'
+import { VaultDataProvider } from '../contexts/VaultDataContext'
+import { NotificationProvider } from '../contexts/NotificationContext'
+import { WalletProvider } from '../contexts/WalletContext'
 
 export const client = new ApolloClient({
     link: new HttpLink({ uri: "https://api.morpho.org/graphql" }),
@@ -27,7 +30,13 @@ export function Providers({ children, initialState }: Props) {
       initialState={initialState} // undefined in dev is fine
     >
       <QueryClientProvider client={queryClient}>
-        {children}
+        <WalletProvider>
+          <NotificationProvider>
+            <VaultDataProvider>
+              {children}
+            </VaultDataProvider>
+          </NotificationProvider>
+        </WalletProvider>
       </QueryClientProvider>
     </WagmiProvider>
     </ApolloProvider>

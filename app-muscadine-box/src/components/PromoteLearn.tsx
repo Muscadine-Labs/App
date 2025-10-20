@@ -2,7 +2,7 @@ import Link from "next/link";
 
 export default function PromoteLearn() {
     return (
-        <div className="flex flex-col rounded-lg bg-[var(--surface)] h-full justify-center items-start gap-4 p-4 border border-[var(--accent)]">
+        <div className="flex flex-col rounded-lg bg-[var(--surface)] h-full justify-center items-start gap-4 p-4 border border-[var(--primary)]">
             <div className="flex items-center gap-2">
                 <svg 
                             xmlns="http://www.w3.org/2000/svg" 

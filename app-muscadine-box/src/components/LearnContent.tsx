@@ -25,7 +25,7 @@ export default function LearnContent() {
                 <div className="flex justify-start">
                     <Link 
                         href="https://muscadine.io/learn/what-is-crypto" 
-                        className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--accent)] text-white text-sm rounded-lg hover:bg-[var(--accent-hover)] transition-colors"
+                        className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--primary)] text-white text-sm rounded-lg hover:bg-[var(--primary-hover)] transition-colors"
                     >
                         All Resources
                         <svg 

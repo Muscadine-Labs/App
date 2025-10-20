@@ -131,7 +131,7 @@ export default function ProgressBar({ items, onUpdate }: ProgressBarProps) {
                 >
                     {/* Filled portion */}
                     <div 
-                        className="w-full bg-[var(--accent)] transition-all duration-500 ease-in-out"
+                        className="w-full bg-[var(--primary)] transition-all duration-500 ease-in-out"
                         style={{ 
                             height: `${getProgressPercentage()}%`,
                             minHeight: getCompletedCount() > 0 ? '4px' : '0px'
@@ -153,7 +153,7 @@ export default function ProgressBar({ items, onUpdate }: ProgressBarProps) {
                                 className={`
                                     w-6 h-6 rounded-full border-2 transition-all duration-200 flex items-center justify-center flex-shrink-0
                                     ${item.completed 
-                                        ? 'bg-[var(--accent)] border-[var(--accent)] text-white' 
+                                        ? 'bg-[var(--primary)] border-[var(--primary)] text-white' 
                                         : clickable 
                                             ? 'bg-[var(--background)] border-[var(--border-subtle)]'
                                             : 'bg-[var(--background)] border-[var(--border-subtle)] border-opacity-50 cursor-not-allowed'
@@ -198,7 +198,7 @@ export default function ProgressBar({ items, onUpdate }: ProgressBarProps) {
                                 flex items-center gap-3 p-3 rounded-lg transition-all duration-200 absolute left-0 right-0
                                 ${!clickable && !item.completed ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
                                 ${item.completed 
-                                    ? 'bg-[var(--surface)] border border-[var(--accent)]' 
+                                    ? 'bg-[var(--surface)] border border-[var(--primary)]' 
                                     : 'bg-[var(--surface)] border border-[var(--border-subtle)]'
                                 }
                             `}
@@ -254,13 +254,13 @@ export default function ProgressBar({ items, onUpdate }: ProgressBarProps) {
                 <div className="p-3 bg-[var(--surface)] rounded-lg border border-[var(--border-subtle)]">
                     <div className="flex justify-between items-center mb-2">
                         <span className="text-sm text-[var(--foreground-secondary)]">Progress</span>
-                        <span className="text-sm font-medium text-[var(--accent)]">
+                        <span className="text-sm font-medium text-[var(--primary)]">
                             {getCompletedCount()}/{progressItems.length}
                         </span>
                     </div>
                     <div className="w-full bg-[var(--border-subtle)] rounded-full h-2">
                         <div 
-                            className="bg-[var(--accent)] h-2 rounded-full transition-all duration-500 ease-in-out"
+                            className="bg-[var(--primary)] h-2 rounded-full transition-all duration-500 ease-in-out"
                             style={{ width: `${getProgressPercentage()}%` }}
                         />
                     </div>
