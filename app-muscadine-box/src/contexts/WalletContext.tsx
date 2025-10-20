@@ -60,8 +60,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [ethUsdPrice, setEthUsdPrice] = useState<number>(0);
   const [usdcUsdPrice] = useState<number>(1); // USDC is pegged to $1
   const [morphoVaultValue, setMorphoVaultValue] = useState<number>(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loading] = useState(false);
+  const [error] = useState<string | null>(null);
 
   // Get ETH balance
   const { data: ethBalance } = useBalance({
@@ -133,7 +133,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       
       if (data.data?.userByAddress?.vaultPositions) {
         const totalValue = data.data.userByAddress.vaultPositions.reduce(
-          (sum: number, position: any) => {
+          (sum: number, position: { shares: string; vault: { state?: { sharePriceUsd?: number } } }) => {
             const shares = Number(position.shares) / 1e18; // Assuming 18 decimals
             const sharePriceUsd = position.vault.state?.sharePriceUsd || 0;
             return sum + (shares * sharePriceUsd);

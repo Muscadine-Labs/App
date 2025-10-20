@@ -2,9 +2,7 @@
 
 import { useAppKitAccount, useWalletInfo } from '@reown/appkit/react';
 import Image from 'next/image';
-import ConnectButton from './ConnectButton';
-import { useState, useEffect, useRef } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect } from 'react';
 import { useWallet } from '@/contexts/WalletContext';
 import { formatNumber, formatCurrency } from '@/lib/formatter';
 import {
@@ -23,14 +21,11 @@ import {
 export default function WalletOverview() {
     const { address, isConnected } = useAppKitAccount();
     const { walletInfo } = useWalletInfo();
-    const { totalUsdValue, liquidUsdValue, morphoUsdValue, tokenBalances, loading: walletLoading } = useWallet();
+    const { liquidUsdValue, morphoUsdValue, tokenBalances, loading: walletLoading } = useWallet();
     const [isMounted, setIsMounted] = useState(false);
     const [totalAssetsOpen, setTotalAssetsOpen] = useState(false);
     const [liquidAssetsOpen, setLiquidAssetsOpen] = useState(false);
     const [morphoVaultsOpen, setMorphoVaultsOpen] = useState(false);
-    const [totalAssetsTooltipOpen, setTotalAssetsTooltipOpen] = useState(false);
-    const [liquidAssetsTooltipOpen, setLiquidAssetsTooltipOpen] = useState(false);
-    const [morphoVaultsTooltipOpen, setMorphoVaultsTooltipOpen] = useState(false);
 
     // Floating UI setup for Total Assets dropdown
     const totalAssets = useFloating({
@@ -71,44 +66,6 @@ export default function WalletOverview() {
         useRole(morphoVaults.context),
     ]);
 
-    // Floating UI setup for Total Assets tooltip
-    const totalAssetsTooltip = useFloating({
-        open: totalAssetsTooltipOpen,
-        onOpenChange: setTotalAssetsTooltipOpen,
-        middleware: [offset(8), flip(), shift({ padding: 8 })],
-        whileElementsMounted: autoUpdate,
-    });
-    const totalAssetsTooltipInteractions = useInteractions([
-        useClick(totalAssetsTooltip.context),
-        useDismiss(totalAssetsTooltip.context),
-        useRole(totalAssetsTooltip.context),
-    ]);
-
-    // Floating UI setup for Liquid Assets tooltip
-    const liquidAssetsTooltip = useFloating({
-        open: liquidAssetsTooltipOpen,
-        onOpenChange: setLiquidAssetsTooltipOpen,
-        middleware: [offset(8), flip(), shift({ padding: 8 })],
-        whileElementsMounted: autoUpdate,
-    });
-    const liquidAssetsTooltipInteractions = useInteractions([
-        useClick(liquidAssetsTooltip.context),
-        useDismiss(liquidAssetsTooltip.context),
-        useRole(liquidAssetsTooltip.context),
-    ]);
-
-    // Floating UI setup for Morpho Vaults tooltip
-    const morphoVaultsTooltip = useFloating({
-        open: morphoVaultsTooltipOpen,
-        onOpenChange: setMorphoVaultsTooltipOpen,
-        middleware: [offset(8), flip(), shift({ padding: 8 })],
-        whileElementsMounted: autoUpdate,
-    });
-    const morphoVaultsTooltipInteractions = useInteractions([
-        useClick(morphoVaultsTooltip.context),
-        useDismiss(morphoVaultsTooltip.context),
-        useRole(morphoVaultsTooltip.context),
-    ]);
 
     // Prevent hydration mismatch by only rendering client-side content after mount
     useEffect(() => {
@@ -142,8 +99,6 @@ export default function WalletOverview() {
 
     // Connected state - show wallet stats
     const truncatedAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '';
-    const usdcBalance = tokenBalances.find(token => token.symbol === 'USDC');
-    const ethBalance = tokenBalances.find(token => token.symbol === 'ETH');
     
     // Find the asset with the highest USD value for liquid assets
     const sortedLiquidAssets = [...tokenBalances].sort((a, b) => b.usdValue - a.usdValue);
@@ -376,51 +331,6 @@ export default function WalletOverview() {
                 </FloatingPortal>
             )}
 
-            {/* Tooltips */}
-            {isMounted && totalAssetsTooltipOpen && (
-                <FloatingPortal>
-                    <div 
-                        ref={totalAssetsTooltip.refs.setFloating}
-                        style={totalAssetsTooltip.floatingStyles}
-                        {...totalAssetsTooltipInteractions.getFloatingProps()}
-                        className="bg-[var(--surface-elevated)] rounded-lg p-2 shadow-lg border border-[var(--border-subtle)] z-[9999]"
-                    >
-                        <p className="text-xs text-[var(--foreground-secondary)]">
-                            In your wallet
-                        </p>
-                    </div>
-                </FloatingPortal>
-            )}
-
-            {isMounted && liquidAssetsTooltipOpen && (
-                <FloatingPortal>
-                    <div 
-                        ref={liquidAssetsTooltip.refs.setFloating}
-                        style={liquidAssetsTooltip.floatingStyles}
-                        {...liquidAssetsTooltipInteractions.getFloatingProps()}
-                        className="bg-[var(--surface-elevated)] rounded-lg p-2 shadow-lg border border-[var(--border-subtle)] z-[9999]"
-                    >
-                        <p className="text-xs text-[var(--foreground-secondary)]">
-                            Available to use
-                        </p>
-                    </div>
-                </FloatingPortal>
-            )}
-
-            {isMounted && morphoVaultsTooltipOpen && (
-                <FloatingPortal>
-                    <div 
-                        ref={morphoVaultsTooltip.refs.setFloating}
-                        style={morphoVaultsTooltip.floatingStyles}
-                        {...morphoVaultsTooltipInteractions.getFloatingProps()}
-                        className="bg-[var(--surface-elevated)] rounded-lg p-2 shadow-lg border border-[var(--border-subtle)] z-[9999]"
-                    >
-                        <p className="text-xs text-[var(--foreground-secondary)]">
-                            Earning yield
-                        </p>
-                    </div>
-                </FloatingPortal>
-            )}
         </div>
     )
 }

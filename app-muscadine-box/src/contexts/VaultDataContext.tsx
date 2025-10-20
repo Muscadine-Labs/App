@@ -1,14 +1,35 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { Vault, MorphoVaultData } from '../types/vault';
+
+interface AllocationData {
+  market?: {
+    loanAsset?: {
+      symbol?: string;
+      name?: string;
+    };
+    collateralAsset?: {
+      symbol?: string;
+      name?: string;
+    };
+  };
+}
+
+interface YieldData {
+  [key: string]: unknown;
+}
+
+interface MetadataData {
+  [key: string]: unknown;
+}
 
 interface VaultDataState {
   [vaultAddress: string]: {
     basic: Vault | null;
-    allocation: any | null;
-    yield: any | null;
-    metadata: any | null;
+    allocation: AllocationData[] | null;
+    yield: YieldData | null;
+    metadata: MetadataData | null;
     loading: boolean;
     error: string | null;
     lastFetched: number;
@@ -45,7 +66,7 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
 
   const isDataStale = useCallback((timestamp: number) => {
     return Date.now() - timestamp > CACHE_DURATION;
-  }, []);
+  }, [CACHE_DURATION]);
 
   // NEW: Fetch complete vault data in ONE API call
   const fetchCompleteVaultData = useCallback(async (address: string, chainId: number = 8453) => {
@@ -126,7 +147,7 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
           performanceFee: (vaultInfo.state?.fee || 0) * 100,
           managementFee: 0,
           description: vaultInfo.metadata?.description || 'Morpho vault',
-          allocatedMarkets: vaultInfo.state?.allocation?.map((alloc: any) => 
+          allocatedMarkets: vaultInfo.state?.allocation?.map((alloc: AllocationData) => 
             `${alloc.market?.loanAsset?.symbol || alloc.market?.loanAsset?.name}/${alloc.market?.collateralAsset?.symbol || alloc.market?.collateralAsset?.name}`
           ) || [],
           timelockDuration: vaultInfo.state?.timelock || 0,
@@ -137,9 +158,9 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
           ...prev,
           [address]: {
             basic: vault,
-            allocation: { data: vaultInfo },
-            yield: vaultInfo,
-            metadata: vaultInfo,
+            allocation: vaultInfo.state?.allocation || null,
+            yield: vaultInfo as YieldData,
+            metadata: vaultInfo.metadata as MetadataData,
             loading: false,
             error: null,
             lastFetched: Date.now(),
@@ -190,8 +211,6 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
 
     // Combine all data sources into MorphoVaultData format
     const basic = data.basic;
-    const allocation = data.allocation;
-    const yieldData = data.yield;
 
 
     return {

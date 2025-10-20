@@ -1,4 +1,4 @@
-import { Vault, MorphoVaultData, getVaultLogo } from '../types/vault';
+import { Vault, getVaultLogo } from '../types/vault';
 import Link from "next/link";
 import Image from "next/image";
 import { useVaultDataFetch } from '../hooks/useVaultDataFetch';

@@ -39,7 +39,7 @@ export function useVaultDataFetch(vault: Vault | null, options: UseVaultDataFetc
     if (autoFetch && vault) {
       fetchAllData(vault.address, vault.chainId);
     }
-  }, [vault?.address, vault?.chainId, autoFetch]); // Only depend on vault address and chainId
+  }, [vault?.address, vault?.chainId, autoFetch, fetchAllData]); // Include fetchAllData dependency
 
   return {
     vaultData: vault ? getVaultData(vault.address) : null,
@@ -59,5 +59,5 @@ export function useVaultListPreloader(vaults: Vault[]) {
     if (vaults.length > 0) {
       preloadVaults(vaults);
     }
-  }, [vaultAddresses]); // Only depend on vault addresses, preloadVaults is stable now
+  }, [vaultAddresses, preloadVaults]); // Include preloadVaults dependency
 }
