@@ -1,5 +1,5 @@
 import { Vault, getVaultLogo } from '../types/vault';
-
+import Image from 'next/image';
 interface VaultListCardProps {
     vault: Vault;
     onClick?: (vault: Vault) => void;
@@ -20,10 +20,12 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
             {/* Left side - Vault info */}
             <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-full flex items-center justify-center overflow-hidden bg-white">
-                    <img 
+                    <Image
                         src={getVaultLogo(vault.symbol)} 
                         alt={`${vault.symbol} logo`}
-                        className={`w-full h-full object-contain`}
+                        width={32}
+                        height={32}
+                        className="w-full h-full object-contain"
                     />
                 </div>
                 <div className="flex flex-col">

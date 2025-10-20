@@ -1,5 +1,6 @@
 import { Vault, MorphoVaultData, getVaultLogo } from '../types/vault';
 import Link from "next/link";
+import Image from "next/image";
 
 interface VaultDetailedProps {
     selectedVault: Vault | null;
@@ -77,9 +78,11 @@ export default function VaultDetailed({ selectedVault }: VaultDetailedProps) {
                                     {vaultData.symbol}
                                 </span>
                                 <div className="w-4 h-4 rounded-full bg-white flex items-center justify-center overflow-hidden">
-                                    <img 
+                                    <Image 
                                         src={getVaultLogo(vaultData.symbol)} 
                                         alt={`${vaultData.symbol} logo`}
+                                        width={40}
+                                        height={40}
                                         className={`w-full h-full object-contain ${
                                             vaultData.symbol === 'WETH' ? 'scale-75' : ''
                                         }`}

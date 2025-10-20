@@ -1,5 +1,4 @@
 import LearnContent from "./LearnContent";
-import PromoteLearn from "./PromoteLearn";
 
 interface RightSidebarProps {
     isCollapsed: boolean;

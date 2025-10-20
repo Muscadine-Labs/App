@@ -1,13 +1,11 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
     useAppKitAccount,
     useAppKit,
-    useDisconnect,
-    useWalletInfo,
+    useDisconnect
 } from '@reown/appkit/react';
-import Image from 'next/image';
 import { useOnClickOutside } from '@/app/hooks/onClickOutside';
 import { useNotifications } from '@/contexts/NotificationContext';
 
@@ -20,7 +18,6 @@ export default function ConnectButton({ isCollapsed = false }: ConnectButtonProp
     const { address, isConnected } = useAppKitAccount();
     const { open } = useAppKit();
     const { disconnect } = useDisconnect();
-    const { walletInfo } = useWalletInfo();
     const { addNotification } = useNotifications();
 
     // 1. State to manage dropdown visibility
@@ -30,29 +27,31 @@ export default function ConnectButton({ isCollapsed = false }: ConnectButtonProp
     // 2. Hook to close dropdown when clicking outside
     useOnClickOutside(dropdownRef, () => setIsDropdownOpen(false));
 
+    const handleCopy = useCallback(async () => {
+        if (!address) return;
+        
+        try {
+            await navigator.clipboard.writeText(address);
+            addNotification({
+                type: 'success',
+                title: 'Address Copied',
+                message: 'Wallet address copied to clipboard',
+                duration: 3000
+            });
+            setIsDropdownOpen(false); // Close menu after copying
+        } catch {
+            addNotification({
+                type: 'error',
+                title: 'Copy Failed',
+                message: 'Failed to copy address to clipboard',
+                duration: 4000
+            });
+        }
+    }, [address, addNotification]);
+
     // If connected, show the address and the dropdown menu
     if (isConnected && address) {
         const truncatedAddress = `${address.slice(0, 6)}...${address.slice(-4)}`;
-
-        const handleCopy = async () => {
-            try {
-                await navigator.clipboard.writeText(address);
-                addNotification({
-                    type: 'success',
-                    title: 'Address Copied',
-                    message: 'Wallet address copied to clipboard',
-                    duration: 3000
-                });
-                setIsDropdownOpen(false); // Close menu after copying
-            } catch (error) {
-                addNotification({
-                    type: 'error',
-                    title: 'Copy Failed',
-                    message: 'Failed to copy address to clipboard',
-                    duration: 4000
-                });
-            }
-        };
 
         return (
             <div className="relative" ref={dropdownRef}>

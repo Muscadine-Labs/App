@@ -1,14 +1,6 @@
 import Link from "next/link";
 
 
-const sampleProgressItems = [
-    { id: '1', label: 'What is DeFi?', completed: false, url: 'https://muscadine.io/learn/what-is-crypto' },
-    { id: '2', label: 'Understanding Vaults', completed: false, url: 'https://muscadine.io/learn/what-is-crypto' },
-    { id: '3', label: 'Risk Management', completed: false, url: 'https://muscadine.io/learn/what-is-crypto' },
-    { id: '4', label: 'Yield Farming Basics', completed: false, url: 'https://muscadine.io/learn/what-is-crypto' },
-    { id: '5', label: 'Advanced Strategies', completed: false, url: 'https://muscadine.io/learn/what-is-crypto' },
-];
-
 export default function LearnContent() {
     return (
         <div className="flex flex-col items-start justify-start h-full w-full gap-2">

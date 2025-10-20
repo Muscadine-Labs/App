@@ -1,8 +1,6 @@
 'use client';
 
 import React, { useCallback } from 'react';
-import Image from "next/image";
-import Link from "next/link";
 import { usePathname } from "next/navigation";
 import PromoteLearn from "./PromoteLearn";
 import { NavLink } from "./NavLink";
