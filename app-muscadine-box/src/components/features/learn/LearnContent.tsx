@@ -1,27 +1,32 @@
 import Link from "next/link";
 import { Button, ExternalLinkIcon } from '../../ui';
-
+import { useLearning } from '@/contexts/LearningContext';
+import type { Lesson } from '@/types/learning';
 
 export default function LearnContent() {
+    const { activeLessons, hoveredElementId } = useLearning();
+
     return (
         <div className="flex flex-col items-start justify-start h-full w-full gap-2">
-            <h1 className="text-xl text-left text-[var(--foreground)]">Welcome to Learn</h1>
-            <p className="text-sm text-left text-[var(--foreground-secondary)]">We know that crypto can be complicated and overwhelming. Consider checking out some of our resources to better understand how our app works.</p>
+            <h1 className="text-xl text-left text-[var(--foreground)]">Contextual Learning</h1>
+            <p className="text-sm text-left text-[var(--foreground-secondary)]">First and foremost, we are here to help you learn. This learning portal is designed to adapt to what you are doing. Relevant lessons will show up depending on what you are doing.</p>
             <div className="w-full py-2 gap-2">
-                <h2>Where to start?</h2>
+                <h2>Relevant Lessons</h2>
                 <ul className="w-full py-2">
-                    <li className="border-b border-[var(--border-subtle)] last:border-b-0 py-2">
-                        <Link href="https://docs.muscadine.io/" target="_blank" className="text-sm text-[var(--foreground-secondary)] transition-colors">What is DeFi</Link>
-                    </li>
-                    <li className="border-b border-[var(--border-subtle)] last:border-b-0 py-2">
-                        <Link href="https://docs.muscadine.io/" target="_blank" className="text-sm text-[var(--foreground-secondary)] transition-colors">What is Morpho</Link>
-                    </li>
-                    <li className="border-b border-[var(--border-subtle)] last:border-b-0 py-2">
-                        <Link href="https://docs.muscadine.io/" target="_blank" className="text-sm text-[var(--foreground-secondary)] transition-colors">Understanding Vaults</Link>
-                    </li>
-                    <li className="border-b border-[var(--border-subtle)] last:border-b-0 py-2">
-                        <Link href="https://docs.muscadine.io/" target="_blank" className="text-sm text-[var(--foreground-secondary)] transition-colors">Risk Explanation</Link>
-                    </li>
+                    {activeLessons.map((lesson: Lesson) => {
+                        const isActive = hoveredElementId && lesson.elementIds.includes(hoveredElementId);
+                        return (
+                        <li key={lesson.id} className="border-b border-[var(--border-subtle)] last:border-b-0 py-2">
+                            <Link 
+                                href={lesson.url} 
+                                target="_blank" 
+                                className={`text-sm ${isActive ? 'text-[var(--foreground)]' : 'text-[var(--foreground-secondary)]'} hover:text-[var(--foreground)] transition-colors`}
+                            >
+                                {lesson.title}
+                            </Link>
+                        </li>
+                        );
+                    })}
                 </ul>
                 <div className="flex justify-start">
                     <Button
@@ -35,8 +40,6 @@ export default function LearnContent() {
                     </Button>
                 </div>
             </div>
-            
-            
         </div>
     )
 }

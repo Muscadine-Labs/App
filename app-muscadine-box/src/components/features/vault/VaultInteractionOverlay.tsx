@@ -15,6 +15,8 @@ import Image from "next/image";
 import { getVaultLogo } from '../../../types/vault';
 import { useWallet } from '../../../contexts/WalletContext';
 import { useTransactionModal } from '../../../contexts/TransactionModalContext';
+import { useElementTracker } from '../../../hooks/useElementTracker';
+import { useEffect, useRef } from 'react';
 
 interface VaultInteractionOverlayProps {
   selectedVault: Vault | null;
@@ -26,6 +28,7 @@ export default function VaultInteractionOverlay({ selectedVault, onClose }: Vaul
   const { isConnected } = useAccount();
   const { morphoHoldings } = useWallet();
   const { openTransactionModal } = useTransactionModal();
+  const { registerElement, unregisterElement, onHoverStart, onHoverEnd } = useElementTracker({ component: 'VaultInteractionOverlay' });
 
   // Find the current vault position from morphoHoldings
   const currentVaultPosition = morphoHoldings.positions.find(
@@ -38,6 +41,38 @@ export default function VaultInteractionOverlay({ selectedVault, onClose }: Vaul
 
   const userVaultValueUsd = currentVaultPosition ? 
     (parseFloat(currentVaultPosition.shares) / 1e18) * currentVaultPosition.vault.state.sharePriceUsd : 0;
+
+  // Element tracking for learning system (diff-based to avoid loops)
+  const registeredIdsRef = useRef<Set<string>>(new Set());
+  const hasVault = Boolean(selectedVault && vaultData);
+
+  useEffect(() => {
+    const next = new Set<string>();
+    if (hasVault) {
+      next.add('deposit-form');
+      next.add('withdraw-form');
+      next.add('transaction-status');
+      next.add('overlay-vault-value');
+    }
+
+    const prev = registeredIdsRef.current;
+    // Register new
+    next.forEach(id => {
+      if (!prev.has(id)) registerElement(id as any, {});
+    });
+    // Unregister removed
+    prev.forEach(id => {
+      if (!next.has(id)) unregisterElement(id);
+    });
+    registeredIdsRef.current = next;
+  }, [hasVault, registerElement, unregisterElement]);
+
+  useEffect(() => {
+    return () => {
+      registeredIdsRef.current.forEach(id => unregisterElement(id));
+      registeredIdsRef.current.clear();
+    };
+  }, [unregisterElement]);
 
 
 
@@ -177,7 +212,7 @@ export default function VaultInteractionOverlay({ selectedVault, onClose }: Vaul
                         </p>
                         
                         {/* Traditional Vertical Math Equation */}
-                        <div className="bg-[var(--surface)] rounded-lg p-4">
+                        <div className="bg-[var(--surface)] rounded-lg p-4" onMouseEnter={() => onHoverStart('overlay-vault-value')} onMouseLeave={() => onHoverEnd('overlay-vault-value')}>
                           <div className="space-y-3">
                             {/* Top number - Shares */}
                             <div className="flex items-center justify-between">
