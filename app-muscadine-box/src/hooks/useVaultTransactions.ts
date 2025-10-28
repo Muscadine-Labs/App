@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useWriteContract, usePublicClient, useWaitForTransactionReceipt } from 'wagmi';
+import { useWriteContract, usePublicClient } from 'wagmi';
 import { useAccount } from 'wagmi';
 import { parseUnits, formatUnits } from "viem";
 
@@ -325,7 +325,7 @@ export function useVaultTransactions() {
       
       if (!address) throw new Error('Wallet not connected');
       
-      const { assetAddress, decimals } = await getAssetInfo(vaultAddress);
+      const { decimals } = await getAssetInfo(vaultAddress);
       const amountToWithdraw = BigInt(parseUnits(amount, decimals));
       
       const userShares = await publicClient!.readContract({

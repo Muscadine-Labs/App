@@ -3,7 +3,6 @@ import { createStorage, cookieStorage } from 'wagmi'
 import { base } from 'wagmi/chains'
 import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 import { createAppKit } from '@reown/appkit/react'
-import { http } from 'viem'
 
 const projectId = process.env.NEXT_PUBLIC_PROJECT_ID
 if (!projectId) throw new Error('REOWN_PROJECT_ID is not set')

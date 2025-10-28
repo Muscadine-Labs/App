@@ -1,10 +1,9 @@
 'use client';
 
-import type { ReactNode } from 'react';
-import { useState, useEffect } from 'react';
+import React, { type ReactNode, useState, useEffect } from 'react';
 import { NavBar } from './NavBar';
 import { NavBarProvider, useNavBar } from '@/contexts/NavBarContext';
-import { TabProvider, useTab } from '@/contexts/TabContext';
+import { TabProvider } from '@/contexts/TabContext';
 import { NotificationContainer } from '../common/NotificationContainer';
 import RightSidebar from './RightSidebar';
 

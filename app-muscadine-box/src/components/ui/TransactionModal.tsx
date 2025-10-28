@@ -17,7 +17,7 @@ export function TransactionModal() {
     moveToNextStep 
   } = useTransactionModal();
   
-  const { deposit, withdrawAll, withdrawAssets, approveTokens, executeDeposit, checkApprovalNeeded, isLoading } = useVaultTransactions();
+  const { withdrawAll, withdrawAssets, approveTokens, executeDeposit, checkApprovalNeeded, isLoading } = useVaultTransactions();
   const [amount, setAmount] = useState(modalState.amount || '1.0');
   const [currentTxHash, setCurrentTxHash] = useState<string | null>(null);
   const [approvalStatus, setApprovalStatus] = useState<{
@@ -27,7 +27,7 @@ export function TransactionModal() {
   } | null>(null);
 
   // Wait for transaction receipt when we have a transaction hash
-  const { data: receipt, isLoading: isWaitingForReceipt, error: receiptError } = useWaitForTransactionReceipt({
+  const { data: receipt, error: receiptError } = useWaitForTransactionReceipt({
     hash: currentTxHash as `0x${string}`,
     query: {
       enabled: !!currentTxHash && modalState.status === 'confirming',
@@ -289,7 +289,7 @@ export function TransactionModal() {
     <div 
       className="fixed inset-0 z-50 flex items-center justify-center"
       style={{
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: 'var(--overlay)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
       }}

@@ -1,13 +1,12 @@
-import LeftDashboardSection from './LeftDashboardSection';
-import WalletOverview from "../features/wallet/WalletOverview";
-import VaultDetailed from "../features/vault/VaultDetailed";
-import VaultInteractionOverlay from "../features/vault/VaultInteractionOverlay";
+import React, { useState } from "react";
+import { LeftDashboardSection } from './';
+import { WalletOverview } from "../features/wallet";
+import { VaultDetailed, VaultInteractionOverlay } from "../features/vault";
 import { useNavBar } from "@/contexts/NavBarContext";
 import { useTab } from "@/contexts/TabContext";
 import { useVaultListPreloader } from "@/hooks/useVaultDataFetch";
 import { VAULTS } from "@/lib/vaults";
 import { Vault } from "../../types/vault";
-import { useState } from "react";
 
 export default function Dashboard() {
     const { selectedVault, setSelectedVault } = useTab();

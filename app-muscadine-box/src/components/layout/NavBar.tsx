@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useCallback } from 'react';
-import PromoteLearn from "../features/learn/PromoteLearn";
+import { PromoteLearn } from "../features/learn";
 import { NavLink } from "./NavLink";
 import { navigationItems, NavItem } from "@/config/navigation";
-import ConnectButton from "../features/wallet/ConnectButton";
+import { ConnectButton } from "../features/wallet";
 import { useNavBar } from "@/contexts/NavBarContext";
 import { useTab } from "@/contexts/TabContext";
 
