@@ -4,8 +4,10 @@ import { useVaultDataFetch } from '../../../hooks/useVaultDataFetch';
 import { formatSmartCurrency } from '../../../lib/formatter';
 import CopiableAddress from '../../common/CopiableAddress';
 import { Button, ExternalLinkIcon } from '../../ui';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useOnClickOutside } from '../../../hooks/onClickOutside';
+import { useElementTracker } from '../../../hooks/useElementTracker';
+import { useLearning } from '../../../contexts/LearningContext';
 
 interface VaultDetailedProps {
     selectedVault: Vault | null;
@@ -14,11 +16,70 @@ interface VaultDetailedProps {
 
 export default function VaultDetailed({ selectedVault, onInteractVault }: VaultDetailedProps) {
     const { vaultData, isLoading, hasError, refetch } = useVaultDataFetch(selectedVault);
+    const { registerElement, unregisterElement, onHoverStart, onHoverEnd } = useElementTracker({ component: 'VaultDetailed' });
+    const { setSelectedElement } = useLearning();
     const [showApyBreakdown, setShowApyBreakdown] = useState(false);
     const apyBreakdownRef = useRef<HTMLDivElement>(null);
 
     // Click outside to close
     useOnClickOutside(apyBreakdownRef, () => setShowApyBreakdown(false));
+
+    // Element tracking for learning system (diff-based to avoid loops)
+    const registeredIdsRef = useRef<Set<string>>(new Set());
+    const addr = selectedVault?.address || null;
+    const hasWhitelisted = vaultData?.whitelisted !== undefined;
+    const hasTimelock = vaultData?.timelockDuration !== undefined;
+    const hasGuardian = Boolean(vaultData?.guardianAddress);
+    const hasOracle = Boolean(vaultData?.oracleAddress);
+    const hasMarkets = (vaultData?.allocatedMarkets?.length ?? 0) > 0;
+    const hasCurator = Boolean(vaultData?.curator);
+    const hasPerfFee = (vaultData?.performanceFee ?? 0) > 0;
+
+    useEffect(() => {
+        const next = new Set<string>();
+        if (addr) {
+            next.add('vault-apy');
+            next.add('vault-tvl');
+            if (hasWhitelisted) next.add('vault-security');
+            if (hasTimelock) next.add('vault-timelock');
+            if (hasGuardian) next.add('vault-guardian');
+            if (hasOracle) next.add('vault-oracle');
+            if (hasMarkets) next.add('vault-markets');
+            if (hasCurator) next.add('vault-curator');
+            if (hasPerfFee) next.add('vault-performance-fee');
+        }
+
+        const prev = registeredIdsRef.current;
+        // Register new
+        next.forEach(id => {
+            if (!prev.has(id)) registerElement(id as any, {});
+        });
+        // Unregister removed
+        prev.forEach(id => {
+            if (!next.has(id)) unregisterElement(id);
+        });
+        registeredIdsRef.current = next;
+    }, [addr, hasWhitelisted, hasTimelock, hasGuardian, hasOracle, hasMarkets, hasCurator, hasPerfFee, registerElement, unregisterElement]);
+
+    useEffect(() => {
+        return () => {
+            registeredIdsRef.current.forEach(id => unregisterElement(id));
+            registeredIdsRef.current.clear();
+        };
+    }, [unregisterElement]);
+
+    // Track APY breakdown state
+    useEffect(() => {
+        if (showApyBreakdown) {
+            registerElement('vault-apy-breakdown', { 
+                type: 'financial',
+                isDetailed: true,
+                priority: 100
+            });
+        } else {
+            unregisterElement('vault-apy-breakdown');
+        }
+    }, [showApyBreakdown, registerElement, unregisterElement]);
 
     const handleInteractVault = () => {
         if (selectedVault) {
@@ -158,14 +219,26 @@ export default function VaultDetailed({ selectedVault, onInteractVault }: VaultD
                             </span>
                         </div>
                         
-                        <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-center" onMouseEnter={() => onHoverStart('vault-apy')} onMouseLeave={() => onHoverEnd('vault-apy')}>
                             <div className="flex items-center gap-1.5 relative">
                                 <span className="text-sm text-[var(--foreground-secondary)]">APY</span>
                                 <div ref={apyBreakdownRef}>
                                     <button
-                                        onClick={() => setShowApyBreakdown(!showApyBreakdown)}
+                                        onClick={() => {
+                                            const next = !showApyBreakdown;
+                                            setShowApyBreakdown(next);
+                                            if (next) {
+                                                setSelectedElement('vault-apy-breakdown');
+                                            } else {
+                                                setSelectedElement(null);
+                                            }
+                                        }}
                                         className="w-4 h-4 rounded-full border border-[var(--foreground-secondary)] flex items-center justify-center hover:bg-[var(--background-elevated)] transition-colors"
                                         aria-label="APY breakdown"
+                                        onMouseEnter={() => onHoverStart('vault-apy-breakdown')}
+                                        onMouseLeave={() => onHoverEnd('vault-apy-breakdown')}
+                                        onFocus={() => setSelectedElement('vault-apy-breakdown')}
+                                        onBlur={() => setSelectedElement(null)}
                                     >
                                         <span className="text-[10px] text-[var(--foreground-secondary)] font-semibold">i</span>
                                     </button>
@@ -224,7 +297,7 @@ export default function VaultDetailed({ selectedVault, onInteractVault }: VaultD
                 </div>
 
                 {/* Risk & Security Section */}
-                <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-4" onMouseEnter={() => onHoverStart('vault-security-section')} onMouseLeave={() => onHoverEnd('vault-security-section')} onClick={() => setSelectedElement('vault-security-section')}>
                     <div className="border-b border-[var(--border-subtle)] pb-2">
                         <h3 className="text-sm font-semibold text-[var(--foreground)] uppercase tracking-wide">
                             Risk & Security
@@ -233,7 +306,7 @@ export default function VaultDetailed({ selectedVault, onInteractVault }: VaultD
                     
                     <div className="flex flex-col gap-3">
                         {vaultData.whitelisted !== undefined && (
-                            <div className="flex justify-between items-center">
+                            <div className="flex justify-between items-center" onMouseEnter={() => onHoverStart('vault-security')} onMouseLeave={() => onHoverEnd('vault-security')}>
                                 <span className="text-sm text-[var(--foreground-secondary)]">Whitelisted</span>
                                 <span className={`text-sm font-medium ${
                                     vaultData.whitelisted 
@@ -256,10 +329,9 @@ export default function VaultDetailed({ selectedVault, onInteractVault }: VaultD
                                 </span>
                             </div>
                         )}
-
                         
                         {vaultData.allocatedMarkets && vaultData.allocatedMarkets.length > 0 && (
-                            <div className="flex justify-between items-center">
+                            <div className="flex justify-between items-center" onMouseEnter={() => onHoverStart('vault-markets')} onMouseLeave={() => onHoverEnd('vault-markets')}>
                                 <span className="text-sm text-[var(--foreground-secondary)]">Allocated Markets</span>
                                 <span className="text-sm font-medium text-[var(--foreground)]">
                                     {vaultData.allocatedMarkets.length}

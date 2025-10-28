@@ -3,6 +3,7 @@ import Image from 'next/image';
 import { useVaultData } from '../../../contexts/VaultDataContext';
 import { formatSmartCurrency } from '../../../lib/formatter';
 import CopiableAddress from '../../common/CopiableAddress';
+import { useElementTracker } from '../../../hooks/useElementTracker';
 interface VaultListCardProps {
     vault: Vault;
     onClick?: (vault: Vault) => void;
@@ -13,6 +14,7 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
     const { getVaultData, isLoading } = useVaultData();
     const vaultData = getVaultData(vault.address);
     const loading = isLoading(vault.address);
+    const { onHoverStart, onHoverEnd } = useElementTracker({ component: 'VaultListCard' });
 
     return (
         <div 
@@ -21,6 +23,8 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
                     ? 'bg-[var(--primary-subtle)] border-2 border-[var(--primary)] shadow-md' 
                     : 'hover:bg-[var(--surface-hover)] border border-[var(--border-subtle)]'
             }`}
+            onMouseEnter={() => onHoverStart('vault-cards')}
+            onMouseLeave={() => onHoverEnd('vault-cards')}
             onClick={() => onClick?.(vault)}
         >
             {/* Left side - Vault info */}

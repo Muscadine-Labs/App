@@ -10,6 +10,7 @@ import { VaultDataProvider } from '../contexts/VaultDataContext'
 import { NotificationProvider } from '../contexts/NotificationContext'
 import { WalletProvider } from '../contexts/WalletContext'
 import { TransactionModalProvider } from '../contexts/TransactionModalContext'
+import { LearningProvider } from '../contexts/LearningContext'
 
 export const client = new ApolloClient({
     link: new HttpLink({ uri: "https://api.morpho.org/graphql" }),
@@ -35,7 +36,9 @@ export function Providers({ children, initialState }: Props) {
           <NotificationProvider>
             <TransactionModalProvider>
               <VaultDataProvider>
-                {children}
+                <LearningProvider>
+                  {children}
+                </LearningProvider>
               </VaultDataProvider>
             </TransactionModalProvider>
           </NotificationProvider>
