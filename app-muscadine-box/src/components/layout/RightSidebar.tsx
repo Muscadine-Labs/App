@@ -1,4 +1,4 @@
-import LearnContent from "./LearnContent";
+import LearnContent from "../features/learn/LearnContent";
 
 interface RightSidebarProps {
     isCollapsed: boolean;

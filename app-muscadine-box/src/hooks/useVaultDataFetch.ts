@@ -10,10 +10,7 @@ interface UseVaultDataFetchOptions {
 export function useVaultDataFetch(vault: Vault | null, options: UseVaultDataFetchOptions = {}) {
   const { autoFetch = true, chainId = 8453 } = options;
   const { 
-    fetchVaultData, 
-    fetchVaultAllocation, 
-    fetchVaultYield,
-    fetchVaultMetadata,
+    fetchVaultData,
     getVaultData,
     isLoading, 
     hasError 
@@ -23,17 +20,12 @@ export function useVaultDataFetch(vault: Vault | null, options: UseVaultDataFetc
     if (!vaultAddress) return;
 
     try {
-      // Fetch all data in parallel for better performance
-      await Promise.allSettled([
-        fetchVaultData(vaultAddress, vaultChainId),
-        fetchVaultAllocation(vaultAddress, vaultChainId),
-        fetchVaultYield(vaultAddress, vaultChainId),
-        fetchVaultMetadata(vaultAddress, vaultChainId),
-      ]);
+      // Use the unified fetchVaultData function which fetches all data in one call
+      await fetchVaultData(vaultAddress, vaultChainId);
     } catch (error) {
       console.error('Error fetching vault data:', error);
     }
-  }, [fetchVaultData, fetchVaultAllocation, fetchVaultYield, fetchVaultMetadata, chainId]);
+  }, [fetchVaultData, chainId]);
 
   useEffect(() => {
     if (autoFetch && vault) {

@@ -40,9 +40,6 @@ interface VaultDataState {
 interface VaultDataContextType {
   vaultData: VaultDataState;
   fetchVaultData: (address: string, chainId?: number) => Promise<void>;
-  fetchVaultAllocation: (address: string, chainId?: number) => Promise<void>;
-  fetchVaultYield: (address: string, chainId?: number) => Promise<void>;
-  fetchVaultMetadata: (address: string, chainId?: number) => Promise<void>;
   getVaultData: (address: string) => MorphoVaultData | null;
   isLoading: (address: string) => boolean;
   hasError: (address: string) => boolean;
@@ -185,25 +182,7 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
     return fetchPromise;
   }, [vaultData, isDataStale]);
 
-  // Legacy function - now just calls the complete version
-  const fetchVaultData = useCallback(async (address: string, chainId: number = 8453) => {
-    return fetchCompleteVaultData(address, chainId);
-  }, [fetchCompleteVaultData]);
 
-  // Legacy function - now just ensures complete data is fetched
-  const fetchVaultAllocation = useCallback(async (address: string, chainId: number = 8453) => {
-    return fetchCompleteVaultData(address, chainId);
-  }, [fetchCompleteVaultData]);
-
-  // Legacy function - now just ensures complete data is fetched
-  const fetchVaultYield = useCallback(async (address: string, chainId: number = 8453) => {
-    return fetchCompleteVaultData(address, chainId);
-  }, [fetchCompleteVaultData]);
-
-  // Legacy function - now just ensures complete data is fetched
-  const fetchVaultMetadata = useCallback(async (address: string, chainId: number = 8453) => {
-    return fetchCompleteVaultData(address, chainId);
-  }, [fetchCompleteVaultData]);
 
   const getVaultData = useCallback((address: string): MorphoVaultData | null => {
     const data = vaultData[address];
@@ -264,10 +243,7 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
 
   const value: VaultDataContextType = {
     vaultData,
-    fetchVaultData,
-    fetchVaultAllocation,
-    fetchVaultYield,
-    fetchVaultMetadata,
+    fetchVaultData: fetchCompleteVaultData,
     getVaultData,
     isLoading,
     hasError,

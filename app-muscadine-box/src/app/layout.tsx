@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
-import { AppLayout } from '@/components/AppLayout'
+import { AppLayout } from '@/components/layout/AppLayout'
 import { headers } from 'next/headers'
 import { cookieToInitialState } from 'wagmi'
 import { Providers } from './Providers'
 import { config } from './config'
 import { PriceProvider } from './PriceContext'
+import { TransactionModal } from '@/components/ui'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -33,7 +34,8 @@ export default async function RootLayout({
       <body className={inter.className}>
           <Providers initialState={initialState}>
               <PriceProvider>
-              <AppLayout>{children}</AppLayout>
+                <AppLayout>{children}</AppLayout>
+                <TransactionModal />
               </PriceProvider>
           </Providers>
       </body>

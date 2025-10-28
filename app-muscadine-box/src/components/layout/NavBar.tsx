@@ -1,36 +1,27 @@
 'use client';
 
 import React, { useCallback } from 'react';
-import { usePathname } from "next/navigation";
-import PromoteLearn from "./PromoteLearn";
+import { PromoteLearn } from "../features/learn";
 import { NavLink } from "./NavLink";
 import { navigationItems, NavItem } from "@/config/navigation";
-import ConnectButton from "./ConnectButton";
+import { ConnectButton } from "../features/wallet";
 import { useNavBar } from "@/contexts/NavBarContext";
+import { useTab } from "@/contexts/TabContext";
 
 export function NavBar() {
     const { isCollapsed, toggleCollapse } = useNavBar();
-    const pathname = usePathname();
+    const { activeTab, setActiveTab } = useTab();
 
     const isActive = useCallback((item: NavItem): boolean => {
-        if (item.matchPattern === 'exact') {
-            return pathname === item.href;
-        }
-        // Default to startsWith for nested routes
-        return pathname.startsWith(item.href);
-    }, [pathname]);
+        // All items are now internal tabs
+        return item.id === activeTab;
+    }, [activeTab]);
 
-    // Update CSS variables when navbar state changes
-    React.useEffect(() => {
-        const root = document.documentElement;
-        if (isCollapsed) {
-            root.style.setProperty('--main-margin-left', 'var(--navbar-collapsed-width)');
-            root.style.setProperty('--main-width', 'calc(100vw - var(--navbar-collapsed-width))');
-        } else {
-            root.style.setProperty('--main-margin-left', 'var(--navbar-width)');
-            root.style.setProperty('--main-width', 'calc(100vw - var(--navbar-width))');
-        }
-    }, [isCollapsed]);
+    const handleNavClick = useCallback((item: NavItem) => {
+        setActiveTab(item.id as 'dashboard' | 'learn');
+    }, [setActiveTab]);
+
+    // Remove the useEffect that updates CSS variables - this is now handled in AppLayout
 
     return (
         <div 
@@ -64,6 +55,7 @@ export function NavBar() {
                                 item={item}
                                 isActive={isActive(item)}
                                 isCollapsed={isCollapsed}
+                                onClick={() => handleNavClick(item)}
                             />
                         </div>
                     ))}

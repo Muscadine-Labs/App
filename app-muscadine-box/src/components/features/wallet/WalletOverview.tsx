@@ -21,7 +21,7 @@ import {
 export default function WalletOverview() {
     const { address, isConnected } = useAppKitAccount();
     const { walletInfo } = useWalletInfo();
-    const { liquidUsdValue, morphoUsdValue, tokenBalances, loading: walletLoading } = useWallet();
+    const { totalUsdValue, liquidUsdValue, morphoUsdValue, tokenBalances, loading: walletLoading } = useWallet();
     const [isMounted, setIsMounted] = useState(false);
     const [totalAssetsOpen, setTotalAssetsOpen] = useState(false);
     const [liquidAssetsOpen, setLiquidAssetsOpen] = useState(false);
@@ -100,12 +100,8 @@ export default function WalletOverview() {
     // Connected state - show wallet stats
     const truncatedAddress = address ? `${address.slice(0, 6)}...${address.slice(-4)}` : '';
     
-    // Find the asset with the highest USD value for liquid assets
+    // Find the asset with the highest USD value for liquid assets (for dropdown display)
     const sortedLiquidAssets = [...tokenBalances].sort((a, b) => b.usdValue - a.usdValue);
-    const primaryLiquidAsset = sortedLiquidAssets[0];
-    
-    // For total assets, use the same primary asset as liquid assets (since we're not including Morpho in the asset list)
-    const primaryTotalAsset = primaryLiquidAsset;
     
 
     return (
@@ -140,14 +136,7 @@ export default function WalletOverview() {
                         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     >
                         <h1 className="text-3xl font-bold">
-                            {walletLoading ? 'Loading...' : (
-                                primaryTotalAsset 
-                                    ? `${formatNumber(primaryTotalAsset.formatted, {
-                                        minimumFractionDigits: 0,
-                                        maximumFractionDigits: primaryTotalAsset.symbol === 'ETH' ? 4 : 2,
-                                    })} ${primaryTotalAsset.symbol}`
-                                    : '0.00'
-                            )}
+                            {walletLoading ? 'Loading...' : totalUsdValue}
                         </h1>
                         <svg 
                             width="16" 
@@ -172,14 +161,7 @@ export default function WalletOverview() {
                         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     >
                         <h1 className="text-3xl font-bold">
-                            {walletLoading ? 'Loading...' : (
-                                primaryLiquidAsset 
-                                    ? `${formatNumber(primaryLiquidAsset.formatted, {
-                                        minimumFractionDigits: 0,
-                                        maximumFractionDigits: primaryLiquidAsset.symbol === 'ETH' ? 4 : 2,
-                                    })} ${primaryLiquidAsset.symbol}`
-                                    : '0.00'
-                            )}
+                            {walletLoading ? 'Loading...' : liquidUsdValue}
                         </h1>
                         <svg 
                             width="16" 
@@ -227,6 +209,10 @@ export default function WalletOverview() {
                         className="bg-[var(--surface-elevated)] rounded-lg p-3 shadow-lg border border-[var(--border-subtle)] min-w-[200px] z-[9999]"
                     >
                     <div className="flex flex-col gap-2">
+                        {/* Liquid Assets Section */}
+                        <div className="text-xs text-[var(--foreground-secondary)] mb-1">
+                            Liquid Assets
+                        </div>
                         {sortedLiquidAssets.map((asset) => (
                             <div key={asset.symbol} className="flex justify-between items-center py-1">
                                 <div className="flex flex-col">
@@ -245,13 +231,33 @@ export default function WalletOverview() {
                                 </span>
                             </div>
                         ))}
-                        <div className="border-t border-[var(--border-subtle)] pt-2 mt-1">
+                        
+                        {/* Vault Assets Section */}
+                        <div className="border-t border-[var(--border-subtle)] pt-2 mt-2">
+                            <div className="text-xs text-[var(--foreground-secondary)] mb-1">
+                                In Vaults
+                            </div>
+                            <div className="flex justify-between items-center py-1">
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-medium text-[var(--foreground)]">
+                                        Vault Positions
+                                    </span>
+                                    
+                                </div>
+                                <span className="text-sm text-[var(--success)]">
+                                    {morphoUsdValue}
+                                </span>
+                            </div>
+                        </div>
+                        
+                        {/* Total */}
+                        <div className="border-t border-[var(--border-subtle)] pt-2 mt-2">
                             <div className="flex justify-between items-center">
                                 <span className="text-sm font-semibold text-[var(--foreground)]">
-                                    Total
+                                    Total Assets
                                 </span>
                                 <span className="text-sm font-semibold text-[var(--foreground)]">
-                                    {liquidUsdValue}
+                                    {totalUsdValue}
                                 </span>
                             </div>
                         </div>

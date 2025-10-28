@@ -1,6 +1,6 @@
 import { VAULTS } from "@/lib/vaults";
 import VaultListCard from "./VaultListCard";
-import { Vault } from "../types/vault";
+import { Vault } from "../../../types/vault";
 
 interface VaultListProps {
     onVaultSelect: (vault: Vault | null) => void;
@@ -29,7 +29,7 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
             <div className="flex flex-col items-center justify-center h-full w-full">
                 <div className="flex flex-col items-start justify-start w-full h-full p-4 gap-4">
                     <h1 className="text-md text-left text-[var(--foreground)] ml-2">Available Vaults</h1>
-                    <div className=" bg-[var(--surface-elevated)] rounded-lg flex flex-col items-start justify-start w-full h-full overflow-y-auto gap-2">
+                    <div className=" bg-[var(--surface-elevated)] rounded-lg flex flex-col items-start justify-start w-full h-full overflow-y-auto">
                         {vaults.map((vault, index) => (
                             <VaultListCard 
                                 key={`${vault.address}-${index}`}

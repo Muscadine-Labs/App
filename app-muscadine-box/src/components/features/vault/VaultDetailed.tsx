@@ -1,17 +1,18 @@
-import { Vault, getVaultLogo } from '../types/vault';
-import Link from "next/link";
+import { Vault, getVaultLogo } from '../../../types/vault';
 import Image from "next/image";
-import { useVaultDataFetch } from '../hooks/useVaultDataFetch';
-import { formatSmartCurrency } from '../lib/formatter';
-import CopiableAddress from './CopiableAddress';
+import { useVaultDataFetch } from '../../../hooks/useVaultDataFetch';
+import { formatSmartCurrency } from '../../../lib/formatter';
+import CopiableAddress from '../../common/CopiableAddress';
+import { Button, ExternalLinkIcon } from '../../ui';
 import { useState, useRef } from 'react';
-import { useOnClickOutside } from '../hooks/onClickOutside';
+import { useOnClickOutside } from '../../../hooks/onClickOutside';
 
 interface VaultDetailedProps {
     selectedVault: Vault | null;
+    onInteractVault: (vault: Vault) => void;
 }
 
-export default function VaultDetailed({ selectedVault }: VaultDetailedProps) {
+export default function VaultDetailed({ selectedVault, onInteractVault }: VaultDetailedProps) {
     const { vaultData, isLoading, hasError, refetch } = useVaultDataFetch(selectedVault);
     const [showApyBreakdown, setShowApyBreakdown] = useState(false);
     const apyBreakdownRef = useRef<HTMLDivElement>(null);
@@ -19,15 +20,12 @@ export default function VaultDetailed({ selectedVault }: VaultDetailedProps) {
     // Click outside to close
     useOnClickOutside(apyBreakdownRef, () => setShowApyBreakdown(false));
 
-    // Debug logging
-    if (vaultData) {
-        console.log('VaultDetailed data:', {
-            rewardsApr: vaultData.rewardsApr,
-            rewardSymbol: vaultData.rewardSymbol,
-            netApyWithoutRewards: vaultData.netApyWithoutRewards,
-            apy: vaultData.apy
-        });
-    }
+    const handleInteractVault = () => {
+        if (selectedVault) {
+            onInteractVault(selectedVault);
+        }
+    };
+
 
     if (!selectedVault) {
         return (
@@ -57,12 +55,13 @@ export default function VaultDetailed({ selectedVault }: VaultDetailedProps) {
                 <p className="text-[var(--danger)] text-sm">
                     Failed to load vault data
                 </p>
-                <button 
+                <Button 
                     onClick={refetch}
-                    className="text-[var(--primary)] text-sm mt-2 hover:underline"
+                    variant="ghost"
+                    size="sm"
                 >
                     Retry
-                </button>
+                </Button>
             </div>
         );
     }
@@ -297,26 +296,22 @@ export default function VaultDetailed({ selectedVault }: VaultDetailedProps) {
 
             {/* Action Buttons */}
             <div className="mt-auto pt-4 flex gap-3 justify-center">
-                <Link 
-                    href={`/vaults?address=${selectedVault.address}`}
-                    className="flex bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white justify-center items-center text-sm py-3 px-4 rounded-lg transition-colors"
+                <Button 
+                    onClick={handleInteractVault}
+                    variant="primary"
+                    size="md"
                 >
                     Interact with Vault
-                </Link>
-                <a 
-                    href={`https://basescan.org/address/${vaultData.address}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex bg-[var(--surface-elevated)] hover:bg-[var(--surface-hover)] text-[var(--foreground)] justify-center items-center text-sm py-3 px-4 rounded-lg transition-colors text-center border border-[var(--border-subtle)] gap-2"
+                </Button>
+                <Button
+                    variant="secondary"
+                    size="md"
+                    icon={<ExternalLinkIcon size="sm" />}
+                    iconPosition="right"
+                    onClick={() => window.open(`https://basescan.org/address/${vaultData.address}`, '_blank', 'noopener,noreferrer')}
                 >
                     View on BaseScan
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M18 13V19C18 20.1046 17.1046 21 16 21H5C3.89543 21 3 20.1046 3 19V8C3 6.89543 3.89543 6 5 6H11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M15 3H21V9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M10 14L21 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                   
-                </a>
+                </Button>
             </div>
         </div>
     );

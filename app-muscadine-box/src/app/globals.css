@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* Hide scrollbars for circular navigation */
+.scrollbar-hide {
+  -ms-overflow-style: none;  /* Internet Explorer 10+ */
+  scrollbar-width: none;  /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;  /* Safari and Chrome */
+}
+
 :root {
   color-scheme: light dark;
 
@@ -33,11 +42,16 @@
   
   /* Status Colors */
   --success: #1a7f37;            /* Success color */
+  --success-hover: #137f2a;      /* Success hover */
   --success-subtle: #dafbe1;     /* Success background */
   --warning: #bf8700;            /* Warning color */
   --warning-subtle: #fff8c5;     /* Warning background */
   --danger: #cf222e;             /* Danger color */
+  --danger-hover: #a91e2a;       /* Danger hover */
   --danger-subtle: #ffebe9;      /* Danger background */
+  --red: #dc2626;                /* Red color */
+  --red-hover: #b91c1c;          /* Red hover */
+  --red-subtle: #fef2f2;         /* Red background */
   --info: #0969da;               /* Info color */
   --info-subtle: #dbeafe;        /* Info background */
   
@@ -49,8 +63,11 @@
 :root {
   --navbar-width: 200px; /* 40 * 4 = 160px (w-40) */
   --navbar-collapsed-width: 60px; /* Wide enough for wallet icon + toggle button */
+  --sidebar-width: 320px; /* 80 * 4 = 320px (w-80) */
+  --sidebar-collapsed-width: 48px; /* 12 * 4 = 48px (w-12) */
   --main-margin-left: var(--navbar-width);
-  --main-width: calc(100vw - var(--navbar-width));
+  --main-margin-right: var(--sidebar-width);
+  --main-width: calc(100vw - var(--navbar-width) - var(--sidebar-width));
 }
 
 * {
@@ -94,6 +111,9 @@
     --warning-subtle: #5d4e00;       /* Warning background */
     --danger: #f85149;               /* Danger color */
     --danger-subtle: #5d1a1a;        /* Danger background */
+    --red: #f85149;                  /* Red color */
+    --red-hover: #da3633;            /* Red hover */
+    --red-subtle: #5d1a1a;           /* Red background */
     --info: #58a6ff;                 /* Info color */
     --info-subtle: #0d419d;          /* Info background */
     

@@ -11,9 +11,11 @@
   "dependencies": {
     "@apollo/client": "^4.0.7",
     "@floating-ui/react": "^0.27.16",
+    "@morpho-org/blue-sdk": "^5.2.0",
+    "@morpho-org/morpho-ts": "^2.4.3",
     "@react-three/drei": "^10.7.6",
     "@react-three/fiber": "^9.4.0",
-    "@reown/appkit": "^1.8.10",
+    "@reown/appkit": "^1.8.11",
     "@reown/appkit-adapter-wagmi": "^1.8.10",
     "@tanstack/react-query": "^5.90.3",
     "graphql": "^16.11.0",
@@ -23,7 +25,7 @@
     "rxjs": "^7.8.2",
     "swr": "^2.3.6",
     "three": "^0.180.0",
-    "viem": "^2.38.2",
+    "viem": "^2.38.3",
     "wagmi": "^2.18.1"
   },
   "devDependencies": {

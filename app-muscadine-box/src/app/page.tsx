@@ -1,24 +1,19 @@
 'use client';
 
-import Dashboard from '@/components/Dashboard';
-import RightSidebar from '@/components/RightSidebar';
-import { useState } from 'react';
+import Dashboard from '@/components/common/Dashboard';
+import LearnSection from '@/components/features/learn/LearnSection';
+import { useTab } from '@/contexts/TabContext';
 
 export default function Home() {
-  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
+  const { activeTab } = useTab();
 
   return (
-    <div className="w-full bg-[var(--background)] h-screen flex">
-      {/* Main Content Area - Scrollable */}
-      <div className={`flex-1 overflow-y-auto transition-all duration-300 ${isRightSidebarCollapsed ? 'mr-12' : 'mr-80'}`}>
-        <Dashboard />
+    <>
+      {/* Tab Content */}
+      <div className="flex-1">
+        {activeTab === 'dashboard' && <Dashboard />}
+        {activeTab === 'learn' && <LearnSection />}
       </div>
-      
-      {/* Right Sidebar - Always Present */}
-      <RightSidebar 
-        isCollapsed={isRightSidebarCollapsed}
-        onToggle={() => setIsRightSidebarCollapsed(!isRightSidebarCollapsed)}
-      />
-    </div>
+    </>
   );
 }

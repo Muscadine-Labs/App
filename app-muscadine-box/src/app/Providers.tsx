@@ -9,6 +9,7 @@ import { ApolloProvider } from '@apollo/client/react'
 import { VaultDataProvider } from '../contexts/VaultDataContext'
 import { NotificationProvider } from '../contexts/NotificationContext'
 import { WalletProvider } from '../contexts/WalletContext'
+import { TransactionModalProvider } from '../contexts/TransactionModalContext'
 
 export const client = new ApolloClient({
     link: new HttpLink({ uri: "https://api.morpho.org/graphql" }),
@@ -32,9 +33,11 @@ export function Providers({ children, initialState }: Props) {
       <QueryClientProvider client={queryClient}>
         <WalletProvider>
           <NotificationProvider>
-            <VaultDataProvider>
-              {children}
-            </VaultDataProvider>
+            <TransactionModalProvider>
+              <VaultDataProvider>
+                {children}
+              </VaultDataProvider>
+            </TransactionModalProvider>
           </NotificationProvider>
         </WalletProvider>
       </QueryClientProvider>

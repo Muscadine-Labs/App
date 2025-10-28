@@ -1,5 +1,5 @@
-import VaultList from "./VaultList";
-import { Vault } from "../types/vault";
+import VaultList from "../features/vault/VaultList";
+import { Vault } from "../../types/vault";
 
 interface LeftDashboardSectionProps {
     onVaultSelect: (vault: Vault | null) => void;

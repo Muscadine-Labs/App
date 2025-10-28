@@ -1,8 +1,8 @@
-import { Vault, getVaultLogo } from '../types/vault';
+import { Vault, getVaultLogo } from '../../../types/vault';
 import Image from 'next/image';
-import { useVaultData } from '../contexts/VaultDataContext';
-import { formatSmartCurrency } from '../lib/formatter';
-import CopiableAddress from './CopiableAddress';
+import { useVaultData } from '../../../contexts/VaultDataContext';
+import { formatSmartCurrency } from '../../../lib/formatter';
+import CopiableAddress from '../../common/CopiableAddress';
 interface VaultListCardProps {
     vault: Vault;
     onClick?: (vault: Vault) => void;
@@ -16,7 +16,7 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
 
     return (
         <div 
-            className={`flex items-center justify-between w-full rounded-lg cursor-pointer transition-all p-4 ${
+            className={`flex items-center justify-between w-full rounded-lg cursor-pointer transition-all p-3 min-w-[280px] ${
                 isSelected 
                     ? 'bg-[var(--primary-subtle)] border-2 border-[var(--primary)] shadow-md' 
                     : 'hover:bg-[var(--surface-hover)] border border-[var(--border-subtle)]'
