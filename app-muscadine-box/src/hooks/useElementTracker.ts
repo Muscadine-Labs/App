@@ -50,12 +50,13 @@ export function useElementTracker({ component }: UseElementTrackerOptions) {
 
   // Cleanup all registered elements when component unmounts
   useEffect(() => {
+    const elements = registeredElements.current;
     return () => {
       // Clean up all elements registered by this component
-      registeredElements.current.forEach(elementId => {
+      elements.forEach(elementId => {
         unregisterElement(elementId);
       });
-      registeredElements.current.clear();
+      elements.clear();
     };
   }, [unregisterElement]);
 

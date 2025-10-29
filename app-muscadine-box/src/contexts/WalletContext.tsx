@@ -241,6 +241,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setEthUsdPrice(0);
     }
     // Don't include fetchMorphoHoldings and fetchTokenPrices in deps to prevent infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stableIsConnected, stableAddress]);
 
   const refreshBalances = useCallback(async () => {

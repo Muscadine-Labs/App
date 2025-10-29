@@ -392,7 +392,7 @@ export function TransactionModal() {
           {currentTxHash && (
             <div className="mb-6 p-4 bg-[var(--surface)] rounded-lg">
               <p className="text-xs text-[var(--foreground-secondary)] mb-1">Transaction Hash</p>
-              <p className="text-sm font-mono text-[var(--foreground)] break-all">
+              <p className="text-sm font-figtree text-[var(--foreground)] break-all">
                 {currentTxHash}
               </p>
             </div>

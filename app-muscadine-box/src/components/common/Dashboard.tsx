@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { LeftDashboardSection } from './';
 import { WalletOverview } from "../features/wallet";
 import { VaultDetailed, VaultInteractionOverlay } from "../features/vault";
-import { useNavBar } from "@/contexts/NavBarContext";
 import { useTab } from "@/contexts/TabContext";
 import { useVaultListPreloader } from "@/hooks/useVaultDataFetch";
 import { VAULTS } from "@/lib/vaults";
@@ -10,7 +9,6 @@ import { Vault } from "../../types/vault";
 
 export default function Dashboard() {
     const { selectedVault, setSelectedVault } = useTab();
-    const { isCollapsed: isNavbarCollapsed } = useNavBar();
     const [overlayVault, setOverlayVault] = useState<Vault | null>(null);
     const [isOverlayVisible, setIsOverlayVisible] = useState(false);
 
@@ -38,10 +36,10 @@ export default function Dashboard() {
         }, 500); // Match the animation duration
     };
     return (
-        <div className="w-full bg-[var(--background)]">
+        <div className="w-full bg-[var(--background)] h-full">
             {/* Main Dashboard Area - Scrollable */}
             <div className={`flex-1 overflow-y-auto transition-all duration-300`}>
-                <div className={`grid gap-4 h-full ${isNavbarCollapsed ? 'p-4' : 'p-4'}`} style={{gridTemplateRows: 'auto 1fr'}}>
+                <div className={`grid gap-6 h-full p-6`} style={{gridTemplateRows: 'auto 1fr', minHeight: '100%'}}>
                     {/* Top Row - Fixed Height */}
                     <div className="rounded-lg h-40">
                         <WalletOverview />

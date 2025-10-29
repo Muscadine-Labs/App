@@ -8,11 +8,10 @@ import { Button, WalletIcon } from '../../ui';
 
 
 interface ConnectButtonProps {
-    isCollapsed?: boolean;
     centerContent?: boolean;
 }
 
-export default function ConnectButton({ isCollapsed = false, centerContent = false }: ConnectButtonProps) {
+export default function ConnectButton({ centerContent = false }: ConnectButtonProps) {
     const { address, isConnected } = useAppKitAccount();
     const { open } = useAppKit();
 
@@ -26,10 +25,10 @@ export default function ConnectButton({ isCollapsed = false, centerContent = fal
                 variant="ghost"
                 size="md"
                 icon={<WalletIcon size="sm" />}
-                fullWidth={!isCollapsed}
-                className={isCollapsed ? 'justify-center' : 'justify-start'}
+                fullWidth
+                className="justify-start"
             >
-                {!isCollapsed && <span className="text-xs">{truncatedAddress}</span>}
+                <span className="text-xs">{truncatedAddress}</span>
             </Button>
         );
     }
@@ -42,9 +41,9 @@ export default function ConnectButton({ isCollapsed = false, centerContent = fal
             size="md"
             icon={<WalletIcon size="sm" />}
             fullWidth
-            className={centerContent ? 'justify-center' : (isCollapsed ? 'justify-center' : 'justify-start')}
+            className={centerContent ? 'justify-center' : 'justify-start'}
         >
-            {!isCollapsed && <span className="text-xs">Connect Wallet</span>}
+            <span className="text-xs">Connect Wallet</span>
         </Button>
     );
 }

@@ -9,6 +9,12 @@ module.exports = {
     
     theme: {
       extend: {
+        fontFamily: {
+          'figtree': ['var(--font-figtree)'],
+          'funnel': ['var(--font-funnel-display)'],
+          'outfit': ['var(--font-outfit)'],
+          'tinos': ['var(--font-tinos)'],
+        },
         colors: {
           background: 'rgb(var(--background) / <alpha-value>)',
           surface: 'rgb(var(--surface) / <alpha-value>)',

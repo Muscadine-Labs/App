@@ -12,6 +12,12 @@
 :root {
   color-scheme: light dark;
 
+  /* Font Families */
+  --font-figtree: 'Figtree', sans-serif;
+  --font-funnel-display: 'Funnel Display', sans-serif;
+  --font-outfit: 'Outfit', sans-serif;
+  --font-tinos: 'Tinos', serif;
+
   /* Base Colors */
   --background: #ffffff;          /* Pure white background */
   --surface: #f6f8fa;             /* Light gray surface */
@@ -61,18 +67,14 @@
 }
 
 :root {
-  --navbar-width: 200px; /* 40 * 4 = 160px (w-40) */
-  --navbar-collapsed-width: 60px; /* Wide enough for wallet icon + toggle button */
+  --navbar-height: 72px; /* Top navbar height (64px + 8px padding) */
   --sidebar-width: 320px; /* 80 * 4 = 320px (w-80) */
   --sidebar-collapsed-width: 48px; /* 12 * 4 = 48px (w-12) */
-  --main-margin-left: var(--navbar-width);
+  --main-margin-top: var(--navbar-height);
   --main-margin-right: var(--sidebar-width);
-  --main-width: calc(100vw - var(--navbar-width) - var(--sidebar-width));
+  --main-width: calc(100vw - var(--sidebar-width));
 }
 
-* {
-  --nav-bar-height: 60px;
-}
 
 @media (prefers-color-scheme: dark) {
   :root {

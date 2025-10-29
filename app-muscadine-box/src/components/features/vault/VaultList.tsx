@@ -43,14 +43,18 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
             <div className="flex flex-col items-center justify-center h-full w-full">
                 <div className="flex flex-col items-start justify-start w-full h-full p-4 gap-4">
                     <h1 className="text-md text-left text-[var(--foreground)] ml-2">Available Vaults</h1>
-                    <div className=" bg-[var(--surface-elevated)] rounded-lg flex flex-col items-start justify-start w-full h-full overflow-y-auto">
+                    <div className="flex flex-col items-start justify-start w-full h-full overflow-y-auto">
                         {vaults.map((vault, index) => (
-                            <VaultListCard 
-                                key={`${vault.address}-${index}`}
-                                vault={vault} 
-                                onClick={handleVaultClick}
-                                isSelected={vault.address === selectedVaultAddress}
-                            />
+                            <div key={`${vault.address}-${index}`} className="w-full">
+                                <VaultListCard 
+                                    vault={vault} 
+                                    onClick={handleVaultClick}
+                                    isSelected={vault.address === selectedVaultAddress}
+                                />
+                                {index < vaults.length - 1 && (
+                                    <div className="w-full h-px bg-[var(--border)]"></div>
+                                )}
+                            </div>
                         ))}
                     </div>
                 </div>
