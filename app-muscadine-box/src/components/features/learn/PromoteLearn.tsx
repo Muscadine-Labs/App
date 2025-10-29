@@ -4,7 +4,7 @@ import { BookIcon, ExternalLinkIcon } from '../../ui';
 export default function PromoteLearn() {
     return (
         <div className="flex flex-col rounded-lg bg-[var(--surface)] h-full justify-center items-start gap-4 p-4 border border-[var(--primary)]">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4">
                 <BookIcon size="sm" />
                 <h1>Learn</h1>
             </div>

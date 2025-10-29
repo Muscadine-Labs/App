@@ -7,10 +7,10 @@ export default function LearnContent() {
     const { activeLessons, hoveredElementId } = useLearning();
 
     return (
-        <div className="flex flex-col items-start justify-start h-full w-full gap-2">
+        <div className="flex flex-col items-start justify-start h-full w-full gap-4">
             <h1 className="text-xl text-left text-[var(--foreground)]">Contextual Learning</h1>
             <p className="text-sm text-left text-[var(--foreground-secondary)]">First and foremost, we are here to help you learn. This learning portal is designed to adapt to what you are doing. Relevant lessons will show up depending on what you are doing.</p>
-            <div className="w-full py-2 gap-2">
+            <div className="w-full py-2 gap-4">
                 <h2>Relevant Lessons</h2>
                 <ul className="w-full py-2">
                     {activeLessons.map((lesson: Lesson) => {

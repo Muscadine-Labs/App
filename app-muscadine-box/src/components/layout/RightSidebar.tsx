@@ -7,7 +7,7 @@ interface RightSidebarProps {
 
 export default function RightSidebar({ isCollapsed, onToggle }: RightSidebarProps) {
     return (
-        <div className={`fixed right-0 top-0 h-screen bg-[var(--background)] border-l border-[var(--border-subtle)] transition-all duration-300 ${
+        <div className={`bg-[var(--background)] border-l border-[var(--border-subtle)] transition-all duration-300 ${
             isCollapsed ? 'w-12' : 'w-80'
         }`}>
             {/* Vertical Toggle Bar - Positioned on left border, centered vertically */}

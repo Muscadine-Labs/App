@@ -217,7 +217,7 @@ export default function VaultInteractionOverlay({ selectedVault, onClose }: Vaul
                             {/* Top number - Shares */}
                             <div className="flex items-center justify-between">
                               <p className="text-xs text-[var(--foreground-secondary)]">Your Vault Shares</p>
-                              <p className="text-xl font-mono font-semibold text-[var(--primary)]">
+                              <p className="text-xl font-figtree font-semibold text-[var(--primary)]">
                                 {userVaultShares}
                               </p>
                             </div>
@@ -228,7 +228,7 @@ export default function VaultInteractionOverlay({ selectedVault, onClose }: Vaul
                                 
                                 <p className="text-xs text-[var(--foreground-secondary)]">Share Price</p>
                               </div>
-                              <p className="text-lg font-mono font-semibold text-[var(--foreground)]">
+                              <p className="text-lg font-figtree font-semibold text-[var(--foreground)]">
                                 x ${currentVaultPosition.vault.state.sharePriceUsd.toFixed(4)}
                               </p>
                             </div>
@@ -239,7 +239,7 @@ export default function VaultInteractionOverlay({ selectedVault, onClose }: Vaul
                             {/* Result */}
                             <div className="flex items-center justify-between">
                               <p className="text-xs text-[var(--success)]">Your Total Value</p>
-                              <p className="text-2xl font-mono font-bold text-[var(--success)]">
+                              <p className="text-2xl font-figtree font-bold text-[var(--success)]">
                                 = ${userVaultValueUsd.toFixed(2)}
                               </p>
                             </div>
