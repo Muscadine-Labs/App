@@ -79,6 +79,35 @@ export function formatSmartCurrency(value: number | string): string {
 }
 
 /**
+ * Formats asset amounts with appropriate precision based on token type.
+ * @param value - The asset amount (in wei or smallest unit).
+ * @param decimals - The token's decimals.
+ * @param symbol - The token symbol.
+ * @returns A formatted asset amount string (e.g., "1.5 WETH", "0.25 cbBTC").
+ */
+export function formatAssetAmount(
+  value: bigint | string,
+  decimals: number,
+  symbol: string,
+  options: Intl.NumberFormatOptions = {}
+): string {
+  const decimalValue = formatUnits(BigInt(value), decimals);
+  const numberValue = Number(decimalValue);
+  
+  if (isNaN(numberValue)) return `0 ${symbol}`;
+  
+  // Set appropriate precision based on token type
+  const defaultOptions: Intl.NumberFormatOptions = {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: symbol === 'WETH' ? 4 : symbol === 'cbBTC' ? 6 : 2,
+    ...options,
+  };
+  
+  const formattedAmount = formatNumber(numberValue, defaultOptions);
+  return `${formattedAmount} ${symbol}`;
+}
+
+/**
  * Truncates an Ethereum address for concise display.
  * @param address - The full address string.
  * @returns A truncated address string (e.g., "0x1234...5678").

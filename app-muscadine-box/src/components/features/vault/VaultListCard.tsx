@@ -74,7 +74,7 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[var(--primary)]"></div>
                 ) : vaultData ? (
                     <div className="flex flex-col items-end">
-                        <span className="text-base font-semibold text-[var(--success)]">
+                        <span className="text-base font-semibold text-[var(--primary)]">
                             {(vaultData.apy * 100).toFixed(2)}% APY
                         </span>
                         <span className="text-sm text-foreground-secondary">

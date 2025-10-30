@@ -128,6 +128,8 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
           symbol: vaultInfo.asset?.symbol || 'UNKNOWN',
           chainId: chainId,
           totalValueLocked: vaultInfo.state?.totalAssetsUsd || 0,
+          totalAssets: vaultInfo.state?.totalAssets || '0',
+          assetDecimals: vaultInfo.asset?.decimals || 18,
           totalDeposits: vaultInfo.state?.totalAssetsUsd || 0,
           currentLiquidity: vaultInfo.state?.totalAssetsUsd || 0,
           sharePrice: formattedSharePrice,

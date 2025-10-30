@@ -47,7 +47,7 @@ export default function Dashboard() {
                     
                     {/* Bottom Row - Two Columns */}
                     <div className="grid transition-all duration-300" style={{
-                        gridTemplateColumns: selectedVault ? '2fr 1fr' : '1fr 0fr', gap: selectedVault ? '16px' : '0px'
+                        gridTemplateColumns: selectedVault ? '2fr 1fr' : '1fr 0fr', gap: selectedVault ? '24px' : '0px'
                     }}>
                         {/* Left Column - Vault List */}
                         <div className="rounded-lg relative overflow-hidden h-full">

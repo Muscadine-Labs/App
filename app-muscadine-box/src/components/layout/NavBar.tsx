@@ -48,7 +48,7 @@ export function NavBar() {
                     </Link>
                     
                     {/* Navigation Items */}
-                    <nav className="flex items-center gap-4" role="navigation" aria-label="Main navigation">
+                    <nav className="flex items-center gap-2" role="navigation" aria-label="Main navigation">
                         {navigationItems.map((item) => (
                             <div key={item.id} onClick={(e) => e.stopPropagation()}>
                                 <NavLink 

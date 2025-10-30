@@ -275,7 +275,7 @@ export default function VaultDetailed({ selectedVault, onInteractVault }: VaultD
                                     )}
                                 </div>
                             </div>
-                            <span className="text-sm font-semibold text-[var(--success)]">
+                            <span className="text-sm font-semibold text-[var(--primary)]">
                                 {(vaultData.apy * 100).toFixed(2)}%
                             </span>
                         </div>

@@ -17,7 +17,7 @@ export function NavLink({ item, isActive, onClick }: NavLinkProps) {
             icon={item.icon}
             className={`${
                 isActive
-                    ? 'bg-[var(--surface-elevated)] text-[var(--foreground)] font-semibold' 
+                    ? 'bg-[var(--surface-elevated)] text-[var(--foreground)]' 
                     : ''
             }`}
         >
