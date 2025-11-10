@@ -40,6 +40,11 @@ const tinos = Tinos({
 export const metadata: Metadata = {
   title: 'Muscadine Vault',
   description: 'Powered by Muscadine Labs',
+  icons: {
+    icon: '/favicon.png',
+    shortcut: '/favicon.png',
+    apple: '/favicon.png',
+  },
 }
 
 export default async function RootLayout({

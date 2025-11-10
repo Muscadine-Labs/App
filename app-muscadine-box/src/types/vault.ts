@@ -8,6 +8,8 @@ export interface Vault {
     
     // Financial Metrics
     totalValueLocked?: number; // TVL in USD
+    totalAssets?: string; // Total assets in native units (wei)
+    assetDecimals?: number; // Asset decimals for formatting
     apy?: number; // Annual Percentage Yield (net)
     netApyWithoutRewards?: number; // Net APY without reward incentives
     rewardsApr?: number; // Rewards APR from incentives

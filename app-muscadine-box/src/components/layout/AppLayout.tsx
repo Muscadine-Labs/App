@@ -51,7 +51,7 @@ function LayoutContent({
       <NavBar />
       
       {/* Content Area with Sidebar */}
-      <div className="flex-1 flex overflow-hidden mt-[var(--navbar-height)]">
+      <div className="flex-1 flex overflow-hidden mt-[var(--navbar-height)]" style={{ height: 'calc(100vh - var(--navbar-height))' }}>
         {/* Main Content Area - Scrollable */}
         <div className="flex-1 overflow-y-auto transition-all duration-300">
           <main className="w-full transition-all duration-300">

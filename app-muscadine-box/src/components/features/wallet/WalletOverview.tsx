@@ -219,7 +219,7 @@ export default function WalletOverview() {
                         {...morphoVaultsInteractions.getReferenceProps()}
                         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     >
-                       <h1 className="text-3xl font-bold text-[var(--success)]">
+                       <h1 className="text-3xl font-bold">
                            {walletLoading ? 'Loading...' : morphoUsdValue}
                        </h1>
                        <svg 

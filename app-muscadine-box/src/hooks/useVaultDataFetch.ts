@@ -31,7 +31,7 @@ export function useVaultDataFetch(vault: Vault | null, options: UseVaultDataFetc
     if (autoFetch && vault) {
       fetchAllData(vault.address, vault.chainId);
     }
-  }, [vault, autoFetch, fetchAllData]); // Include vault dependency
+  }, [vault?.address, vault?.chainId, autoFetch, fetchAllData]); // Include fetchAllData dependency
 
   return {
     vaultData: vault ? getVaultData(vault.address) : null,
@@ -43,10 +43,13 @@ export function useVaultDataFetch(vault: Vault | null, options: UseVaultDataFetc
 
 export function useVaultListPreloader(vaults: Vault[]) {
   const { preloadVaults } = useVaultData();
+
+  // Create a stable reference to vault addresses
+  const vaultAddresses = vaults.map(v => v.address).sort().join(',');
   
   useEffect(() => {
     if (vaults.length > 0) {
       preloadVaults(vaults);
     }
-  }, [vaults, preloadVaults]); // Include vaults dependency
+  }, [vaultAddresses, preloadVaults]); // Include preloadVaults dependency
 }

@@ -69,7 +69,7 @@
 :root {
   --navbar-height: 72px; /* Top navbar height (64px + 8px padding) */
   --sidebar-width: 320px; /* 80 * 4 = 320px (w-80) */
-  --sidebar-collapsed-width: 48px; /* 12 * 4 = 48px (w-12) */
+  --sidebar-collapsed-width: 64px; /* 16 * 4 = 64px (w-16) */
   --main-margin-top: var(--navbar-height);
   --main-margin-right: var(--sidebar-width);
   --main-width: calc(100vw - var(--sidebar-width));
