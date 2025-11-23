@@ -4,7 +4,7 @@ import { useVaultTransactions } from '../hooks/useVaultTransactions';
 
 export function useVaultActions() {
   const { openTransactionModal } = useTransactionModal();
-  const { deposit, withdrawAll, withdrawAssets } = useVaultTransactions();
+  const { executeVaultAction, isLoading } = useVaultTransactions();
 
   const openDepositModal = useCallback((
     vaultAddress: string,
@@ -37,8 +37,7 @@ export function useVaultActions() {
     openWithdrawModal,
     openWithdrawAllModal,
     // Direct transaction functions (for advanced usage)
-    deposit,
-    withdrawAll,
-    withdrawAssets,
+    executeVaultAction,
+    isLoading,
   };
 }

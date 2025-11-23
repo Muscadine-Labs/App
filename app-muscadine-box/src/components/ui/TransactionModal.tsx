@@ -19,26 +19,15 @@ export function TransactionModal() {
   } = useTransactionModal();
   
   const { 
-    withdrawAll, 
-    withdrawAssets, 
-    approveTokens, 
-    executeDeposit, 
-    checkApprovalNeeded, 
+    executeVaultAction,
     isLoading 
-  } = useVaultTransactions();
+  } = useVaultTransactions(modalState.vaultAddress || undefined);
   
   const { morphoHoldings } = useWallet();
   const vaultDataContext = useVaultData();
   
-  const [approvalStatus, setApprovalStatus] = useState<{
-    needsApproval: boolean;
-    currentAllowance: string;
-    requiredAmount: string;
-  } | null>(null);
   const [currentTxHash, setCurrentTxHash] = useState<string | null>(null);
   const [assetPrice, setAssetPrice] = useState<number | null>(null);
-  const [isWaitingForApproval, setIsWaitingForApproval] = useState(false);
-  const [approvalTxHash, setApprovalTxHash] = useState<string | null>(null);
 
   // Get vault data
   const vaultData = modalState.vaultAddress ? vaultDataContext.getVaultData(modalState.vaultAddress) : null;
@@ -63,19 +52,6 @@ export function TransactionModal() {
   }
   const amountUsd = assetPrice && amount > 0 ? amount * assetPrice : 0;
 
-  // Debug: Log when modal opens
-  useEffect(() => {
-    if (modalState.isOpen) {
-      console.log('TransactionModal opened:', {
-        amount: modalState.amount,
-        amountType: typeof modalState.amount,
-        amountStr,
-        parsedAmount: amount,
-        vaultAddress: modalState.vaultAddress,
-        type: modalState.type,
-      });
-    }
-  }, [modalState.isOpen, modalState.amount, amountStr, amount, modalState.vaultAddress, modalState.type]);
 
   // Calculate balance after transaction
   const balanceBefore = userVaultValueUsd;
@@ -128,85 +104,25 @@ export function TransactionModal() {
     fetchAssetPrice();
   }, [modalState.vaultSymbol]);
 
-  // Check approval status for deposits
-  useEffect(() => {
-    if (modalState.isOpen && modalState.type === 'deposit' && modalState.vaultAddress && modalState.amount) {
-      const checkStatus = async () => {
-        try {
-          const status = await checkApprovalNeeded(modalState.vaultAddress!, modalState.amount!);
-          setApprovalStatus(status);
-        } catch (error) {
-          console.error('Failed to check approval status:', error);
-        }
-      };
-      
-      checkStatus();
-    }
-  }, [modalState.isOpen, modalState.type, modalState.vaultAddress, modalState.amount, checkApprovalNeeded]);
-
-  // Wait for approval transaction receipt
-  const { data: approvalReceipt, error: approvalError } = useWaitForTransactionReceipt({
-    hash: approvalTxHash as `0x${string}`,
-    query: {
-      enabled: !!approvalTxHash && isWaitingForApproval,
-    },
-  });
-
   // Wait for main transaction receipt (deposit/withdraw)
   const { data: receipt, error: receiptError } = useWaitForTransactionReceipt({
     hash: currentTxHash as `0x${string}`,
     query: {
-      enabled: !!currentTxHash && modalState.status === 'confirming' && !isWaitingForApproval,
+      enabled: !!currentTxHash && modalState.status === 'confirming',
     },
   });
 
-  // Execute deposit after approval is confirmed
-  const executeDepositAfterApproval = React.useCallback(async () => {
-    if (!modalState.vaultAddress || !modalState.amount) return;
-    
-    try {
-      console.log('Executing deposit after approval with amount:', modalState.amount);
-      const depositHash = await executeDeposit(modalState.vaultAddress, modalState.amount);
-      setCurrentTxHash(depositHash);
-      updateTransactionStatus('confirming', undefined, depositHash);
-    } catch (err) {
-      console.error('Deposit failed after approval:', err);
-      let errorMessage = 'Deposit failed';
-      if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      updateTransactionStatus('error', errorMessage);
-    }
-  }, [modalState.vaultAddress, modalState.amount, executeDeposit, updateTransactionStatus]);
-
-  // Handle approval receipt - when approval completes, execute deposit
+  // Handle transaction receipt - only close after this
   useEffect(() => {
-    if (approvalReceipt && isWaitingForApproval && modalState.type === 'deposit') {
-      console.log('Approval confirmed, now executing deposit...');
-      setIsWaitingForApproval(false);
-      setApprovalTxHash(null);
-      
-      // Now execute the deposit
-      executeDepositAfterApproval();
-    } else if (approvalError && isWaitingForApproval) {
-      console.error('Approval failed:', approvalError);
-      setIsWaitingForApproval(false);
-      setApprovalTxHash(null);
-      updateTransactionStatus('error', 'Approval transaction failed');
-    }
-  }, [approvalReceipt, approvalError, isWaitingForApproval, modalState.type, executeDepositAfterApproval, updateTransactionStatus]);
-
-  // Handle main transaction receipt (deposit/withdraw) - only close after this
-  useEffect(() => {
-    if (receipt && modalState.status === 'confirming' && !isWaitingForApproval) {
+    if (receipt && modalState.status === 'confirming') {
       updateTransactionStatus('success', undefined, currentTxHash || undefined);
       setTimeout(() => {
         closeTransactionModal();
       }, 3000);
-    } else if (receiptError && modalState.status === 'confirming' && !isWaitingForApproval) {
+    } else if (receiptError && modalState.status === 'confirming') {
       updateTransactionStatus('error', 'Transaction failed or was reverted');
     }
-  }, [receipt, receiptError, modalState.status, currentTxHash, isWaitingForApproval, updateTransactionStatus, closeTransactionModal]);
+  }, [receipt, receiptError, modalState.status, currentTxHash, updateTransactionStatus, closeTransactionModal]);
 
   // Execute transaction
   const handleConfirm = async () => {
@@ -224,38 +140,23 @@ export function TransactionModal() {
       let txHash: string;
 
       if (modalState.type === 'deposit') {
-        // Check if approval is needed
-        if (approvalStatus?.needsApproval) {
-          // First approve, then wait for approval before depositing
-          console.log('Approving tokens with amount:', modalState.amount);
-          txHash = await approveTokens(modalState.vaultAddress, modalState.amount);
-          setApprovalTxHash(txHash);
-          setIsWaitingForApproval(true);
-          updateTransactionStatus('confirming', undefined, txHash);
-          // Don't set currentTxHash yet - we'll set it after approval completes
-          // The deposit will be executed in the useEffect when approval receipt is received
-        } else {
-          console.log('Executing deposit with amount:', modalState.amount);
-          txHash = await executeDeposit(modalState.vaultAddress, modalState.amount);
-          setCurrentTxHash(txHash);
-        }
+        txHash = await executeVaultAction('deposit', modalState.vaultAddress, modalState.amount);
       } else if (modalState.type === 'withdraw') {
-        // If amount is specified, withdraw that amount, otherwise withdraw all
-        if (modalState.amount && parseFloat(modalState.amount) > 0) {
-          console.log('Withdrawing assets with amount:', modalState.amount);
-          txHash = await withdrawAssets(modalState.vaultAddress, modalState.amount);
-        } else {
-          console.log('Withdrawing all shares');
-          txHash = await withdrawAll(modalState.vaultAddress);
-        }
-        setCurrentTxHash(txHash);
+         // If amount is specified, withdraw that amount, otherwise withdraw all
+         if (modalState.amount && parseFloat(modalState.amount) > 0) {
+            txHash = await executeVaultAction('withdraw', modalState.vaultAddress, modalState.amount);
+         } else {
+            txHash = await executeVaultAction('withdrawAll', modalState.vaultAddress);
+         }
       } else if (modalState.type === 'withdrawAll') {
-        console.log('Withdrawing assets with amount:', modalState.amount);
-        txHash = await withdrawAssets(modalState.vaultAddress, modalState.amount);
-        setCurrentTxHash(txHash);
+        txHash = await executeVaultAction('withdrawAll', modalState.vaultAddress);
       } else {
         throw new Error('Invalid transaction type');
       }
+      
+      setCurrentTxHash(txHash);
+      updateTransactionStatus('confirming', undefined, txHash);
+
     } catch (err) {
       console.error('Transaction failed:', err);
       let errorMessage = 'Transaction failed';
@@ -344,12 +245,7 @@ export function TransactionModal() {
             <div className="flex items-center justify-center gap-3 p-4 bg-[var(--surface)] rounded-lg">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--primary)]"></div>
               <p className="text-sm font-medium text-[var(--foreground)]">
-                {isWaitingForApproval 
-                  ? 'Approving tokens, waiting for confirmation...'
-                  : modalState.type === 'deposit'
-                    ? 'Executing deposit, waiting for confirmation...'
-                    : 'Transaction submitted, waiting for confirmation...'
-                }
+                Transaction submitted, waiting for confirmation...
               </p>
             </div>
           )}

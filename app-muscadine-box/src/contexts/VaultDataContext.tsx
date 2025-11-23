@@ -5,6 +5,7 @@ import { Vault, MorphoVaultData } from '../types/vault';
 
 interface AllocationData {
   market?: {
+    uniqueKey?: string; // Market unique key (market ID) needed for simulation
     loanAsset?: {
       address?: string;
       symbol?: string;
@@ -43,6 +44,7 @@ interface VaultDataContextType {
   vaultData: VaultDataState;
   fetchVaultData: (address: string, chainId?: number) => Promise<void>;
   getVaultData: (address: string) => MorphoVaultData | null;
+  getVaultMarketIds: (address: string) => `0x${string}`[]; // Get market uniqueKeys for simulation
   isLoading: (address: string) => boolean;
   hasError: (address: string) => boolean;
   isStaleData: (address: string) => boolean;
@@ -275,10 +277,24 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
     await Promise.allSettled(promises);
   }, [fetchCompleteVaultData]);
 
+  // Extract market uniqueKeys from vault allocation data for simulation state
+  const getVaultMarketIds = useCallback((address: string): `0x${string}`[] => {
+    const data = vaultData[address];
+    if (!data?.allocation || !Array.isArray(data.allocation)) {
+      return [];
+    }
+    
+    return data.allocation
+      .map((alloc: AllocationData) => alloc?.market?.uniqueKey)
+      .filter((uniqueKey: string | undefined): uniqueKey is string => !!uniqueKey)
+      .filter((key: string) => key.startsWith('0x')) as `0x${string}`[];
+  }, [vaultData]);
+
   const value: VaultDataContextType = {
     vaultData,
     fetchVaultData: fetchCompleteVaultData,
     getVaultData,
+    getVaultMarketIds,
     isLoading,
     hasError,
     isStaleData,
