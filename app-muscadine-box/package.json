@@ -47,5 +47,15 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.14",
     "typescript": "^5"
+  },
+  "overrides": {
+    "@morpho-org/blue-sdk-wagmi": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    },
+    "@morpho-org/simulation-sdk-wagmi": {
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
   }
 }
