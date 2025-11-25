@@ -108,6 +108,115 @@ export function formatAssetAmount(
 }
 
 /**
+ * Gets the display precision for a token symbol.
+ * This centralizes the precision rules used across the app.
+ * @param symbol - The token symbol (case-insensitive).
+ * @param assetDecimals - The actual token decimals (fallback for unknown tokens).
+ * @returns The number of decimal places to display.
+ */
+export function getTokenDisplayPrecision(symbol: string, assetDecimals?: number): number {
+  const upperSymbol = symbol.toUpperCase();
+  
+  // Stablecoins use 2 decimal places for display (even though USDC has 6 decimals)
+  if (upperSymbol === 'USDC' || upperSymbol === 'USDT' || upperSymbol === 'DAI') {
+    return 2;
+  }
+  
+  // Use actual token decimals for other tokens
+  return assetDecimals ?? 18;
+}
+
+/**
+ * Formats asset amounts for display with safe rounding-down behavior.
+ * Ensures formatted value never exceeds the original (important for balance displays and validation).
+ * 
+ * @param value - The decimal amount (already converted from BigInt).
+ * @param options - Formatting options.
+ * @returns Formatted string without symbol (caller adds symbol if needed).
+ */
+export function formatAssetAmountSafe(
+  value: number,
+  options: {
+    decimals: number;
+    symbol?: string; // Optional, for determining display precision
+    roundMode?: 'down' | 'nearest'; // Default: 'down' for safety
+    trimZeros?: boolean; // Default: true
+    minDisplayable?: number; // For edge case handling (defaults to 1 / 10^decimals)
+  }
+): string {
+  if (value <= 0) {
+    return '0';
+  }
+  
+  const {
+    decimals,
+    symbol,
+    roundMode = 'down',
+    trimZeros = true,
+    minDisplayable,
+  } = options;
+  
+  // Determine display precision
+  const displayPrecision = symbol 
+    ? getTokenDisplayPrecision(symbol, decimals)
+    : decimals;
+  
+  const precisionMultiplier = Math.pow(10, displayPrecision);
+  
+  // Round down or nearest based on mode
+  const rounded = roundMode === 'down'
+    ? Math.floor(value * precisionMultiplier) / precisionMultiplier
+    : Math.round(value * precisionMultiplier) / precisionMultiplier;
+  
+  // Handle edge case: if rounded to 0 but value is close to minimum displayable unit
+  const minDisplay = minDisplayable ?? (1 / precisionMultiplier);
+  const normalizedValue = (rounded === 0 && value >= minDisplay * 0.99)
+    ? minDisplay
+    : rounded;
+  
+  // Format with full precision first
+  let formatted = normalizedValue.toFixed(displayPrecision);
+  
+  // Trim trailing zeros if requested
+  if (trimZeros && formatted.includes('.')) {
+    formatted = formatted.replace(/\.?0+$/, '');
+  }
+  
+  return formatted === '' ? '0' : formatted;
+}
+
+/**
+ * Formats asset amounts for input/transaction use.
+ * Preserves full contract decimals precision (no trimming) to ensure
+ * parseUnits can accurately reconstruct the exact amount.
+ * 
+ * @param value - The decimal amount (already converted from BigInt).
+ * @param decimals - The contract decimals (e.g., 18 for ETH, 6 for USDC).
+ * @param roundMode - How to round the value (default: 'down' for safety).
+ * @returns Formatted string with full precision, suitable for parseUnits.
+ */
+export function formatAssetAmountForInput(
+  value: number,
+  decimals: number,
+  roundMode: 'down' | 'nearest' = 'down'
+): string {
+  if (value <= 0) {
+    return '0';
+  }
+  
+  const precisionMultiplier = Math.pow(10, decimals);
+  
+  // Round down or nearest based on mode
+  const rounded = roundMode === 'down'
+    ? Math.floor(value * precisionMultiplier) / precisionMultiplier
+    : Math.round(value * precisionMultiplier) / precisionMultiplier;
+  
+  // Format with full contract decimals precision (no trimming)
+  // This ensures parseUnits can accurately reconstruct the exact amount
+  return rounded.toFixed(decimals);
+}
+
+/**
  * Truncates an Ethereum address for concise display.
  * @param address - The full address string.
  * @returns A truncated address string (e.g., "0x1234...5678").

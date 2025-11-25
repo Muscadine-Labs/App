@@ -8,7 +8,8 @@ export type TransactionStatus =
   | 'preview'
   | 'confirming' 
   | 'success' 
-  | 'error';
+  | 'error'
+  | 'cancelled';
 
 export interface TransactionModalState {
   isOpen: boolean;

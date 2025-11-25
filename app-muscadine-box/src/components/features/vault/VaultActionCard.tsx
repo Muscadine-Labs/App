@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useAccount, useBalance, useReadContract } from 'wagmi';
-import { formatUnits } from 'viem';
+import { formatUnits, parseUnits } from 'viem';
 import { MorphoVaultData } from '@/types/vault';
 import { useTransactionModal } from '@/contexts/TransactionModalContext';
 import { useWallet } from '@/contexts/WalletContext';
-import { formatSmartCurrency } from '@/lib/formatter';
+import { formatSmartCurrency, formatAssetAmountSafe, formatAssetAmountForInput, getTokenDisplayPrecision } from '@/lib/formatter';
 import { Button } from '@/components/ui';
 import { useOnClickOutside } from '@/hooks/onClickOutside';
 
@@ -55,13 +55,15 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
   const { openTransactionModal } = useTransactionModal();
   const { morphoHoldings, tokenBalances } = useWallet();
 
-  // Helper function to format asset amount based on asset type
+  // Helper function to format asset amount for display using the generalized formatter
+  // Rounds DOWN to ensure formatted value never exceeds the original (important for validation)
   const formatAssetAmount = (value: number): string => {
-    const symbol = vaultData.symbol.toUpperCase();
-    if (symbol === 'USDC' || symbol === 'USDT' || symbol === 'DAI') {
-      return value.toFixed(2);
-    }
-    return value.toFixed(6);
+    return formatAssetAmountSafe(value, {
+      decimals: vaultData.assetDecimals ?? 18,
+      symbol: vaultData.symbol,
+      roundMode: 'down',
+      trimZeros: true,
+    });
   };
 
   // Click outside to close APY breakdown
@@ -95,7 +97,16 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
     query: { enabled: !!address && vaultData.symbol.toUpperCase() === 'WETH' },
   });
 
-  // Get ERC20 token balance
+  // Get WETH token balance (for WETH vaults - need to sum with ETH)
+  const { data: wethTokenBalance } = useReadContract({
+    address: assetAddress as `0x${string}`,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address as `0x${string}`] : undefined,
+    query: { enabled: !!assetAddress && !!address && vaultData.symbol.toUpperCase() === 'WETH' },
+  });
+
+  // Get ERC20 token balance (for non-WETH tokens)
   const { data: tokenBalance } = useReadContract({
     address: assetAddress as `0x${string}`,
     abi: ERC20_ABI,
@@ -105,6 +116,7 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
   });
 
   // Calculate and format asset balance
+  // Use formatAssetAmount to ensure consistency with MAX button and input formatting
   useEffect(() => {
     if (!isConnected || !address) {
       setAssetBalance('0.00');
@@ -112,46 +124,80 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
     }
 
     const symbol = vaultData.symbol.toUpperCase();
+    let balanceValue: number = 0;
     
-    // For WETH, use ETH balance
-    if (symbol === 'WETH' && ethBalance) {
-      setAssetBalance(parseFloat(ethBalance.formatted).toFixed(6));
-      return;
+    // For WETH, sum both ETH and WETH balances
+    if (symbol === 'WETH') {
+      let ethAmount = 0;
+      let wethAmount = 0;
+      
+      if (ethBalance) {
+        ethAmount = parseFloat(ethBalance.formatted);
+      }
+      
+      if (wethTokenBalance && vaultData.assetDecimals !== undefined) {
+        const wethDecimalValue = formatUnits(wethTokenBalance as bigint, vaultData.assetDecimals);
+        wethAmount = parseFloat(wethDecimalValue);
+      }
+      
+      balanceValue = ethAmount + wethAmount;
     }
-
     // For USDC, check wallet context first
-    if (symbol === 'USDC') {
+    else if (symbol === 'USDC') {
       const usdcBalance = tokenBalances.find(tb => tb.symbol === 'USDC');
       if (usdcBalance) {
-        setAssetBalance(parseFloat(usdcBalance.formatted).toFixed(2));
-        return;
+        balanceValue = parseFloat(usdcBalance.formatted);
       }
     }
-
     // For other tokens, use token balance from contract
-    if (tokenBalance && vaultData.assetDecimals !== undefined) {
+    else if (tokenBalance && vaultData.assetDecimals !== undefined) {
       const decimalValue = formatUnits(tokenBalance as bigint, vaultData.assetDecimals);
-      const numberValue = parseFloat(decimalValue);
-      setAssetBalance(isNaN(numberValue) ? '0.00' : numberValue.toFixed(6));
-    } else {
-      setAssetBalance('0.00');
+      balanceValue = parseFloat(decimalValue);
     }
-  }, [isConnected, address, ethBalance, tokenBalance, tokenBalances, vaultData.symbol, vaultData.assetDecimals]);
+
+    // Use formatAssetAmount to ensure consistency with MAX button
+    setAssetBalance(isNaN(balanceValue) || balanceValue <= 0 ? '0.00' : formatAssetAmount(balanceValue));
+  }, [isConnected, address, ethBalance, wethTokenBalance, tokenBalance, tokenBalances, vaultData.symbol, vaultData.assetDecimals]);
 
   // Helper function to calculate max depositable amount by rounding DOWN the BigInt balance
   // This prevents attempting to deposit more than available due to rounding issues
+  // Uses full asset decimals precision to avoid leaving trace amounts
   const calculateMaxDepositable = useMemo(() => {
     const symbol = vaultData.symbol.toUpperCase();
     
-    // For WETH, use ETH balance
-    if (symbol === 'WETH' && ethBalance?.value) {
+    // For WETH, sum both ETH and WETH balances
+    // Note: Must account for gas reserve when wrapping ETH (matches transaction logic)
+    if (symbol === 'WETH') {
       const decimals = 18;
-      const decimalValue = formatUnits(ethBalance.value, decimals);
-      const numberValue = parseFloat(decimalValue);
-      // Round down to avoid exceeding balance
-      const precision = 6;
-      const roundedDown = Math.floor(numberValue * Math.pow(10, precision)) / Math.pow(10, precision);
-      return roundedDown;
+      const GAS_RESERVE = parseUnits('0.0001', 18); // Reserve ~0.0001 ETH for gas (matches transaction logic)
+      
+      let totalWei = BigInt(0);
+      
+      // Add WETH token balance (can be deposited directly, no gas reserve needed)
+      if (wethTokenBalance) {
+        totalWei += wethTokenBalance as bigint;
+      }
+      
+      // Add ETH balance minus gas reserve (matches transaction validation logic)
+      if (ethBalance?.value) {
+        const availableEth = ethBalance.value > GAS_RESERVE 
+          ? ethBalance.value - GAS_RESERVE 
+          : BigInt(0);
+        totalWei += availableEth;
+      }
+      
+      if (totalWei === BigInt(0)) {
+        return 0;
+      }
+      
+      // Convert total to decimal representation
+      const decimalValue = formatUnits(totalWei, decimals);
+      const numValue = parseFloat(decimalValue);
+      // Round down to ensure we never exceed the actual balance
+      const precisionMultiplier = Math.pow(10, decimals);
+      const roundedDown = Math.floor(numValue * precisionMultiplier) / precisionMultiplier;
+      // Additional safety check: ensure we never return more than what formatUnits gives us
+      return Math.min(roundedDown, numValue);
     }
     
     // For USDC, check wallet context first
@@ -159,26 +205,26 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
       const usdcBalance = tokenBalances.find(tb => tb.symbol === 'USDC');
       if (usdcBalance?.balance) {
         const decimals = usdcBalance.decimals || 6;
-        const decimalValue = formatUnits(usdcBalance.balance, decimals);
-        const numberValue = parseFloat(decimalValue);
-        // Round down to avoid exceeding balance (2 decimals for USDC)
-        const roundedDown = Math.floor(numberValue * 100) / 100;
-        return roundedDown;
+        // Use the exact decimal value from the contract (no extra rounding)
+        return parseFloat(formatUnits(usdcBalance.balance, decimals));
       }
     }
     
     // For other tokens (like cbBTC), use token balance from contract
     if (tokenBalance && vaultData.assetDecimals !== undefined) {
-      const decimalValue = formatUnits(tokenBalance as bigint, vaultData.assetDecimals);
-      const numberValue = parseFloat(decimalValue);
-      // Round down to avoid exceeding balance (6 decimals for most tokens)
-      const precision = 6;
-      const roundedDown = Math.floor(numberValue * Math.pow(10, precision)) / Math.pow(10, precision);
-      return roundedDown;
+      const decimals = vaultData.assetDecimals;
+      // Work with BigInt directly to avoid floating point precision loss
+      // The balance is already in the smallest unit (e.g., satoshis for BTC)
+      // We just need to convert it to decimal representation
+      const balanceBigInt = tokenBalance as bigint;
+      const decimalValue = formatUnits(balanceBigInt, decimals);
+      // Parse to float - this should preserve the value correctly
+      // No need to round down here since we're working with the exact balance
+      return parseFloat(decimalValue);
     }
     
     return 0;
-  }, [ethBalance, tokenBalance, tokenBalances, vaultData.symbol, vaultData.assetDecimals]);
+  }, [ethBalance, wethTokenBalance, tokenBalance, tokenBalances, vaultData.symbol, vaultData.assetDecimals]);
 
   // Fetch asset price
   useEffect(() => {
@@ -266,6 +312,37 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
   const yearlyInterest = enteredAmount > 0 ? newYearlyInterest : oldYearlyInterest;
   const monthlyInterest = enteredAmount > 0 ? newMonthlyInterest : oldMonthlyInterest;
 
+  // Calculate max values and remaining balances
+  // Use calculateMaxDepositable to ensure we never exceed actual balance due to rounding
+  const maxDepositRaw = calculateMaxDepositable;
+  
+  // Get display precision for this token (uses display precision, not contract decimals)
+  const symbol = vaultData.symbol.toUpperCase();
+  const displayPrecision = getTokenDisplayPrecision(vaultData.symbol, vaultData.assetDecimals);
+  
+  // Round down maxDeposit to display precision to match what formatAssetAmount produces
+  // This ensures the comparison uses the same precision as the formatted display value
+  const precisionMultiplier = Math.pow(10, displayPrecision);
+  const maxDeposit = Math.floor(maxDepositRaw * precisionMultiplier) / precisionMultiplier;
+  
+  // Convert withdrawable amount from USD to asset units
+  const maxWithdrawRaw = assetPrice && userVaultValueUsd > 0 ? userVaultValueUsd / assetPrice : 0;
+  // Round down maxWithdraw to display precision (don't convert through string)
+  const maxWithdraw = Math.floor(maxWithdrawRaw * precisionMultiplier) / precisionMultiplier;
+  
+  // Parse current amount once, used throughout
+  const currentAmount = parseFloat(amount) || 0;
+  
+  const remainingDeposit = Math.max(0, maxDeposit - currentAmount);
+  // For withdraw, calculate remaining in asset units (not USD)
+  const remainingWithdraw = Math.max(0, maxWithdraw - currentAmount);
+
+  // Check if amount exceeds max (with small epsilon for floating-point precision)
+  // Use a small tolerance to account for floating-point arithmetic errors
+  const EPSILON = 1e-8; // Small value to handle floating-point precision issues
+  const exceedsMaxDeposit = currentAmount > maxDeposit + EPSILON;
+  const exceedsMaxWithdraw = currentAmount > maxWithdraw + EPSILON;
+
   const handleDeposit = () => {
     if (!isConnected) {
       alert('Please connect your wallet first');
@@ -330,25 +407,6 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
     );
   };
 
-  // Calculate max values and remaining balances
-  // Use calculateMaxDepositable to ensure we never exceed actual balance due to rounding
-  const maxDeposit = calculateMaxDepositable;
-  // Convert withdrawable amount from USD to asset units
-  const maxWithdrawRaw = assetPrice && userVaultValueUsd > 0 ? userVaultValueUsd / assetPrice : 0;
-  // Round maxWithdraw to match the precision used in formatting to avoid comparison issues
-  const maxWithdraw = parseFloat(formatAssetAmount(maxWithdrawRaw));
-  const currentAmount = parseFloat(amount) || 0;
-  
-  const remainingDeposit = Math.max(0, maxDeposit - currentAmount);
-  // For withdraw, calculate remaining in asset units (not USD)
-  const remainingWithdraw = Math.max(0, maxWithdraw - currentAmount);
-
-  // Check if amount exceeds max (with small epsilon for floating-point precision)
-  // Use a small tolerance to account for floating-point arithmetic errors
-  const EPSILON = 1e-8; // Small value to handle floating-point precision issues
-  const exceedsMaxDeposit = currentAmount > maxDeposit + EPSILON;
-  const exceedsMaxWithdraw = currentAmount > maxWithdraw + EPSILON;
-
   // Handle input change with max validation
   const handleAmountChange = (value: string) => {
     // Allow empty string for better UX
@@ -374,9 +432,15 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
   };
 
   // Set max amount
+  // Use formatAssetAmountForInput to preserve full precision for transaction parsing
   const setMaxAmount = (isDeposit: boolean) => {
-    const max = isDeposit ? maxDeposit : maxWithdraw;
-    setAmount(formatAssetAmount(max));
+    if (isDeposit) {
+      // Format with full contract decimals precision (no trimming)
+      // This ensures parseUnits can accurately reconstruct the exact amount
+      setAmount(formatAssetAmountForInput(maxDepositRaw, vaultData.assetDecimals ?? 18, 'down'));
+    } else {
+      setAmount(formatAssetAmountForInput(maxWithdraw, vaultData.assetDecimals ?? 18, 'down'));
+    }
   };
 
   return (
@@ -424,7 +488,7 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
                 <button
                   type="button"
                   onClick={() => setMaxAmount(true)}
-                  disabled={isDepositDisabled || maxDeposit === 0}
+                  disabled={isDepositDisabled || maxDepositRaw <= 0}
                   className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   MAX
@@ -439,10 +503,12 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
                   const val = parseFloat(e.target.value);
                   if (isNaN(val) || val < 0) {
                     setAmount('');
-                  } else if (val > maxDeposit) {
-                    setAmount(maxDeposit.toFixed(6));
+                  } else if (val > maxDeposit + EPSILON) {
+                    // Use formatAssetAmountForInput to preserve full precision for transaction parsing
+                    setAmount(formatAssetAmountForInput(maxDeposit, vaultData.assetDecimals ?? 18, 'down'));
                   } else if (val > 0) {
-                    setAmount(val.toFixed(6));
+                    // Format with full precision to ensure parseUnits can accurately reconstruct
+                    setAmount(formatAssetAmountForInput(val, vaultData.assetDecimals ?? 18, 'down'));
                   } else {
                     setAmount('');
                   }
@@ -471,7 +537,7 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
                   : 'text-[var(--foreground-muted)]'
               }`}>
                 {currentAmount > 0 
-                  ? `${remainingDeposit.toFixed(6)} ${vaultData.symbol} remaining`
+                  ? `${formatAssetAmount(remainingDeposit)} ${vaultData.symbol} remaining`
                   : `${assetBalance} ${vaultData.symbol} available`
                 }
               </p>
@@ -651,13 +717,12 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
                   if (isNaN(val) || val < 0) {
                     setAmount('');
                   } else {
-                    // Round maxWithdraw to match the precision we're using for comparison
-                    const maxRounded = parseFloat(formatAssetAmount(maxWithdraw));
-                    const EPSILON = 1e-8;
-                    if (val > maxRounded + EPSILON) {
-                      setAmount(formatAssetAmount(maxWithdraw));
+                    // Use formatAssetAmountForInput to preserve full precision for transaction parsing
+                    if (val > maxWithdraw + EPSILON) {
+                      setAmount(formatAssetAmountForInput(maxWithdraw, vaultData.assetDecimals ?? 18, 'down'));
                     } else if (val > 0) {
-                      setAmount(formatAssetAmount(val));
+                      // Format with full precision to ensure parseUnits can accurately reconstruct
+                      setAmount(formatAssetAmountForInput(val, vaultData.assetDecimals ?? 18, 'down'));
                     } else {
                       setAmount('');
                     }

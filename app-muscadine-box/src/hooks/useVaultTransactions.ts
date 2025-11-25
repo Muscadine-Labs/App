@@ -6,7 +6,7 @@ import {
   type BundlingOptions,
 } from '@morpho-org/bundler-sdk-viem';
 import { DEFAULT_SLIPPAGE_TOLERANCE } from '@morpho-org/blue-sdk';
-import { parseUnits, type Address, maxUint256, getAddress, formatUnits } from 'viem';
+import { parseUnits, type Address, getAddress, formatUnits } from 'viem';
 import { useVaultData } from '../contexts/VaultDataContext';
 import { useVaultSimulationState } from './useVaultSimulationState';
 import { useTransactionModal } from '../contexts/TransactionModalContext';
@@ -17,6 +17,17 @@ const VAULT_ASSET_ABI = [
     inputs: [],
     name: "asset",
     outputs: [{ internalType: "address", name: "", type: "address" }],
+    stateMutability: "view",
+    type: "function",
+  },
+] as const;
+
+// ERC20 ABI for balanceOf (vault shares are ERC20 tokens)
+const ERC20_BALANCE_ABI = [
+  {
+    inputs: [{ name: "account", type: "address" }],
+    name: "balanceOf",
+    outputs: [{ name: "", type: "uint256" }],
     stateMutability: "view",
     type: "function",
   },
@@ -67,6 +78,15 @@ export function useVaultTransactions(vaultAddress?: string) {
     query: { enabled: !!accountAddress },
   });
 
+  // Get user's WETH balance (for WETH vaults - can deposit existing WETH directly)
+  const { data: wethBalance } = useReadContract({
+    address: assetAddress as Address,
+    abi: ERC20_BALANCE_ABI,
+    functionName: 'balanceOf',
+    args: accountAddress ? [accountAddress as Address] : undefined,
+    query: { enabled: !!accountAddress && !!assetAddress && assetAddress?.toLowerCase() === '0x4200000000000000000000000000000000000006'.toLowerCase() },
+  });
+
   const executeVaultAction = useCallback(async (
     action: VaultAction,
     vault: string,
@@ -113,8 +133,28 @@ export function useVaultTransactions(vaultAddress?: string) {
 
       // Determine amount
       let amountBigInt: bigint;
+      let useSharesForWithdraw = false;
+      
       if (action === 'withdrawAll') {
-        amountBigInt = maxUint256;
+        // For withdrawAll, get the user's actual share balance from the vault contract
+        // Vault shares are ERC20 tokens, so we can use balanceOf
+        if (!publicClient) {
+          throw new Error('Public client not available');
+        }
+        
+        const userShares = await publicClient.readContract({
+          address: normalizedVault,
+          abi: ERC20_BALANCE_ABI,
+          functionName: 'balanceOf',
+          args: [userAddress],
+        });
+        
+        if (userShares === BigInt(0)) {
+          throw new Error('No shares to withdraw');
+        }
+        
+        amountBigInt = userShares;
+        useSharesForWithdraw = true;
       } else if (!amount || parseFloat(amount) <= 0) {
         throw new Error('Invalid amount');
       } else {
@@ -127,49 +167,63 @@ export function useVaultTransactions(vaultAddress?: string) {
       if (action === 'deposit') {
         if (isWethVault) {
           // --- SPECIAL FLOW FOR WETH VAULTS ---
-          // Reserve ETH for gas fees (estimate ~0.0001 ETH = 100000000000000 wei)
-          const GAS_RESERVE = parseUnits('0.0001', 18); // Reserve ~0.0001 ETH for gas
+          // Can deposit both existing WETH and wrap ETH as needed
+          const existingWeth = (wethBalance as bigint) || BigInt(0);
           const availableEth = ethBalance?.value || BigInt(0);
           
-          // Calculate how much we can actually wrap (available ETH minus gas reserve)
+          // Reserve ETH for gas fees (estimate ~0.0001 ETH = 100000000000000 wei)
+          const GAS_RESERVE = parseUnits('0.0001', 18);
+          
+          // Calculate how much ETH we can wrap (available ETH minus gas reserve)
           const maxWrapAmount = availableEth > GAS_RESERVE 
             ? availableEth - GAS_RESERVE 
             : BigInt(0);
           
-          // Use the minimum of requested amount and available amount (after gas reserve)
-          const wrapAmount = amountBigInt > maxWrapAmount ? maxWrapAmount : amountBigInt;
+          // Total available: existing WETH + wrappable ETH
+          const totalAvailable = existingWeth + maxWrapAmount;
           
-          if (wrapAmount <= BigInt(0)) {
+          if (amountBigInt > totalAvailable) {
             throw new Error(
-              `Insufficient ETH. Need at least ${formatUnits(GAS_RESERVE, 18)} ETH for gas fees. ` +
-              `Available: ${formatUnits(availableEth, 18)} ETH`
+              `Insufficient balance. Available: ${formatUnits(totalAvailable, 18)} WETH ` +
+              `(${formatUnits(existingWeth, 18)} WETH + ${formatUnits(maxWrapAmount, 18)} ETH wrappable). ` +
+              `Requested: ${formatUnits(amountBigInt, 18)} WETH`
             );
           }
           
-          // 1. Wrap Native ETH into WETH (owned by user)
-          // The bundler will automatically transfer WETH from user to generalAdapter1
-          // and then execute the deposit
-          inputOperations.push({
-            type: 'Erc20_Wrap',
-            address: WETH_ADDRESS,
-            sender: userAddress,
-            args: {
-              amount: wrapAmount, // Wrap less than full balance to reserve gas
-              owner: userAddress, // Wrap to user - bundler will handle transfer to adapter
-            },
-          });
-
-          // 2. Deposit WETH into Vault
-          // The bundler will automatically transfer WETH from user to generalAdapter1
-          // and then execute the deposit on behalf of the user
-          // Note: Deposit the wrapped amount (which may be less than requested if gas reserve was needed)
+          // Determine how much to use from existing WETH vs wrapping ETH
+          const wethToUse = amountBigInt > existingWeth ? existingWeth : amountBigInt;
+          const ethToWrap = amountBigInt > existingWeth ? amountBigInt - existingWeth : BigInt(0);
+          
+          // If we need to wrap ETH, add wrap operation
+          if (ethToWrap > BigInt(0)) {
+            if (ethToWrap > maxWrapAmount) {
+              throw new Error(
+                `Cannot wrap ${formatUnits(ethToWrap, 18)} ETH. ` +
+                `Need at least ${formatUnits(GAS_RESERVE, 18)} ETH for gas fees. ` +
+                `Available to wrap: ${formatUnits(maxWrapAmount, 18)} ETH`
+              );
+            }
+            
+            // Wrap Native ETH into WETH
+            inputOperations.push({
+              type: 'Erc20_Wrap',
+              address: WETH_ADDRESS,
+              sender: userAddress,
+              args: {
+                amount: ethToWrap,
+                owner: userAddress,
+              },
+            });
+          }
+          
+          // Deposit WETH into Vault (will use existing WETH + newly wrapped WETH)
           inputOperations.push({
             type: 'MetaMorpho_Deposit',
             address: normalizedVault,
-            sender: userAddress, // User is sender - bundler transforms to generalAdapter1
+            sender: userAddress,
             args: {
-              assets: wrapAmount, // Deposit the wrapped amount (may be less than requested)
-              owner: userAddress, // User receives the shares
+              assets: amountBigInt, // Total amount to deposit
+              owner: userAddress,
               slippage: DEFAULT_SLIPPAGE_TOLERANCE,
             },
           });
@@ -187,17 +241,32 @@ export function useVaultTransactions(vaultAddress?: string) {
           });
         }
       } else if (action === 'withdraw' || action === 'withdrawAll') {
-        inputOperations.push({
-          type: 'MetaMorpho_Withdraw',
-          address: normalizedVault,
-          sender: userAddress,
-          args: {
-            assets: action === 'withdrawAll' ? maxUint256 : amountBigInt,
-            owner: userAddress,
-            receiver: userAddress,
-            slippage: DEFAULT_SLIPPAGE_TOLERANCE,
-          },
-        });
+        // Use shares parameter for withdrawAll, assets for regular withdraw
+        if (useSharesForWithdraw) {
+          inputOperations.push({
+            type: 'MetaMorpho_Withdraw',
+            address: normalizedVault,
+            sender: userAddress,
+            args: {
+              shares: amountBigInt, // Use actual user shares
+              owner: userAddress,
+              receiver: userAddress,
+              slippage: DEFAULT_SLIPPAGE_TOLERANCE,
+            },
+          });
+        } else {
+          inputOperations.push({
+            type: 'MetaMorpho_Withdraw',
+            address: normalizedVault,
+            sender: userAddress,
+            args: {
+              assets: amountBigInt,
+              owner: userAddress,
+              receiver: userAddress,
+              slippage: DEFAULT_SLIPPAGE_TOLERANCE,
+            },
+          });
+        }
 
         // Optional: Add 'Erc20_Unwrap' here if you want automatic unwrapping on withdraw
       }

@@ -9,7 +9,27 @@ import { useVaultData } from '../../contexts/VaultDataContext';
 import { CloseIcon } from '../ui';
 import Image from 'next/image';
 import { getVaultLogo } from '../../types/vault';
-import { formatSmartCurrency } from '../../lib/formatter';
+import { formatSmartCurrency, formatAssetAmountSafe, formatAssetAmountForInput, getTokenDisplayPrecision } from '../../lib/formatter';
+
+// Helper function to check if an error is a user cancellation
+function isCancellationError(error: unknown): boolean {
+  if (!error) return false;
+  
+  const errorString = error instanceof Error ? error.message : String(error);
+  const errorLower = errorString.toLowerCase();
+
+  return (
+    errorLower.includes('user rejected') ||
+    errorLower.includes('user cancelled') ||
+    errorLower.includes('rejected') ||
+    errorLower.includes('denied') ||
+    errorLower.includes('action_cancelled') ||
+    errorLower.includes('4001') ||
+    errorLower.includes('user denied') ||
+    errorLower.includes('user rejected the request') ||
+    errorLower.includes('user rejected transaction')
+  );
+}
 
 // Helper function to convert technical errors into user-friendly messages
 function formatTransactionError(error: unknown): string {
@@ -20,16 +40,8 @@ function formatTransactionError(error: unknown): string {
   const errorString = error instanceof Error ? error.message : String(error);
   const errorLower = errorString.toLowerCase();
 
-  // User rejection / cancellation
-  if (
-    errorLower.includes('user rejected') ||
-    errorLower.includes('user cancelled') ||
-    errorLower.includes('rejected') ||
-    errorLower.includes('denied') ||
-    errorLower.includes('action_cancelled') ||
-    errorLower.includes('4001') ||
-    errorLower.includes('user denied')
-  ) {
+  // User rejection / cancellation (should be handled separately, but keep for fallback)
+  if (isCancellationError(error)) {
     return 'Transaction cancelled.';
   }
 
@@ -219,7 +231,15 @@ export function TransactionModal() {
         closeTransactionModal();
       }, 3000);
     } else if (receiptError && modalState.status === 'confirming' && currentTxHash) {
-      updateTransactionStatus('error', formatTransactionError(receiptError));
+      // Check if receipt error is a cancellation
+      if (isCancellationError(receiptError)) {
+        updateTransactionStatus('cancelled');
+        setTimeout(() => {
+          closeTransactionModal();
+        }, 1500);
+      } else {
+        updateTransactionStatus('error', formatTransactionError(receiptError));
+      }
     }
   }, [receipt, receiptError, modalState.status, currentTxHash, updateTransactionStatus, closeTransactionModal]);
 
@@ -278,6 +298,17 @@ export function TransactionModal() {
 
     } catch (err) {
       console.error('Transaction failed:', err);
+      
+      // Check if this is a cancellation - handle separately
+      if (isCancellationError(err)) {
+        updateTransactionStatus('cancelled');
+        // Auto-close modal after showing cancellation message
+        setTimeout(() => {
+          closeTransactionModal();
+        }, 1500);
+        return;
+      }
+      
       const errorMessage = formatTransactionError(err);
       updateTransactionStatus('error', errorMessage);
     }
@@ -298,6 +329,7 @@ export function TransactionModal() {
   const isConfirming = modalState.status === 'confirming';
   const isSuccess = modalState.status === 'success';
   const isError = modalState.status === 'error';
+  const isCancelled = modalState.status === 'cancelled';
 
   return (
     <div 
@@ -317,7 +349,7 @@ export function TransactionModal() {
           <h2 className="text-xl font-semibold text-[var(--foreground)]">
             Review
           </h2>
-          {!isConfirming && (
+          {!isConfirming && !isCancelled && (
             <button
               onClick={closeTransactionModal}
               className="w-8 h-8 rounded-full bg-[var(--surface)] hover:bg-[var(--surface-hover)] flex items-center justify-center transition-colors"
@@ -340,6 +372,14 @@ export function TransactionModal() {
               </div>
               <p className="text-sm font-medium text-[var(--foreground)]">
                 Transaction successful!
+              </p>
+            </div>
+          )}
+
+          {isCancelled && (
+            <div className="flex items-center justify-center gap-3 p-4 bg-[var(--surface)] rounded-lg">
+              <p className="text-sm text-[var(--foreground-secondary)]">
+                Transaction cancelled.
               </p>
             </div>
           )}
@@ -411,7 +451,8 @@ export function TransactionModal() {
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="text-2xl font-semibold text-[var(--foreground)]">
-                    {amount > 0 ? amount.toFixed(6) : (modalState.amount || '0.000000')} {modalState.vaultSymbol}
+                    {/* Display the actual amount string from modalState to match what will be sent to transaction */}
+                    {modalState.amount || '0'} {modalState.vaultSymbol}
                   </span>
                   {amountUsd > 0 && (
                     <span className="text-lg text-[var(--foreground-secondary)]">
@@ -448,6 +489,20 @@ export function TransactionModal() {
                   </span>
                 </div>
               </div>
+
+              {/* Warning for WETH deposits */}
+              {modalState.type === 'deposit' && modalState.vaultSymbol?.toUpperCase() === 'WETH' && (
+                <div className="flex items-start gap-3 p-4 bg-[var(--warning-subtle)] rounded-lg border border-[var(--warning)]">
+                  <div className="w-5 h-5 rounded-full bg-[var(--warning)] flex items-center justify-center flex-shrink-0 mt-0.5">
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm text-[var(--foreground)]">
+                    <span className="font-medium">Warning:</span> Depositing all your available ETH may leave insufficient funds for gas fees, which could prevent you from executing future transactions.
+                  </p>
+                </div>
+              )}
 
               {/* APY */}
               {vaultData && (
