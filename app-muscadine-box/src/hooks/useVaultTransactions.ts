@@ -43,9 +43,9 @@ const ERC20_BALANCE_ABI = [
 type VaultAction = 'deposit' | 'withdraw' | 'withdrawAll';
 
 export type TransactionProgressStep = 
-  | { type: 'signing'; stepIndex: number; totalSteps: number }
-  | { type: 'approving'; stepIndex: number; totalSteps: number; contractAddress: string }
-  | { type: 'confirming'; stepIndex: number; totalSteps: number; txHash: string };
+  | { type: 'signing'; stepIndex: number; totalSteps: number; stepLabel: string }
+  | { type: 'approving'; stepIndex: number; totalSteps: number; stepLabel: string; contractAddress: string; txHash?: string }
+  | { type: 'confirming'; stepIndex: number; totalSteps: number; stepLabel: string; txHash: string };
 
 export type TransactionProgressCallback = (step: TransactionProgressStep) => void;
 
@@ -352,55 +352,79 @@ export function useVaultTransactions(vaultAddress?: string) {
         }
       );
 
-      // Calculate total steps for progress tracking
-      const hasSignatures = bundle.requirements.signatures.length > 0;
-      const hasPrerequisiteTxs = bundle.requirements.txs.length > 0;
-      const totalSteps = (hasSignatures ? 1 : 0) + (hasPrerequisiteTxs ? 1 : 0) + 1; // signatures + approvals + main tx
+      // Calculate total steps dynamically based on actual requirements
+      const signatureCount = bundle.requirements.signatures.length;
+      const prerequisiteTxCount = bundle.requirements.txs.length;
+      const totalSteps = signatureCount + prerequisiteTxCount + 1; // Each signature + each prerequisite tx + main tx
       let currentStepIndex = 0;
 
-      // Sign any required signatures
-      if (hasSignatures) {
+      // Sign any required signatures - each signature is its own step
+      for (let i = 0; i < signatureCount; i++) {
+        const signature = bundle.requirements.signatures[i];
+        const stepLabel = signatureCount > 1 ? `Sign ${i + 1}/${signatureCount}` : 'Sign';
+        
         // Call progress callback - wallet will open for signing
-        onProgress?.({ type: 'signing', stepIndex: currentStepIndex, totalSteps });
-        await Promise.all(
-          bundle.requirements.signatures.map((requirement) =>
-            requirement.sign(walletClient, walletClient.account)
-          )
-        );
-        // After signing completes, mark as done and move to next step
+        onProgress?.({ 
+          type: 'signing', 
+          stepIndex: currentStepIndex, 
+          totalSteps,
+          stepLabel 
+        });
+        
+        await signature.sign(walletClient, walletClient.account);
+        
+        // After signing completes, move to next step
         currentStepIndex++;
       }
       
-      // Send any prerequisite transactions (like approvals) and wait for them to be mined
-      if (hasPrerequisiteTxs) {
-        // Get the contract address from the first prerequisite transaction (usually Permit2)
-        const firstPrereqTx = bundle.requirements.txs[0];
-        const contractAddress = firstPrereqTx.tx.to || '';
+      // Send prerequisite transactions - each transaction is its own step
+      for (let i = 0; i < prerequisiteTxCount; i++) {
+        const prereqTx = bundle.requirements.txs[i];
+        const contractAddress = prereqTx.tx.to || '';
+        const stepLabel = prerequisiteTxCount > 1 
+          ? `Approve ${i + 1}/${prerequisiteTxCount}` 
+          : 'Approve';
         
         // Call progress callback BEFORE sending - wallet will open for approval
         onProgress?.({ 
           type: 'approving', 
           stepIndex: currentStepIndex, 
           totalSteps,
+          stepLabel,
           contractAddress 
         });
         
-        for (const { tx } of bundle.requirements.txs) {
-          // Wallet opens here for approval transaction
-          const prereqHash = await walletClient.sendTransaction({
-            ...tx,
-            account: walletClient.account,
-          });
-          
-          if (publicClient) {
-            await publicClient.waitForTransactionReceipt({ hash: prereqHash });
-          }
+        // Wallet opens here for approval transaction
+        const prereqHash = await walletClient.sendTransaction({
+          ...prereqTx.tx,
+          account: walletClient.account,
+        });
+        
+        // Notify about approval transaction hash
+        onProgress?.({ 
+          type: 'approving', 
+          stepIndex: currentStepIndex, 
+          totalSteps,
+          stepLabel,
+          contractAddress,
+          txHash: prereqHash
+        });
+        
+        if (publicClient) {
+          await publicClient.waitForTransactionReceipt({ hash: prereqHash });
         }
         
-        // After prerequisite transactions (like approvals), wait a moment for state to propagate
-        // This ensures the simulation state reflects the new allowances before we estimate gas
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // After each prerequisite transaction, wait a moment for state to propagate
+        if (i < prerequisiteTxCount - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
         currentStepIndex++;
+      }
+      
+      // Final wait after all prerequisite transactions
+      if (prerequisiteTxCount > 0) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       // Send the main bundle transaction
@@ -428,7 +452,7 @@ export function useVaultTransactions(vaultAddress?: string) {
           const isAllowanceError = errorString.toLowerCase().includes('allowance') || 
                                    errorString.toLowerCase().includes('transfer amount exceeds');
           
-          if (hasPrerequisiteTxs && isAllowanceError) {
+          if (prerequisiteTxCount > 0 && isAllowanceError) {
             // Wait a bit longer for state to propagate, then recreate bundle
             await new Promise(resolve => setTimeout(resolve, 2000));
             
@@ -475,6 +499,7 @@ export function useVaultTransactions(vaultAddress?: string) {
         type: 'confirming', 
         stepIndex: currentStepIndex, 
         totalSteps,
+        stepLabel: 'Confirm',
         txHash: '' // Will be updated after sending
       });
 
@@ -492,6 +517,7 @@ export function useVaultTransactions(vaultAddress?: string) {
         type: 'confirming', 
         stepIndex: currentStepIndex, 
         totalSteps,
+        stepLabel: 'Confirm',
         txHash 
       });
 

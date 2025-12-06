@@ -96,13 +96,16 @@ export function TransactionModalProvider({ children }: { children: ReactNode }) 
     vaultSymbol: string,
     amount?: string
   ) => {
+    // Always explicitly set amount - clear it if not provided or empty
+    const normalizedAmount = amount && amount.trim() ? amount.trim() : null;
+    
     setModalState({
       isOpen: true,
       type,
       vaultAddress,
       vaultName,
       vaultSymbol,
-      amount: amount || null,
+      amount: normalizedAmount,
       status: 'preview',
       error: null,
       txHash: null,

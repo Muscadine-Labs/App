@@ -125,19 +125,29 @@ export function TransactionModal() {
   const vaultDataContext = useVaultData();
   
   const [currentTxHash, setCurrentTxHash] = useState<string | null>(null);
+  const [prerequisiteTxHashes, setPrerequisiteTxHashes] = useState<Map<number, string>>(new Map());
+  const [prerequisiteReceipts, setPrerequisiteReceipts] = useState<Map<number, boolean>>(new Map());
   const [assetPrice, setAssetPrice] = useState<number | null>(null);
-  const [currentStep, setCurrentStep] = useState<{ stepIndex: number; totalSteps: number; type: 'approving' | 'confirming' } | null>(null);
+  const [stepsInfo, setStepsInfo] = useState<Array<{ stepIndex: number; label: string; type: 'signing' | 'approving' | 'confirming'; txHash?: string }>>([]);
+  const [totalSteps, setTotalSteps] = useState<number>(0);
 
   // Reset transaction hash and step when modal opens (preview status) or closes
   useEffect(() => {
     if (!modalState.isOpen) {
       // Clear hash and step when modal closes
       setCurrentTxHash(null);
-      setCurrentStep(null);
+      setPrerequisiteTxHashes(new Map());
+      setPrerequisiteReceipts(new Map());
+      setStepsInfo([]);
+      setTotalSteps(0);
     } else if (modalState.status === 'preview') {
       // Clear hash and step when modal opens in preview state (starting new transaction)
+      // The amount is already properly reset by openTransactionModal in the context
       setCurrentTxHash(null);
-      setCurrentStep(null);
+      setPrerequisiteTxHashes(new Map());
+      setPrerequisiteReceipts(new Map());
+      setStepsInfo([]);
+      setTotalSteps(0);
     }
   }, [modalState.status, modalState.isOpen]);
 
@@ -246,6 +256,43 @@ export function TransactionModal() {
     },
   });
 
+  // Wait for prerequisite transaction receipts - track the current one being processed
+  const currentPrerequisiteStep = stepsInfo.find(step => 
+    (step.type === 'signing' || step.type === 'approving') && 
+    step.txHash && 
+    !prerequisiteReceipts.get(step.stepIndex)
+  );
+  
+  const { data: prerequisiteReceipt, error: prerequisiteReceiptError } = useWaitForTransactionReceipt({
+    hash: currentPrerequisiteStep?.txHash as `0x${string}`,
+    query: {
+      enabled: !!currentPrerequisiteStep?.txHash && 
+              (modalState.status === 'approving' || modalState.status === 'signing') && 
+              modalState.isOpen,
+    },
+  });
+
+  // Handle prerequisite transaction receipts
+  useEffect(() => {
+    if (prerequisiteReceipt && currentPrerequisiteStep) {
+      // Mark this prerequisite step as completed
+      setPrerequisiteReceipts(prev => new Map(prev).set(currentPrerequisiteStep.stepIndex, true));
+    } else if (prerequisiteReceiptError && currentPrerequisiteStep) {
+      // Check if prerequisite error is a cancellation
+      if (isCancellationError(prerequisiteReceiptError)) {
+        // Keep modal open and reset to preview state
+        updateTransactionStatus('preview');
+        setCurrentTxHash(null);
+        setPrerequisiteTxHashes(new Map());
+        setPrerequisiteReceipts(new Map());
+        setStepsInfo([]);
+        setTotalSteps(0);
+      } else {
+        updateTransactionStatus('error', formatTransactionError(prerequisiteReceiptError));
+      }
+    }
+  }, [prerequisiteReceipt, prerequisiteReceiptError, currentPrerequisiteStep, updateTransactionStatus]);
+
   // Handle transaction receipt - only mark as success when receipt is confirmed
   useEffect(() => {
     // Only process receipt when status is confirming and we have a receipt
@@ -254,13 +301,16 @@ export function TransactionModal() {
       setTimeout(() => {
         closeTransactionModal();
       }, 3000);
-    } else if (receiptError && modalState.status === 'confirming' && currentTxHash) {
+      } else if (receiptError && modalState.status === 'confirming' && currentTxHash) {
       // Check if receipt error is a cancellation
       if (isCancellationError(receiptError)) {
         // Keep modal open and reset to preview state
         updateTransactionStatus('preview');
         setCurrentTxHash(null);
-        setCurrentStep(null);
+        setPrerequisiteTxHashes(new Map());
+        setPrerequisiteReceipts(new Map());
+        setStepsInfo([]);
+        setTotalSteps(0);
       } else {
         updateTransactionStatus('error', formatTransactionError(receiptError));
       }
@@ -281,11 +331,43 @@ export function TransactionModal() {
         try {
           // Progress callback to track transaction steps
           const onProgress = (step: TransactionProgressStep) => {
-            if (step.type === 'approving') {
-              setCurrentStep({ stepIndex: step.stepIndex, totalSteps: step.totalSteps, type: 'approving' });
+            // Store total steps for building the full steps array
+            setTotalSteps(step.totalSteps);
+            
+            // Update steps info with the current step
+            setStepsInfo(prev => {
+              const newSteps = [...prev];
+              const existingIndex = newSteps.findIndex(s => s.stepIndex === step.stepIndex);
+              const stepInfo = {
+                stepIndex: step.stepIndex,
+                label: step.stepLabel || (step.type === 'signing' ? 'Sign' : step.type === 'approving' ? 'Approve' : 'Confirm'),
+                type: step.type,
+                txHash: step.type === 'confirming' ? step.txHash : (step.type === 'approving' ? step.txHash : undefined)
+              };
+              
+              if (existingIndex >= 0) {
+                newSteps[existingIndex] = stepInfo;
+              } else {
+                // Ensure array is large enough
+                while (newSteps.length <= step.stepIndex) {
+                  newSteps.push({ stepIndex: newSteps.length, label: '', type: 'confirming' });
+                }
+                newSteps[step.stepIndex] = stepInfo;
+              }
+              
+              return newSteps;
+            });
+            
+            // Update status based on step type
+            if (step.type === 'signing') {
+              updateTransactionStatus('signing');
+            } else if (step.type === 'approving') {
               updateTransactionStatus('approving');
+              // Track prerequisite transaction hash
+              if (step.txHash) {
+                setPrerequisiteTxHashes(prev => new Map(prev).set(step.stepIndex, step.txHash!));
+              }
             } else if (step.type === 'confirming') {
-              setCurrentStep({ stepIndex: step.stepIndex, totalSteps: step.totalSteps, type: 'confirming' });
               updateTransactionStatus('confirming', undefined, step.txHash);
             }
           };
@@ -333,7 +415,10 @@ export function TransactionModal() {
         // Keep modal open and reset to preview state
         updateTransactionStatus('preview');
         setCurrentTxHash(null);
-        setCurrentStep(null);
+        setPrerequisiteTxHashes(new Map());
+        setPrerequisiteReceipts(new Map());
+        setStepsInfo([]);
+        setTotalSteps(0);
         return;
       }
       
@@ -348,63 +433,70 @@ export function TransactionModal() {
   }
 
   const isPreview = modalState.status === 'preview';
+  const isSigning = modalState.status === 'signing';
   const isApproving = modalState.status === 'approving';
   const isConfirming = modalState.status === 'confirming';
   const isSuccess = modalState.status === 'success';
   const isError = modalState.status === 'error';
 
-  // Determine steps for status bar
+  // Determine steps for status bar dynamically based on stepsInfo
   // Show steps when transaction is in progress or completed
-  const steps = (isApproving || isConfirming || isSuccess) ? (() => {
-    // If transaction is successful, show all steps as completed
-    if (isSuccess) {
-      if (currentStep && currentStep.totalSteps > 1) {
-        return [
-          { label: 'Approve', completed: true, active: false },
-          { label: 'Confirm', completed: true, active: false }
-        ];
-      } else {
-        return [
-          { label: 'Confirm', completed: true, active: false }
-        ];
+  const steps = (isSigning || isApproving || isConfirming || isSuccess) ? (() => {
+    // Use totalSteps if available, otherwise calculate from stepsInfo
+    const effectiveTotalSteps = totalSteps > 0 ? totalSteps : (stepsInfo.length > 0 ? Math.max(...stepsInfo.map(s => s.stepIndex)) + 1 : 0);
+    
+    // If we have totalSteps or stepsInfo, use it to build the steps dynamically
+    if (effectiveTotalSteps > 0) {
+      const stepArray: Array<{ label: string; completed: boolean; active: boolean }> = [];
+      
+      // Build steps array for all steps (even if not all are in stepsInfo yet)
+      for (let i = 0; i < effectiveTotalSteps; i++) {
+        const stepInfo = stepsInfo.find(s => s.stepIndex === i);
+        const isCompleted = stepInfo 
+          ? (stepInfo.type === 'confirming' 
+              ? !!receipt 
+              : !!prerequisiteReceipts.get(i))
+          : false;
+        const isActive = stepInfo 
+          ? ((stepInfo.type === 'signing' && isSigning) ||
+             (stepInfo.type === 'approving' && isApproving) ||
+             (stepInfo.type === 'confirming' && isConfirming)) && !isCompleted
+          : false;
+        
+        // Default label based on step index if we don't have stepInfo yet
+        let label = stepInfo?.label;
+        if (!label) {
+          // If we're past approval steps and haven't seen confirm yet, it's likely the confirm step
+          const approvalSteps = stepsInfo.filter(s => s.type === 'approving').length;
+          if (i === approvalSteps && !stepInfo) {
+            label = 'Confirm';
+          } else {
+            label = `Step ${i + 1}`;
+          }
+        }
+        
+        stepArray.push({
+          label,
+          completed: isCompleted || (isSuccess && i < effectiveTotalSteps),
+          active: isActive
+        });
       }
+      
+      return stepArray;
     }
     
-    // If we have currentStep info, use it to determine which steps to show
-    if (currentStep) {
-      // Check if there's an approval step (totalSteps > 1 means there's an approval)
-      const hasApprovalStep = currentStep.totalSteps > 1;
-      
-      if (hasApprovalStep) {
-        return [
-          { 
-            label: 'Approve', 
-            completed: currentStep.stepIndex > 0 || currentStep.type === 'confirming', 
-            active: currentStep.type === 'approving' 
-          },
-          { 
-            label: 'Confirm', 
-            completed: false, 
-            active: currentStep.type === 'confirming' 
-          }
-        ];
-      } else {
-        // Only confirmation step
-        return [
-          { 
-            label: 'Confirm', 
-            completed: false, 
-            active: true 
-          }
-        ];
-      }
-    } else {
-      // Fallback: show both steps if we don't have step info yet
+    // Fallback: if transaction is successful but we don't have stepsInfo, show generic steps
+    if (isSuccess) {
       return [
-        { label: 'Approve', completed: false, active: isApproving },
-        { label: 'Confirm', completed: false, active: isConfirming }
+        { label: 'Confirm', completed: true, active: false }
       ];
     }
+    
+    // Fallback: show generic steps if we don't have step info yet
+    return [
+      { label: 'Approve', completed: false, active: isApproving },
+      { label: 'Confirm', completed: false, active: isConfirming }
+    ];
   })() : [];
 
   return (
@@ -425,7 +517,7 @@ export function TransactionModal() {
           <h2 className="text-xl font-semibold text-[var(--foreground)]">
             {modalState.status === 'preview' ? 'Review' : 'Confirm'}
           </h2>
-          {!isApproving && !isConfirming && (
+          {!isSigning && !isApproving && !isConfirming && (
             <button
               onClick={closeTransactionModal}
               className="w-8 h-8 rounded-full bg-[var(--surface)] hover:bg-[var(--surface-hover)] flex items-center justify-center transition-colors"
@@ -438,6 +530,45 @@ export function TransactionModal() {
 
         {/* Content */}
         <div className="p-6 space-y-6">
+          {isSuccess && (
+            <div className="flex items-center gap-3 p-4 bg-[var(--success-subtle)] rounded-lg border border-[var(--success)]">
+              <div className="w-8 h-8 rounded-full bg-[var(--success)] flex items-center justify-center flex-shrink-0">
+                <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-medium text-[var(--foreground)]">
+                  Transaction confirmed!
+                </p>
+                {currentTxHash && (
+                  <a
+                    href={`https://basescan.org/tx/${currentTxHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[var(--foreground-secondary)] hover:text-[var(--foreground)] transition-colors mt-1 inline-flex items-center gap-1"
+                  >
+                    <span className="font-mono">{`${currentTxHash.slice(0, 6)}...${currentTxHash.slice(-4)}`}</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="w-3 h-3"
+                    >
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+
           {isError && (
             <>
               <div className="flex items-center gap-3 p-4 bg-[var(--danger-subtle)] rounded-lg border border-[var(--danger)]">
@@ -454,7 +585,10 @@ export function TransactionModal() {
                 onClick={() => {
                   updateTransactionStatus('preview');
                   setCurrentTxHash(null);
-                  setCurrentStep(null);
+                  setPrerequisiteTxHashes(new Map());
+                  setPrerequisiteReceipts(new Map());
+                  setStepsInfo([]);
+                  setTotalSteps(0);
                 }}
                 className="w-full px-4 py-3 bg-[var(--surface)] hover:bg-[var(--surface-hover)] text-[var(--foreground)] font-medium rounded-lg transition-colors text-sm"
               >
@@ -464,7 +598,7 @@ export function TransactionModal() {
           )}
 
           {/* Transaction Info - Show in preview, during transaction execution, and on success */}
-          {(modalState.status === 'preview' || isApproving || isConfirming || isSuccess || isError) && (
+          {(modalState.status === 'preview' || isSigning || isApproving || isConfirming || isSuccess || isError) && (
             <>
               {/* Vault Info */}
               <div className="flex items-center gap-3">
@@ -580,44 +714,39 @@ export function TransactionModal() {
                 </div>
               )}
 
-              {/* Execute Bundle - Show during transaction execution */}
-              {(isApproving || isConfirming) && currentTxHash && (
-                <div className="pt-4 border-t border-[var(--border-subtle)]">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-[var(--foreground-secondary)]">Execute your bundle</span>
-                    <div className="flex items-center gap-2">
-                      <a
-                        href={`https://basescan.org/tx/${currentTxHash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm font-mono text-[var(--foreground-secondary)] bg-[var(--surface)] px-2 py-1 rounded hover:text-[var(--foreground)] transition-colors"
-                      >
-                        {`${currentTxHash.slice(0, 6)}...${currentTxHash.slice(-4)}`}
-                      </a>
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="w-4 h-4 text-[var(--foreground-secondary)]"
-                      >
-                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                        <polyline points="15 3 21 3 21 9" />
-                        <line x1="10" y1="14" x2="21" y2="3" />
-                      </svg>
-                    </div>
-                  </div>
+              {/* Transaction Link - Only show as subtle link during confirming, hidden during success */}
+              {(isSigning || isApproving || isConfirming) && currentTxHash && !isSuccess && (
+                <div className="pt-2">
+                  <a
+                    href={`https://basescan.org/tx/${currentTxHash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[var(--foreground-secondary)] hover:text-[var(--foreground)] transition-colors flex items-center gap-1"
+                  >
+                    <span className="font-mono">{`${currentTxHash.slice(0, 6)}...${currentTxHash.slice(-4)}`}</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="w-3 h-3"
+                    >
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                  </a>
                 </div>
               )}
 
               {/* Error Transaction Info */}
-              {isError && currentStep && (
+              {isError && stepsInfo.length > 0 && (
                 <div className="pt-4 border-t border-[var(--danger)]">
                   <p className="text-sm text-[var(--danger)]">
-                    Transaction {currentStep.stepIndex + 1}/{currentStep.totalSteps} - An error occurred
+                    Transaction {stepsInfo.findIndex(s => s.type === 'confirming' || s.type === 'approving' || s.type === 'signing') + 1}/{stepsInfo.length} - An error occurred
                   </p>
                 </div>
               )}
@@ -633,8 +762,8 @@ export function TransactionModal() {
                 </button>
               )}
 
-              {/* Status Bar - Replace confirm button during approving/confirming/success */}
-              {(isApproving || isConfirming || isSuccess) && steps.length > 0 && (
+              {/* Status Bar - Replace confirm button during signing/approving/confirming/success */}
+              {(isSigning || isApproving || isConfirming || isSuccess) && steps.length > 0 && (
                 <div className="space-y-3">
                   {/* Step Labels */}
                   <div className="flex items-center justify-between">
@@ -695,9 +824,9 @@ export function TransactionModal() {
                     )}
                     
                     {/* Success state - show full green bar */}
-                    {isSuccess && steps.every(step => step.completed) && (
+                    {isSuccess && (
                       <div 
-                        className="absolute h-full bg-[var(--success)] transition-all duration-300"
+                        className="absolute h-full bg-[var(--success)] transition-all duration-300 z-20"
                         style={{
                           width: '100%',
                         }}
