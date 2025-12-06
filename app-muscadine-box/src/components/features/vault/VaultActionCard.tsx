@@ -435,10 +435,18 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
   const enteredAmount = parseFloat(amount) || 0;
   const enteredAmountUsd = assetPrice ? enteredAmount * assetPrice : 0;
   
+  // APY is already in decimal form (e.g., 0.05 for 5%)
+  // For compound interest calculations:
+  // - Yearly: Principal * APY (simple projection)
+  // - Monthly: Principal * ((1 + APY)^(1/12) - 1) for compound, or Principal * (APY / 12) for simple approximation
+  // We'll use the compound formula for accuracy since APY represents compound interest
+  
   // Old interest (based on current deposits only) - in USD
-  const apyPercent = vaultData.apy * 100;
-  const oldYearlyInterest = userVaultValueUsd * (apyPercent / 100);
-  const oldMonthlyInterest = oldYearlyInterest / 12;
+  const apyDecimal = vaultData.apy; // Already in decimal form (0.05 = 5%)
+  const oldYearlyInterest = userVaultValueUsd * apyDecimal;
+  // Compound monthly interest: (1 + APY)^(1/12) - 1
+  const monthlyRate = Math.pow(1 + apyDecimal, 1/12) - 1;
+  const oldMonthlyInterest = userVaultValueUsd * monthlyRate;
   
   // New interest (based on current deposits +/- entered amount) - in USD
   let newDepositsUsd = userVaultValueUsd;
@@ -448,8 +456,8 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
     newDepositsUsd = Math.max(0, userVaultValueUsd - enteredAmountUsd);
   }
   
-  const newYearlyInterest = newDepositsUsd * (apyPercent / 100);
-  const newMonthlyInterest = newYearlyInterest / 12;
+  const newYearlyInterest = newDepositsUsd * apyDecimal;
+  const newMonthlyInterest = newDepositsUsd * monthlyRate;
   
   // Use new values for display, but we'll show comparison when amount is entered
   const yearlyInterest = enteredAmount > 0 ? newYearlyInterest : oldYearlyInterest;
@@ -831,7 +839,7 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
                   </div>
                 </div>
                 <span className="text-sm font-medium text-[var(--foreground)]">
-                  {apyPercent.toFixed(2)}%
+                  {(vaultData.apy * 100).toFixed(2)}%
                 </span>
               </div>
               
@@ -1110,7 +1118,7 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
                   </div>
                 </div>
                 <span className="text-sm font-medium text-[var(--foreground)]">
-                  {apyPercent.toFixed(2)}%
+                  {(vaultData.apy * 100).toFixed(2)}%
                 </span>
               </div>
               
