@@ -5,7 +5,7 @@ import { MorphoVaultData } from '@/types/vault';
 import { formatSmartCurrency, formatAssetAmount } from '@/lib/formatter';
 import { useAccount } from 'wagmi';
 import CopiableAddress from '@/components/common/CopiableAddress';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
 interface VaultActivityProps {
   vaultData: MorphoVaultData;

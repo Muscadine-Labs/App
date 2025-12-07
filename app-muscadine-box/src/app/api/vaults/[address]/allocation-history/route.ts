@@ -180,8 +180,6 @@ export async function GET(
       });
     }
 
-    const totalAllocated = Array.from(currentAllocations.values()).reduce((sum, a) => sum + a.value, 0);
-
     // Note: Morpho API does not expose historical vault allocation data per market.
     // Market historicalState.supplyAssetsUsd represents total market supply, not vault-specific allocation.
     // We use current allocation percentages applied to historical total assets as an approximation.

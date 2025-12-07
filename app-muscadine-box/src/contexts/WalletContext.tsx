@@ -144,6 +144,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   // USDT and DAI balances are fetched but not currently used in calculations
   // Kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { data: _usdtBalance } = useReadContract({
     address: TOKEN_ADDRESSES.USDT,
     abi: ERC20_ABI,
@@ -152,6 +153,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     query: { enabled: !!address }
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { data: _daiBalance } = useReadContract({
     address: TOKEN_ADDRESSES.DAI,
     abi: ERC20_ABI,
@@ -182,6 +184,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     query: { enabled: !!address }
   });
 
+  // USDT and DAI decimals are fetched but not currently used in calculations
+  // Kept for potential future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { data: usdtDecimals } = useReadContract({
     address: TOKEN_ADDRESSES.USDT,
     abi: ERC20_ABI,
@@ -189,6 +194,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     query: { enabled: !!address }
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { data: daiDecimals } = useReadContract({
     address: TOKEN_ADDRESSES.DAI,
     abi: ERC20_ABI,
@@ -492,9 +498,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const wethFormatted = wethBalance ? Number(wethBalance) / Math.pow(10, wethDecimalsValue) : 0;
   const wethUsdValue = wethFormatted * (tokenPrices.weth || tokenPrices.eth || 0);
   
-  const usdtDecimalsValue = usdtDecimals || 6;
   // USDT and DAI USD values are calculated but not currently used in the final token balances array
   // They're kept here for potential future use
+  // const usdtDecimalsValue = usdtDecimals || 6;
   // const usdtFormatted = usdtBalance ? Number(usdtBalance) / Math.pow(10, usdtDecimalsValue) : 0;
   // const usdtUsdValue = usdtFormatted * (tokenPrices.usdt || 1);
   

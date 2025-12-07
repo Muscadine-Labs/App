@@ -230,8 +230,7 @@ export function useVaultTransactions(vaultAddress?: string) {
             );
           }
           
-          // Determine how much to use from existing WETH vs wrapping ETH
-          const wethToUse = amountBigInt > existingWeth ? existingWeth : amountBigInt;
+          // Determine how much ETH to wrap
           const ethToWrap = amountBigInt > existingWeth ? amountBigInt - existingWeth : BigInt(0);
           
           // If we need to wrap ETH, add wrap operation
@@ -311,7 +310,7 @@ export function useVaultTransactions(vaultAddress?: string) {
               functionName: 'convertToShares',
               args: [amountBigInt],
             });
-          } catch (error) {
+          } catch {
             throw new Error('Failed to convert assets to shares. Please try again.');
           }
           

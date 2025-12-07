@@ -81,7 +81,6 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
   const { morphoHoldings, tokenBalances, refreshBalances } = useWallet();
   const queryClient = useQueryClient();
   const lastSuccessTxHash = useRef<string | null>(null);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   // Click outside to close breakdowns
   useOnClickOutside(apyBreakdownRef, () => setShowApyBreakdown(false));
@@ -177,8 +176,6 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
             refetchTokenBalance();
           }
           
-          setRefreshTrigger(prev => prev + 1);
-          
           // Refresh again after blockchain state updates
           await new Promise(resolve => setTimeout(resolve, 2000));
           queryClient.invalidateQueries();
@@ -190,8 +187,6 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
           } else {
             refetchTokenBalance();
           }
-          
-          setRefreshTrigger(prev => prev + 1);
         } catch (error) {
           console.error('Error refreshing balances after transaction:', error);
         }
@@ -218,7 +213,7 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
   // Helper function to calculate max depositable amount by rounding DOWN the BigInt balance
   // This prevents attempting to deposit more than available due to rounding issues
   // Uses full asset decimals precision to avoid leaving trace amounts
-  // Include refreshTrigger to recalculate when balances are refreshed after transactions
+  // Recalculates automatically when balances change (ethBalance, wethTokenBalance, tokenBalance)
   const calculateMaxDepositable = useMemo(() => {
     const symbol = vaultData.symbol.toUpperCase();
     
@@ -280,7 +275,7 @@ export default function VaultActionCard({ vaultData }: VaultActionCardProps) {
     setAssetBalanceBigInt(null);
     
     return 0;
-  }, [ethBalance, wethTokenBalance, tokenBalance, tokenBalances, vaultData.symbol, vaultData.assetDecimals, refreshTrigger]);
+  }, [ethBalance, wethTokenBalance, tokenBalance, tokenBalances, vaultData.symbol, vaultData.assetDecimals]);
 
   // Fetch asset price
   useEffect(() => {

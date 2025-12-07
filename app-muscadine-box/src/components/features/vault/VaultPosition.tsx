@@ -34,8 +34,6 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     pos => pos.vault.address.toLowerCase() === vaultData.address.toLowerCase()
   );
 
-  const userVaultShares = currentVaultPosition ? 
-    (parseFloat(currentVaultPosition.shares) / 1e18).toFixed(6) : '0';
 
   const userVaultValueUsd = currentVaultPosition ? 
     (parseFloat(currentVaultPosition.shares) / 1e18) * currentVaultPosition.vault.state.sharePriceUsd : 0;

@@ -125,7 +125,6 @@ export function TransactionModal() {
   const vaultDataContext = useVaultData();
   
   const [currentTxHash, setCurrentTxHash] = useState<string | null>(null);
-  const [prerequisiteTxHashes, setPrerequisiteTxHashes] = useState<Map<number, string>>(new Map());
   const [prerequisiteReceipts, setPrerequisiteReceipts] = useState<Map<number, boolean>>(new Map());
   const [assetPrice, setAssetPrice] = useState<number | null>(null);
   const [stepsInfo, setStepsInfo] = useState<Array<{ stepIndex: number; label: string; type: 'signing' | 'approving' | 'confirming'; txHash?: string }>>([]);
@@ -136,7 +135,6 @@ export function TransactionModal() {
     if (!modalState.isOpen) {
       // Clear hash and step when modal closes
       setCurrentTxHash(null);
-      setPrerequisiteTxHashes(new Map());
       setPrerequisiteReceipts(new Map());
       setStepsInfo([]);
       setTotalSteps(0);
@@ -144,7 +142,6 @@ export function TransactionModal() {
       // Clear hash and step when modal opens in preview state (starting new transaction)
       // The amount is already properly reset by openTransactionModal in the context
       setCurrentTxHash(null);
-      setPrerequisiteTxHashes(new Map());
       setPrerequisiteReceipts(new Map());
       setStepsInfo([]);
       setTotalSteps(0);
@@ -283,7 +280,6 @@ export function TransactionModal() {
         // Keep modal open and reset to preview state
         updateTransactionStatus('preview');
         setCurrentTxHash(null);
-        setPrerequisiteTxHashes(new Map());
         setPrerequisiteReceipts(new Map());
         setStepsInfo([]);
         setTotalSteps(0);
@@ -307,7 +303,6 @@ export function TransactionModal() {
         // Keep modal open and reset to preview state
         updateTransactionStatus('preview');
         setCurrentTxHash(null);
-        setPrerequisiteTxHashes(new Map());
         setPrerequisiteReceipts(new Map());
         setStepsInfo([]);
         setTotalSteps(0);
@@ -363,10 +358,6 @@ export function TransactionModal() {
               updateTransactionStatus('signing');
             } else if (step.type === 'approving') {
               updateTransactionStatus('approving');
-              // Track prerequisite transaction hash
-              if (step.txHash) {
-                setPrerequisiteTxHashes(prev => new Map(prev).set(step.stepIndex, step.txHash!));
-              }
             } else if (step.type === 'confirming') {
               updateTransactionStatus('confirming', undefined, step.txHash);
             }
@@ -415,7 +406,6 @@ export function TransactionModal() {
         // Keep modal open and reset to preview state
         updateTransactionStatus('preview');
         setCurrentTxHash(null);
-        setPrerequisiteTxHashes(new Map());
         setPrerequisiteReceipts(new Map());
         setStepsInfo([]);
         setTotalSteps(0);
@@ -432,7 +422,6 @@ export function TransactionModal() {
     return null;
   }
 
-  const isPreview = modalState.status === 'preview';
   const isSigning = modalState.status === 'signing';
   const isApproving = modalState.status === 'approving';
   const isConfirming = modalState.status === 'confirming';
@@ -585,7 +574,6 @@ export function TransactionModal() {
                 onClick={() => {
                   updateTransactionStatus('preview');
                   setCurrentTxHash(null);
-                  setPrerequisiteTxHashes(new Map());
                   setPrerequisiteReceipts(new Map());
                   setStepsInfo([]);
                   setTotalSteps(0);
