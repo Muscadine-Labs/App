@@ -15,7 +15,6 @@ import { NotificationProvider } from '../contexts/NotificationContext'
 import { WalletProvider } from '../contexts/WalletContext'
 import { TransactionModalProvider } from '../contexts/TransactionModalContext'
 import { LearningProvider } from '../contexts/LearningContext'
-import { ReconnectHandler } from '../components/common/ReconnectHandler'
 
 export const client = new ApolloClient({
     link: new HttpLink({ uri: "https://api.morpho.org/graphql" }),
@@ -48,9 +47,9 @@ export function Providers({ children, initialState }: Props) {
     <WagmiProvider
       config={config}
       initialState={initialState} // undefined in dev is fine
+      reconnectOnMount={true} // Automatically reconnect on mount (page reload) - defaults to true but explicit for clarity
     >
       <QueryClientProvider client={queryClient}>
-        <ReconnectHandler />
         <OnchainKitProvider
           apiKey={apiKey}
           projectId={projectId}

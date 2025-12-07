@@ -4,28 +4,46 @@ import { coinbaseWallet, metaMask } from 'wagmi/connectors'
 
 const alchemyApiKey = process.env.NEXT_PUBLIC_ALCHEMY_API_KEY;
 
-// Custom storage (Kept your existing logic)
+// Custom storage that prioritizes cookies for SSR compatibility
+// In production (Vercel), cookies are the primary source of truth
 function createHybridStorage() {
   return createStorage({
     storage: {
       async getItem(key) {
+        // Always try cookies first for SSR compatibility
+        const cookieValue = await cookieStorage.getItem(key)
+        if (cookieValue) return cookieValue
+        
+        // Fallback to localStorage only on client side
         if (typeof window !== 'undefined') {
-          const localValue = localStorage.getItem(key)
-          if (localValue) return localValue
+          return localStorage.getItem(key)
         }
-        return cookieStorage.getItem(key)
+        return null
       },
       async setItem(key, value) {
+        // Always set cookie first (required for SSR/production)
+        await cookieStorage.setItem(key, value)
+        
+        // Also set in localStorage on client side for faster access
         if (typeof window !== 'undefined') {
-          localStorage.setItem(key, value)
+          try {
+            localStorage.setItem(key, value)
+          } catch {
+            // localStorage might fail (private browsing, quota exceeded, etc.)
+            // Cookie is already set, so we can continue
+          }
         }
-        cookieStorage.setItem(key, value)
       },
       async removeItem(key) {
+        // Remove from both storage mechanisms
+        await cookieStorage.removeItem(key)
         if (typeof window !== 'undefined') {
-          localStorage.removeItem(key)
+          try {
+            localStorage.removeItem(key)
+          } catch {
+            // Ignore localStorage errors
+          }
         }
-        cookieStorage.removeItem(key)
       },
     },
   })
