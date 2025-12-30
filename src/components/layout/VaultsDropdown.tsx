@@ -6,7 +6,6 @@ import { VAULTS } from '@/lib/vaults';
 import { getVaultRoute, findVaultByAddress } from '@/lib/vault-utils';
 import { getVaultLogo } from '@/types/vault';
 import Image from 'next/image';
-import { useOnClickOutside } from '@/hooks/onClickOutside';
 import { Button } from '../ui/Button';
 
 interface VaultsDropdownProps {
@@ -18,9 +17,6 @@ export function VaultsDropdown({ isActive }: VaultsDropdownProps) {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
-
-  // Close dropdown when clicking outside
-  useOnClickOutside(dropdownRef, () => setIsOpen(false));
 
   // Get vaults from VAULTS
   const vaults = Object.values(VAULTS);
@@ -37,12 +33,16 @@ export function VaultsDropdown({ isActive }: VaultsDropdownProps) {
   };
 
   return (
-    <div ref={dropdownRef} className="relative">
+    <div 
+      ref={dropdownRef} 
+      className="relative"
+      onMouseEnter={() => setIsOpen(true)}
+      onMouseLeave={() => setIsOpen(false)}
+    >
       <Button
-        onClick={() => setIsOpen(!isOpen)}
         variant="ghost"
         size="sm"
-        className={`min-w-fit ${isActive || isOpen ? 'bg-[var(--surface-elevated)] text-[var(--foreground)]' : ''}`}
+        className={`min-w-fit hover:bg-transparent ${isActive ? 'bg-[var(--surface-elevated)] text-[var(--foreground)]' : ''}`}
       >
         <span className="flex items-center gap-1.5">
           <span className="text-sm">Vaults</span>
@@ -62,7 +62,18 @@ export function VaultsDropdown({ isActive }: VaultsDropdownProps) {
       </Button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 w-64 border border-[var(--border-subtle)] rounded-lg shadow-lg z-[60] overflow-hidden" style={{ backgroundColor: 'var(--surface-elevated)', opacity: 1 }}>
+        <>
+          {/* Invisible bridge to prevent gap closing dropdown */}
+          <div 
+            className="absolute top-full left-0 w-full h-2 z-[60]"
+            onMouseEnter={() => setIsOpen(true)}
+          />
+          <div 
+            className="absolute top-full left-0 mt-2 w-64 border border-[var(--border-subtle)] rounded-lg shadow-lg z-[60] overflow-hidden" 
+            style={{ backgroundColor: 'var(--surface-elevated)', opacity: 1 }}
+            onMouseEnter={() => setIsOpen(true)}
+            onMouseLeave={() => setIsOpen(false)}
+          >
           <div className="max-h-96 overflow-y-auto">
             {vaults.map((vault) => {
               const isCurrentVault = currentVault?.address.toLowerCase() === vault.address.toLowerCase();
@@ -101,6 +112,7 @@ export function VaultsDropdown({ isActive }: VaultsDropdownProps) {
             })}
           </div>
         </div>
+        </>
       )}
     </div>
   );

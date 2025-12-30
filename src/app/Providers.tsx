@@ -2,10 +2,10 @@
 
 import "core-js/proposals/iterator-helpers"; // Polyfill for Iterator Helpers used by @morpho-org/blue-sdk-wagmi
 
-import { ReactNode, useState } from 'react'
+import { ReactNode, useState, useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
-import { RainbowKitProvider, lightTheme, darkTheme } from '@rainbow-me/rainbowkit'
+import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
 import { config } from './config'
 import { base } from 'wagmi/chains'
 import '@rainbow-me/rainbowkit/styles.css'
@@ -50,21 +50,13 @@ export function Providers({ children, initialState }: Props) {
           <QueryClientProvider client={queryClient}>
             <RainbowKitProvider
               initialChain={base}
-              projectId={walletConnectProjectId}
-              theme={{
-                lightMode: lightTheme({
-                  accentColor: '#2563eb', // --primary light mode
-                  accentColorForeground: 'white',
-                  borderRadius: 'medium', // matches rounded-md (6px)
-                  fontStack: 'system',
-                }),
-                darkMode: darkTheme({
-                  accentColor: '#4dabf7', // --primary dark mode
-                  accentColorForeground: 'white',
-                  borderRadius: 'medium', // matches rounded-md (6px)
-                  fontStack: 'system',
-                }),
-              }}
+              theme={darkTheme({
+                accentColor: 'var(--primary)', // Dynamically reads --accent from globals.css
+                accentColorForeground: 'white',
+                borderRadius: 'medium', // Matches site's rounded corners
+                fontStack: 'system',
+                overlayBlur: 'small',
+              })}
             >
               <WalletProvider>
                 <NotificationProvider>

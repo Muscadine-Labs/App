@@ -4,7 +4,6 @@ import React, { useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { NavLink } from "./NavLink";
 import { VaultsDropdown } from "./VaultsDropdown";
 import { navigationItems, NavItem } from "@/config/navigation";
 import { ConnectButton } from "../features/wallet";
@@ -22,21 +21,9 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
 
     const isActive = useCallback((item: NavItem): boolean => {
         // Vaults dropdown is active if we're on a vault page
-        if (item.id === 'vaults') {
-            return pathname?.startsWith('/vaults/') || false;
-        }
-        // Fallback to activeTab for other items
-        return item.id === activeTab;
-    }, [activeTab, pathname]);
+        return item.id === 'vaults' && (pathname?.startsWith('/vaults/') || false);
+    }, [pathname]);
 
-    const handleNavClick = useCallback((item: NavItem) => {
-        // Skip handling for vaults dropdown (it handles its own navigation)
-        if (item.id === 'vaults') {
-            return;
-        }
-        // Set the active tab
-        setActiveTab(item.id as 'dashboard');
-    }, [setActiveTab]);
 
     return (
         <div 
@@ -68,14 +55,8 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                     <nav className="flex items-center gap-2" role="navigation" aria-label="Main navigation">
                         {navigationItems.map((item) => (
                             <div key={item.id} onClick={(e) => e.stopPropagation()}>
-                                {item.id === 'vaults' ? (
+                                {item.id === 'vaults' && (
                                     <VaultsDropdown isActive={isActive(item)} />
-                                ) : (
-                                    <NavLink 
-                                        item={item}
-                                        isActive={isActive(item)}
-                                        onClick={() => handleNavClick(item)}
-                                    />
                                 )}
                             </div>
                         ))}
@@ -84,7 +65,7 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                             href="https://docs.muscadine.io"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center px-3 py-1.5 text-sm rounded-md gap-1.5 hover:bg-[var(--surface-hover)] active:bg-[var(--surface-active)] text-[var(--foreground)] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--border)]"
+                            className="inline-flex items-center justify-center px-3 py-2 text-sm gap-1.5 hover:underline text-[var(--foreground)] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--border)]"
                         >
                             Docs
                         </a>
@@ -92,7 +73,7 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                             href="https://muscadine.io"
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center justify-center px-3 py-1.5 text-sm rounded-md gap-1.5 hover:bg-[var(--surface-hover)] active:bg-[var(--surface-active)] text-[var(--foreground)] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--border)]"
+                            className="inline-flex items-center justify-center px-3 py-1.5 text-sm gap-1.5 hover:underline text-[var(--foreground)] transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[var(--border)]"
                         >
                             Muscadine.io
                         </a>
