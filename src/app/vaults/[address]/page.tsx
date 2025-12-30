@@ -7,7 +7,6 @@ import { Vault } from '@/types/vault';
 import { useVaultDataFetch } from '@/hooks/useVaultDataFetch';
 import { useVaultListPreloader } from '@/hooks/useVaultDataFetch';
 import { VAULTS } from '@/lib/vaults';
-import { useElementTracker } from '@/hooks/useElementTracker';
 import VaultHero from '@/components/features/vault/VaultHero';
 import VaultOverview from '@/components/features/vault/VaultOverview';
 import VaultActionCard from '@/components/features/vault/VaultActionCard';
@@ -32,39 +31,11 @@ export default function VaultPage() {
   const tabsRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Element tracking for learning system
-  const { registerElement, unregisterElement } = useElementTracker({ component: 'VaultPage' });
-  const registeredAddressRef = useRef<string | null>(null);
-
   // Find vault by address
   const vault = findVaultByAddress(address);
 
   // Fetch vault data
   const { vaultData, isLoading, hasError, refetch } = useVaultDataFetch(vault);
-
-  // Register vault-page element when vault is loaded (only once per vault address)
-  useEffect(() => {
-    const currentAddress = vault?.address;
-    
-    // Register if we have a vault address and haven't registered for this address yet
-    if (currentAddress && registeredAddressRef.current !== currentAddress) {
-      // Unregister previous if exists
-      if (registeredAddressRef.current) {
-        unregisterElement('vault-page');
-      }
-      // Register for current address
-      registerElement('vault-page', { type: 'general' });
-      registeredAddressRef.current = currentAddress;
-    }
-    
-    return () => {
-      // Only cleanup if we're actually unmounting (address is still the same)
-      if (registeredAddressRef.current === currentAddress) {
-        unregisterElement('vault-page');
-        registeredAddressRef.current = null;
-      }
-    };
-  }, [vault?.address, registerElement, unregisterElement]);
 
   // Preload all vault data
   const vaults: Vault[] = Object.values(VAULTS).map((v) => ({

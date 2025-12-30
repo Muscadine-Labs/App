@@ -1,17 +1,37 @@
 'use client';
 
-import Dashboard from '@/components/common/Dashboard';
-import { useTab } from '@/contexts/TabContext';
+import { WalletOverview } from '@/components/features/wallet';
+import VaultList from '@/components/features/vault/VaultList';
+import { useVaultListPreloader } from '@/hooks/useVaultDataFetch';
+import { VAULTS } from '@/lib/vaults';
+import { Vault } from '@/types/vault';
 
 export default function Home() {
-  const { activeTab } = useTab();
+  // Get vault list for preloading
+  const vaults: Vault[] = Object.values(VAULTS).map((vault) => ({
+    address: vault.address,
+    name: vault.name,
+    symbol: vault.symbol,
+    chainId: vault.chainId,
+  }));
+
+  // Preload vault data when dashboard loads
+  useVaultListPreloader(vaults);
 
   return (
-    <>
-      {/* Tab Content */}
-      <div className="flex-1">
-        {activeTab === 'dashboard' && <Dashboard />}
+    <div className="w-full bg-[var(--background)] h-full">
+      <div className="flex-1 overflow-y-auto">
+        <div className="grid gap-6 h-full p-6 grid-rows-[auto_1fr] min-h-full">
+          <div className="rounded-lg h-40">
+            <WalletOverview />
+          </div>
+          <div className="rounded-lg h-full">
+            <div className="flex flex-col rounded-lg bg-[var(--surface)] justify-start items-center h-full w-full p-4">
+              <VaultList />
+            </div>
+          </div>
+        </div>
       </div>
-    </>
+    </div>
   );
 }

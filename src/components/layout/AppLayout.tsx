@@ -2,23 +2,20 @@
 
 import React, { type ReactNode, useState, useEffect } from 'react';
 import { NavBar } from './NavBar';
-import { TabProvider } from '@/contexts/TabContext';
-import { NotificationContainer } from '../common/NotificationContainer';
 import RightSidebar from './RightSidebar';
 
 export function AppLayout({ children }: { children: ReactNode }) {
-  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(false);
+  const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(true);
 
   return (
-    <TabProvider>
+    <>
       <LayoutContent 
         isRightSidebarCollapsed={isRightSidebarCollapsed}
         setIsRightSidebarCollapsed={setIsRightSidebarCollapsed}
       >
         {children}
       </LayoutContent>
-      <NotificationContainer />
-    </TabProvider>
+    </>
   );
 }
 
@@ -35,8 +32,8 @@ function LayoutContent({
   useEffect(() => {
     const root = document.documentElement;
     
-    // Calculate sidebar margin  
-    const sidebarMargin = isRightSidebarCollapsed ? 'var(--sidebar-collapsed-width)' : 'var(--sidebar-width)';
+    // Calculate sidebar margin - 0 when collapsed, full width when open
+    const sidebarMargin = isRightSidebarCollapsed ? '0px' : 'var(--sidebar-width)';
     
     // Calculate main width considering only sidebar (navbar is now at top)
     const mainWidth = `calc(100vw - ${sidebarMargin})`;

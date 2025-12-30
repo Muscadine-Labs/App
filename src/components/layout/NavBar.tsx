@@ -8,7 +8,6 @@ import { NavLink } from "./NavLink";
 import { VaultsDropdown } from "./VaultsDropdown";
 import { navigationItems, NavItem } from "@/config/navigation";
 import { ConnectButton } from "../features/wallet";
-import { useTab } from "@/contexts/TabContext";
 import { Icon } from "../ui/Icon";
 
 interface NavBarProps {
@@ -17,7 +16,6 @@ interface NavBarProps {
 }
 
 export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps) {
-    const { activeTab, setActiveTab } = useTab();
     const pathname = usePathname();
 
     const isActive = useCallback((item: NavItem): boolean => {
@@ -25,18 +23,10 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
         if (item.id === 'vaults') {
             return pathname?.startsWith('/vaults/') || false;
         }
-        // Fallback to activeTab for other items
-        return item.id === activeTab;
-    }, [activeTab, pathname]);
-
-    const handleNavClick = useCallback((item: NavItem) => {
-        // Skip handling for vaults dropdown (it handles its own navigation)
-        if (item.id === 'vaults') {
-            return;
-        }
-        // Set the active tab
-        setActiveTab(item.id as 'dashboard');
-    }, [setActiveTab]);
+        // For other items, check if pathname matches
+        // Currently only 'vaults' exists, but this handles future items
+        return pathname === `/${item.id}` || pathname === '/';
+    }, [pathname]);
 
     return (
         <div 
@@ -49,7 +39,6 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                     {/* Logo/Brand with Link */}
                     <Link 
                         href="/" 
-                        onClick={() => setActiveTab('dashboard')}
                         className="flex items-center gap-3 "
                     >
                         <Image
@@ -74,7 +63,6 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                     <NavLink 
                                         item={item}
                                         isActive={isActive(item)}
-                                        onClick={() => handleNavClick(item)}
                                     />
                                 )}
                             </div>

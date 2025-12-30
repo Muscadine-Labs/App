@@ -3,7 +3,6 @@ import Image from 'next/image';
 import { useVaultData } from '../../../contexts/VaultDataContext';
 import { useWallet } from '../../../contexts/WalletContext';
 import { formatSmartCurrency } from '../../../lib/formatter';
-import { useElementTracker } from '../../../hooks/useElementTracker';
 import { useRouter, usePathname } from 'next/navigation';
 import { getVaultRoute } from '../../../lib/vault-utils';
 
@@ -20,7 +19,6 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
     const pathname = usePathname();
     const vaultData = getVaultData(vault.address);
     const loading = isLoading(vault.address);
-    const { onHoverStart, onHoverEnd } = useElementTracker({ component: 'VaultListCard' });
     
     // Check if this vault is active based on the current route
     const vaultRoute = getVaultRoute(vault.address);
@@ -52,8 +50,6 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
                     ? 'bg-[var(--primary-subtle)] border-2 border-[var(--primary)] shadow-md rounded-lg' 
                     : 'hover:bg-[var(--surface-hover)] rounded-lg'
             }`}
-            onMouseEnter={() => onHoverStart('vault-cards')}
-            onMouseLeave={() => onHoverEnd('vault-cards')}
             onClick={handleClick}
         >
             {/* Left side - Vault info */}

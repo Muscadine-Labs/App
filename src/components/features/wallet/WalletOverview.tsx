@@ -1,10 +1,8 @@
 'use client';
 
 import { useAccount } from 'wagmi';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useWallet } from '@/contexts/WalletContext';
-import { useElementTracker } from '@/hooks/useElementTracker';
-import { ELEMENT_PRIORITIES } from '@/types/learning';
 import { formatNumber, formatCurrency } from '@/lib/formatter';
 import {
     useFloating,
@@ -22,7 +20,6 @@ import {
 export default function WalletOverview() {
     const { address, isConnected } = useAccount();
     const { totalUsdValue, liquidUsdValue, morphoUsdValue, tokenBalances, loading: walletLoading } = useWallet();
-    const { registerElement, unregisterElement, onHoverStart, onHoverEnd } = useElementTracker({ component: 'WalletOverview' });
     const [isMounted, setIsMounted] = useState(false);
     const [totalAssetsOpen, setTotalAssetsOpen] = useState(false);
     const [liquidAssetsOpen, setLiquidAssetsOpen] = useState(false);
@@ -73,42 +70,6 @@ export default function WalletOverview() {
         setIsMounted(true);
     }, []);
 
-    // Element tracking for learning system (diff-based to avoid loops)
-    const registeredIdsRef = useRef<Set<string>>(new Set());
-
-    useEffect(() => {
-        const next = new Set<string>();
-        if (isConnected) {
-            next.add('wallet-overview-section');
-            next.add('total-assets');
-            next.add('liquid-assets');
-            next.add('morpho-vaults');
-            if (totalAssetsOpen || liquidAssetsOpen || morphoVaultsOpen) {
-                next.add('asset-dropdowns');
-            }
-        }
-
-        const prev = registeredIdsRef.current;
-        // Register new
-        next.forEach(id => {
-            if (!prev.has(id) && id in ELEMENT_PRIORITIES) {
-                registerElement(id as keyof typeof ELEMENT_PRIORITIES, {});
-            }
-        });
-        // Unregister removed
-        prev.forEach(id => {
-            if (!next.has(id)) unregisterElement(id);
-        });
-        registeredIdsRef.current = next;
-    }, [isConnected, totalAssetsOpen, liquidAssetsOpen, morphoVaultsOpen, registerElement, unregisterElement]);
-
-    useEffect(() => {
-        return () => {
-            registeredIdsRef.current.forEach(id => unregisterElement(id));
-            registeredIdsRef.current.clear();
-        };
-    }, [unregisterElement]);
-
     if (!isMounted) {
         // Return a simple loading state during SSR
         return (
@@ -142,7 +103,7 @@ export default function WalletOverview() {
     
 
     return (
-        <div className="flex flex-col items-start justify-start w-full h-full bg-[var(--surface)] rounded-lg px-8 py-4 gap-6 overflow-x-auto" onMouseEnter={() => onHoverStart('wallet-overview-section')} onMouseLeave={() => onHoverEnd('wallet-overview-section')}>
+        <div className="flex flex-col items-start justify-start w-full h-full bg-[var(--surface)] rounded-lg px-8 py-4 gap-6 overflow-x-auto">
             <div className="flex items-center gap-2">
                 <h1>
                     Wallet {truncatedAddress && (

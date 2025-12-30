@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useNotifications } from '@/contexts/NotificationContext';
 
 interface CopiableAddressProps {
   address: string;
@@ -17,29 +16,15 @@ export default function CopiableAddress({
   truncateLength = 6 
 }: CopiableAddressProps) {
   const [copied, setCopied] = useState(false);
-  const { addNotification } = useNotifications();
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(address);
       setCopied(true);
-      
-      addNotification({
-        type: 'success',
-        title: 'Address Copied',
-        message: `Vault address copied to clipboard`,
-        duration: 3000,
-      });
-
       // Reset the copied state after a short delay
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      addNotification({
-        type: 'error',
-        title: 'Copy Failed',
-        message: 'Failed to copy address to clipboard',
-        duration: 3000,
-      });
+      // Silently fail - the visual feedback (copied state) will handle it
     }
   };
 

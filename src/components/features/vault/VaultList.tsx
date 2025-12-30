@@ -1,8 +1,6 @@
 import { VAULTS } from "@/lib/vaults";
 import VaultListCard from "./VaultListCard";
 import { Vault } from "../../../types/vault";
-import { useEffect } from "react";
-import { useElementTracker } from "../../../hooks/useElementTracker";
 
 interface VaultListProps {
     onVaultSelect?: (vault: Vault | null) => void;
@@ -10,24 +8,12 @@ interface VaultListProps {
 }
 
 export default function VaultList({ onVaultSelect, selectedVaultAddress }: VaultListProps = {}) {
-    const { registerElement, unregisterElement } = useElementTracker({ component: 'VaultList' });
     const vaults: Vault[] = Object.values(VAULTS).map((vault) => ({
         address: vault.address,
         name: vault.name,
         symbol: vault.symbol,
         chainId: vault.chainId,
     }));
-
-    // Element tracking for learning system
-    useEffect(() => {
-        registerElement('vault-list', { type: 'strategy' });
-        registerElement('vault-cards', { type: 'strategy' });
-
-        return () => {
-            unregisterElement('vault-list');
-            unregisterElement('vault-cards');
-        };
-    }, [registerElement, unregisterElement]);
 
     // Legacy support: if onVaultSelect is provided, use it
     // Otherwise, VaultListCard will handle navigation directly

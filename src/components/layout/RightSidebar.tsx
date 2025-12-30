@@ -7,12 +7,13 @@ interface RightSidebarProps {
 export default function RightSidebar({ isCollapsed }: RightSidebarProps) {
     return (
         <div 
-            className={`relative bg-[var(--background)] border-l border-[var(--border-subtle)] transition-all duration-300 flex-shrink-0 ${
-                isCollapsed ? 'w-16' : 'w-80'
+            className={`relative bg-[var(--background)] transition-all duration-300 flex-shrink-0 ${
+                isCollapsed ? 'w-0 border-l-0' : 'w-80 border-l border-[var(--border-subtle)]'
             }`}
             style={{
-                width: isCollapsed ? '64px' : '320px',
-                minWidth: '64px'
+                width: isCollapsed ? '0px' : '320px',
+                minWidth: isCollapsed ? '0px' : '320px',
+                overflow: isCollapsed ? 'hidden' : 'visible'
             }}
         >
             <div className="h-full flex flex-col">
