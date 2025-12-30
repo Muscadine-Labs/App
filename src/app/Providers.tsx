@@ -29,7 +29,7 @@ type Props = {
 
 export function Providers({ children, initialState }: Props) {
   const [queryClient] = useState(() => new QueryClient())
-  const walletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
+  const walletConnectProjectId = process.env.NEXT_PUBLIC_PROJECT_ID
 
   return (
     <ErrorBoundary
