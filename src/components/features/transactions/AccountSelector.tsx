@@ -121,30 +121,26 @@ export function AccountSelector({
     if (account.type === 'wallet') {
       if (assetSymbol) {
         if (assetSymbol === 'WETH' || assetSymbol === 'ETH') {
-          return { value: parseFloat(ethBalance || '0'), symbol: assetSymbol };
+          const value = parseFloat(ethBalance || '0');
+          return { value, symbol: assetSymbol };
         }
         const token = tokenBalances.find((t) => t.symbol.toUpperCase() === assetSymbol.toUpperCase());
         if (token) {
           const decimals = token.decimals;
-          const value = parseFloat(formatUnits(token.balance, decimals));
+          const balanceString = formatUnits(token.balance, decimals);
+          const value = parseFloat(balanceString);
           return { value, symbol: assetSymbol, decimals };
         }
         return null;
       }
-      return { value: parseFloat(ethBalance || '0'), symbol: 'ETH' };
+      const value = parseFloat(ethBalance || '0');
+      return { value, symbol: 'ETH' };
     } else {
       const vaultAccount = account as VaultAccount;
-      let vaultData = getVaultData(vaultAccount.address);
+      const vaultData = getVaultData(vaultAccount.address);
       const position = morphoHoldings.positions.find(
         (pos) => pos.vault.address.toLowerCase() === vaultAccount.address.toLowerCase()
       );
-
-      // If vaultData is not available, try to fetch it
-      if (!vaultData) {
-        fetchVaultData(vaultAccount.address).catch(() => {
-          // Silently handle fetch errors
-        });
-      }
 
       if (!position || !vaultData) {
         return null;

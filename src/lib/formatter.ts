@@ -107,40 +107,6 @@ export function formatAssetAmount(
   return `${formattedAmount} ${symbol}`;
 }
 
-/**
- * Gets the display precision for a token symbol.
- * This centralizes the precision rules used across the app.
- * @param symbol - The token symbol (case-insensitive).
- * @param assetDecimals - Optional asset decimals (used to determine precision if symbol doesn't match known patterns).
- * @returns The number of decimal places to display.
- */
-export function getTokenDisplayPrecision(symbol: string, assetDecimals?: number): number {
-  const upperSymbol = symbol.toUpperCase();
-  
-  // ETH and WETH use 4 decimal places
-  if (upperSymbol === 'ETH' || upperSymbol === 'WETH') {
-    return 4;
-  }
-  
-  // cbBTC uses 6 decimal places
-  if (upperSymbol === 'CBBTC' || upperSymbol === 'CBTC') {
-    return 6;
-  }
-  
-  // Stablecoins use 2 decimal places for display (even though USDC has 6 decimals)
-  if (upperSymbol === 'USDC' || upperSymbol === 'USDT' || upperSymbol === 'DAI') {
-    return 2;
-  }
-  
-  // For other tokens, determine precision based on asset decimals
-  if (assetDecimals === 6) {
-    return 2; // USDC-like tokens
-  } else if (assetDecimals === 8) {
-    return 4; // BTC-like tokens
-  } else {
-    return 4; // Default for 18-decimal tokens (WETH, etc.)
-  }
-}
 
 /**
  * Formats BigInt balance directly to input string format.
@@ -179,41 +145,82 @@ export function formatAssetBalance(
   assetDecimals?: number,
   includeSymbol: boolean = true
 ): string {
-  const numValue = typeof balance === 'string' ? parseFloat(balance || '0') : balance;
-  if (isNaN(numValue) || numValue <= 0) {
+  // Use the asset's actual decimals, defaulting to 18 if not provided
+  const maxPrecision = assetDecimals ?? 18;
+  
+  // For string inputs, try to work with the string directly for better precision
+  // Only parse to number when necessary
+  let numValue: number;
+  let balanceStr: string;
+  
+  if (typeof balance === 'string') {
+    balanceStr = balance.trim();
+    if (balanceStr === '' || balanceStr === '0') {
+      return includeSymbol ? `0.00 ${symbol}` : '0.00';
+    }
+    numValue = parseFloat(balanceStr);
+  } else {
+    numValue = balance;
+    balanceStr = balance.toString();
+  }
+  
+  if (isNaN(numValue) || numValue < 0) {
     return includeSymbol ? `0.00 ${symbol}` : '0.00';
   }
   
-  const basePrecision = getTokenDisplayPrecision(symbol, assetDecimals);
-  
-  // For small amounts (< 0.01), show more precision to avoid rounding to zero
-  // Find the first significant digit and show at least 6 significant digits total
-  if (numValue < 0.01) {
-    // Count leading zeros after decimal point
-    const str = numValue.toString();
-    const decimalIndex = str.indexOf('.');
-    if (decimalIndex !== -1) {
-      const afterDecimal = str.substring(decimalIndex + 1);
-      let leadingZeros = 0;
-      for (let i = 0; i < afterDecimal.length; i++) {
-        if (afterDecimal[i] === '0') {
-          leadingZeros++;
-        } else {
-          break;
-        }
-      }
-      // Show at least 6 significant digits: leading zeros + significant digits
-      const precision = Math.max(leadingZeros + 6, basePrecision);
-      const formatted = numValue.toFixed(precision);
-      // Remove trailing zeros but keep at least basePrecision decimals
-      const trimmed = parseFloat(formatted).toFixed(Math.max(precision, basePrecision));
-      return includeSymbol ? `${trimmed} ${symbol}` : trimmed;
+  // Check if value is zero - use string check for accuracy when available
+  if (typeof balance === 'string') {
+    // Check the original string to see if it's truly zero (handles very small numbers that might round to 0)
+    const isZeroPattern = /^0+\.?0*$/.test(balanceStr);
+    if (isZeroPattern) {
+      return includeSymbol ? `0.00 ${symbol}` : '0.00';
     }
   }
   
-  const formatted = numValue.toFixed(basePrecision);
+  // Check if value is zero
+  if (numValue === 0 || (Math.abs(numValue) < 1e-18)) {
+    // For extremely small values that round to 0, check if original string had content
+    if (typeof balance === 'string' && balanceStr && !/^0+\.?0*$/.test(balanceStr)) {
+      // String has non-zero content, continue
+    } else {
+      return includeSymbol ? `0.00 ${symbol}` : '0.00';
+    }
+  }
   
-  return includeSymbol ? `${formatted} ${symbol}` : formatted;
+  let precision: number;
+  
+  // Always find the first significant digit to determine precision
+  // This works for both small and large numbers
+  let decimalPlaces = 0;
+  let temp = Math.abs(numValue);
+  precision = maxPrecision; // Default to full precision
+  
+  // Find first significant digit for values less than 1
+  if (temp > 0 && temp < 1) {
+    while (temp < 1 && decimalPlaces < maxPrecision) {
+      temp *= 10;
+      decimalPlaces++;
+      if (temp >= 1 || decimalPlaces >= maxPrecision) {
+        // Found first significant digit at decimalPlaces position
+        // Show first significant digit plus 2-4 more places for clarity, up to max precision
+        precision = Math.min(decimalPlaces + 4, maxPrecision);
+        break;
+      }
+    }
+  } else {
+    // For values >= 1, use full precision up to maxPrecision
+    precision = maxPrecision;
+  }
+  
+  // Format with calculated precision
+  const formatted = numValue.toFixed(precision);
+  
+  // Remove trailing zeros, but keep at least one digit after decimal if there was a decimal point
+  const trimmed = formatted.includes('.') 
+    ? formatted.replace(/0+$/, '').replace(/\.$/, '')
+    : formatted;
+  
+  return includeSymbol ? `${trimmed} ${symbol}` : trimmed;
 }
 
 /**
@@ -249,10 +256,9 @@ export function formatAssetAmountForMax(
 ): string {
   if (amount <= 0) return '0';
   
-  // For input fields, preserve full precision to avoid rounding to zero for small amounts
-  // Convert to string with enough precision, then remove trailing zeros
-  const effectiveDecimals = assetDecimals ?? 18; // Default to 18 for ETH/WETH
-  const precision = Math.min(effectiveDecimals, 18); // Cap at 18 decimals
+  // For input fields, preserve full precision based on asset decimals
+  // Use the asset's actual decimals, defaulting to 18 if not provided
+  const precision = assetDecimals ?? 18;
   const formatted = amount.toFixed(precision);
   
   // Remove trailing zeros and unnecessary decimal point
@@ -274,10 +280,6 @@ export function formatVaultAssetBalance(
   return formatAssetBalance(assetAmount, symbol, assetDecimals, true);
 }
 
-/** @deprecated Use getTokenDisplayPrecision instead */
-export function getTokenDisplayPrecisionDigits(symbol: string): number {
-  return getTokenDisplayPrecision(symbol);
-}
 
 /**
  * Truncates an Ethereum address for concise display.

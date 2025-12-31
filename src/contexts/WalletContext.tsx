@@ -583,9 +583,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // Calculate liquid assets from ALL token balances (including dust tokens for accurate total)
   const liquidUsdValue = allValidTokenBalances.reduce((sum, token) => sum + token.usdValue, 0);
 
-  // Filter to only show tokens worth at least $1 in the UI
+  // Show all tokens with non-zero balances (removed $1 filter to show small balances like 0.00000005 BTC)
   const tokenBalances = allValidTokenBalances
-    .filter(token => token.usdValue >= 1) // Only show tokens worth at least $1
     .sort((a, b) => b.usdValue - a.usdValue);
   
   // Calculate total value (liquid + Morpho vaults)

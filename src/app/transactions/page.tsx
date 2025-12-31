@@ -122,7 +122,7 @@ export default function TransactionsPage() {
   const getCombinedEthWethBalance = (): number => {
     const ethBal = parseFloat(ethBalance || '0');
     const wethToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'WETH');
-    const wethBal = wethToken ? parseFloat(wethToken.formatted || '0') : 0;
+    const wethBal = wethToken ? parseFloat(formatUnits(wethToken.balance, wethToken.decimals)) : 0;
     // All ETH can be wrapped - no gas reserve needed since USDC can be used for gas on Base
     return wethBal + ethBal;
   };
@@ -139,7 +139,7 @@ export default function TransactionsPage() {
         const combinedBal = getCombinedEthWethBalance();
         const ethBal = parseFloat(ethBalance || '0');
         const wethToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'WETH');
-        const wethBal = wethToken ? parseFloat(wethToken.formatted || '0') : 0;
+        const wethBal = wethToken ? parseFloat(formatUnits(wethToken.balance, wethToken.decimals)) : 0;
         
         if (wethBal > 0 && ethBal > 0) {
           return `Available: ${formatAvailableBalance(combinedBal, 'WETH')} (${formatAvailableBalance(wethBal, 'WETH')} WETH + ${formatAvailableBalance(ethBal, 'ETH')} wrappable)`;
@@ -157,7 +157,13 @@ export default function TransactionsPage() {
     }
     
     const token = tokenBalances.find((t) => t.symbol.toUpperCase() === derivedAsset.symbol.toUpperCase());
-    return formatAvailableBalance(token?.formatted || '0', derivedAsset.symbol);
+    if (token) {
+      // Use raw balance string from formatUnits to preserve full precision for small amounts
+      // Pass as string to avoid floating point precision loss
+      const balanceString = formatUnits(token.balance, token.decimals);
+      return formatAvailableBalance(balanceString, derivedAsset.symbol, token.decimals);
+    }
+    return formatAvailableBalance('0', derivedAsset.symbol);
   };
 
   // Helper function to get vault balance display text
@@ -241,14 +247,9 @@ export default function TransactionsPage() {
         
         // Convert shares to assets using convertToAssets for accurate conversion
         // This ensures we use the vault's own conversion logic which accounts for fees/performance
+        // Only use this method - no fallbacks
         if (withdrawableAssetsBigInt !== undefined) {
           return parseFloat(formatUnits(withdrawableAssetsBigInt, vaultData.assetDecimals || 18));
-        } else if (vaultData.sharePrice && vaultData.sharePrice > 0) {
-          // Fallback: use share price if convertToAssets result not available yet
-          return sharesDecimal * vaultData.sharePrice;
-        } else if (position.assets) {
-          // Final fallback: use position.assets if available
-          return parseFloat(position.assets) / Math.pow(10, vaultData.assetDecimals || 18);
         }
       }
     }
@@ -422,7 +423,8 @@ export default function TransactionsPage() {
                 <button
                   type="button"
                   onClick={calculateMaxAmount}
-                  className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)]"
+                  disabled={getMaxAmount() === null}
+                  className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)] disabled:text-[var(--foreground-muted)] disabled:cursor-not-allowed disabled:hover:text-[var(--foreground-muted)]"
                 >
                   MAX
                 </button>
