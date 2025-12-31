@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useToast } from '@/contexts/ToastContext';
 import Image from 'next/image';
 import { getVaultLogo } from '@/types/vault';
 import { MorphoVaultData } from '@/types/vault';
@@ -10,13 +10,12 @@ interface VaultHeroProps {
 }
 
 export default function VaultHero({ vaultData }: VaultHeroProps) {
-  const [copied, setCopied] = useState(false);
+  const { success } = useToast();
 
   const handleCopyAddress = async () => {
     try {
       await navigator.clipboard.writeText(vaultData.address);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1000);
+      success('Copied to clipboard', 2000);
     } catch {
       // Silently fail if clipboard API is not available
     }
@@ -55,20 +54,6 @@ export default function VaultHero({ vaultData }: VaultHeroProps) {
           </div>
         </div>
       </div>
-
-      {/* Copied to clipboard notification */}
-      {copied && (
-        <div 
-          className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-50"
-          style={{ animation: 'fadeInUp 0.2s ease-out' }}
-        >
-          <div className="bg-[var(--surface-elevated)] border border-[var(--border-subtle)] rounded-lg px-4 py-2 shadow-lg">
-            <p className="text-sm font-medium text-[var(--success)]">
-              Copied to clipboard
-            </p>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

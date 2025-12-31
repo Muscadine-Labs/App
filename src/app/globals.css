@@ -161,8 +161,28 @@
   }
 }
 
+@keyframes fadeOutDown {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+}
+
 .fade-in {
   animation: fadeIn 0.3s ease-in;
+}
+
+/* Toast animations */
+.toast-enter {
+  animation: fadeInUp 0.2s ease-out;
+}
+
+.toast-exit {
+  animation: fadeOutDown 0.2s ease-in;
 }
 
 /* Smooth page transitions */

@@ -3,6 +3,7 @@
 import React, { type ReactNode, useState, useEffect } from 'react';
 import { NavBar } from './NavBar';
 import RightSidebar from './RightSidebar';
+import { ToastContainer } from '@/components/ui/ToastContainer';
 
 export function AppLayout({ children }: { children: ReactNode }) {
   const [isRightSidebarCollapsed, setIsRightSidebarCollapsed] = useState(true);
@@ -64,6 +65,9 @@ function LayoutContent({
           isCollapsed={isRightSidebarCollapsed}
         />
       </div>
+      
+      {/* Toast Notifications */}
+      <ToastContainer />
     </div>
   );
 }

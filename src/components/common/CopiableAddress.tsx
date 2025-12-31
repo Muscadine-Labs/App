@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
+import { useToast } from '@/contexts/ToastContext';
 
 interface CopiableAddressProps {
   address: string;
@@ -15,16 +16,14 @@ export default function CopiableAddress({
   showFullAddress = false,
   truncateLength = 6 
 }: CopiableAddressProps) {
-  const [copied, setCopied] = useState(false);
+  const { success } = useToast();
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(address);
-      setCopied(true);
-      // Reset the copied state after a short delay
-      setTimeout(() => setCopied(false), 2000);
+      success('Copied to clipboard', 2000);
     } catch {
-      // Silently fail - the visual feedback (copied state) will handle it
+      // Silently fail - toast will handle error feedback if needed
     }
   };
 
@@ -35,11 +34,7 @@ export default function CopiableAddress({
   return (
     <button
       onClick={handleCopy}
-      className={`font-figtree text-sm transition-all duration-200 text-left ${className} ${
-        copied 
-          ? 'text-[var(--success)]' 
-          : 'text-[var(--foreground)] hover:text-[var(--primary)]'
-      }`}
+      className={`font-figtree text-sm transition-all duration-200 text-left ${className} text-[var(--foreground)] hover:text-[var(--primary)]`}
       title={`Click to copy: ${address}`}
     >
       {displayAddress}
