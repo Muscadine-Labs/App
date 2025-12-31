@@ -702,7 +702,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                       }}
                       formatter={(value: number) => {
                         if (valueType === 'usd') {
-                          return [formatSmartCurrency(value, { alwaysTwoDecimals: true }), 'Your Position'];
+                          return [`$${value.toFixed(2)}`, 'Your Position'];
                         } else {
                           return [
                             formatAssetAmount(
