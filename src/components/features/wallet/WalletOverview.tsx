@@ -524,8 +524,8 @@ export default function WalletOverview() {
                     <div className="flex flex-col gap-3">
                         {Object.keys(vaultInterests).length > 0 ? (
                             Object.entries(vaultInterests)
-                                .filter(([_, interest]) => interest.usd > 0)
-                                .sort(([_, a], [__, b]) => b.usd - a.usd)
+                                .filter(([, interest]) => interest.usd > 0)
+                                .sort(([, a], [, b]) => b.usd - a.usd)
                                 .map(([vaultAddress, interest]) => (
                                     <div key={vaultAddress} className="flex justify-between items-center gap-4">
                                         <span className="text-sm font-medium text-[var(--foreground)] whitespace-nowrap">

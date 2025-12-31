@@ -140,7 +140,7 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
         return () => {
             cancelled = true;
         };
-    }, [address, vault.address, vault.chainId, userPosition?.shares, vaultData]);
+    }, [address, vault.address, vault.chainId, userPosition, vaultData]);
 
     const handleClick = () => {
         // If onClick prop is provided (legacy behavior), use it

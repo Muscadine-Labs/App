@@ -64,7 +64,6 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
   );
 
   // Extract stable values from currentVaultPosition for dependency tracking
-  const currentShares = currentVaultPosition?.shares;
   const currentSharePriceUsd = currentVaultPosition?.vault.state.sharePriceUsd;
   const currentTotalSupply = currentVaultPosition?.vault.state.totalSupply;
 
@@ -118,7 +117,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
           setAssetPriceUsd(priceUsd);
           setAssetPriceFetched(true);
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           setAssetPriceUsd(0);
           setAssetPriceFetched(true);
@@ -241,7 +240,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     };
 
     fetchActivity();
-  }, [vaultData.address, vaultData.chainId, address]);
+  }, [vaultData.address, vaultData.chainId, address, currentSharePriceUsd, currentTotalSupply, vaultData.sharePrice, vaultData.totalValueLocked]);
 
   // Calculate interest earned: Current Assets - (Total Deposits - Total Withdrawals)
   const interestEarned = useMemo(() => {
