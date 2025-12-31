@@ -82,6 +82,11 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
+  const formatDateForChart = (timestamp: number) => {
+    const date = new Date(timestamp * 1000);
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
   // Calculate user's position history by working backwards from current position
   const calculateUserDepositHistory = () => {
     if (!address || userTransactions.length === 0) return [];
@@ -239,7 +244,8 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                   <AreaChart data={userDepositHistory}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                     <XAxis 
-                      dataKey="date" 
+                      dataKey="timestamp" 
+                      tickFormatter={formatDateForChart}
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
                       interval="preserveStartEnd"
@@ -256,7 +262,10 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                         borderRadius: '8px',
                       }}
                       formatter={(value: number) => [formatSmartCurrency(value), 'Your Position']}
-                      labelFormatter={(label) => `Date: ${label}`}
+                      labelFormatter={(label) => {
+                        const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
+                        return `Date: ${formatDateForChart(timestamp)}`;
+                      }}
                     />
                     <Area 
                       type="monotone" 
