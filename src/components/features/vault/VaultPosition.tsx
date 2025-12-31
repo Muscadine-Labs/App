@@ -55,6 +55,8 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     sharePriceUsd: number;
     assetPriceUsd?: number;
   }>>([]);
+  const [assetPriceUsd, setAssetPriceUsd] = useState<number>(0);
+  const [assetPriceFetched, setAssetPriceFetched] = useState(false);
 
   // Find the current vault position
   const currentVaultPosition = morphoHoldings.positions.find(
@@ -80,6 +82,56 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
       })()
     : 0;
 
+  // Fetch asset price once when component mounts or vault changes
+  useEffect(() => {
+    if (assetPriceFetched || !vaultData.address) return;
+
+    let cancelled = false;
+    const fetchAssetPrice = async () => {
+      try {
+        const response = await fetch('https://api.morpho.org/graphql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: `
+              query VaultAssetPrice($address: String!, $chainId: Int!) {
+                vaultByAddress(address: $address, chainId: $chainId) {
+                  asset {
+                    priceUsd
+                  }
+                }
+              }
+            `,
+            variables: {
+              address: vaultData.address,
+              chainId: vaultData.chainId,
+            },
+          }),
+        });
+
+        if (cancelled) return;
+
+        const data = await response.json().catch(() => ({}));
+        const priceUsd = data.data?.vaultByAddress?.asset?.priceUsd || 0;
+        
+        if (!cancelled) {
+          setAssetPriceUsd(priceUsd);
+          setAssetPriceFetched(true);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAssetPriceUsd(0);
+          setAssetPriceFetched(true);
+        }
+      }
+    };
+
+    fetchAssetPrice();
+    return () => {
+      cancelled = true;
+    };
+  }, [vaultData.address, vaultData.chainId, assetPriceFetched]);
+
   useEffect(() => {
     const fetchActivity = async () => {
       if (!address) {
@@ -99,27 +151,31 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
           )
         ]);
         
-        // Validate HTTP responses
-        if (!userResponse.ok) {
-          throw new Error(`Failed to fetch activity: ${userResponse.status} ${userResponse.statusText}`);
+        // Parse responses even if status is not ok (API may return error in JSON body)
+        const userResponseData = await userResponse.json().catch(() => ({}));
+        const historyData = await historyResponse.json().catch(() => ({}));
+        
+        // Check for errors in response body (API returns 200 with error field for graceful errors)
+        if (userResponseData.error) {
+          logger.warn(
+            'Activity API returned error',
+            new Error(userResponseData.error),
+            { vaultAddress: vaultData.address, userAddress: address }
+          );
         }
-        if (!historyResponse.ok) {
-          throw new Error(`Failed to fetch history: ${historyResponse.status} ${historyResponse.statusText}`);
+        if (historyData.error) {
+          logger.warn(
+            'History API returned error',
+            new Error(historyData.error),
+            { vaultAddress: vaultData.address }
+          );
         }
         
-        const userResponseData = await userResponse.json();
-        // Type validation for JSON response
-        if (!userResponseData || typeof userResponseData !== 'object') {
-          throw new Error('Invalid activity response format');
-        }
-        setUserTransactions(Array.isArray(userResponseData.transactions) 
-          ? userResponseData.transactions 
-          : []);
-        
-        const historyData = await historyResponse.json();
-        // Type validation for JSON response
-        if (!historyData || typeof historyData !== 'object') {
-          throw new Error('Invalid history response format');
+        // Set transactions - use empty array if error or invalid response
+        if (userResponseData && typeof userResponseData === 'object' && Array.isArray(userResponseData.transactions)) {
+          setUserTransactions(userResponseData.transactions);
+        } else {
+          setUserTransactions([]);
         }
         
         if (historyData.history && Array.isArray(historyData.history) && historyData.history.length > 0) {
@@ -180,7 +236,85 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     };
 
     fetchActivity();
-  }, [vaultData.address, vaultData.chainId, address, currentShares, currentSharePriceUsd, currentTotalSupply, vaultData.totalValueLocked, vaultData.totalAssets, vaultData.assetDecimals, vaultData.sharePrice]);
+  }, [vaultData.address, vaultData.chainId, address]);
+
+  // Calculate interest earned: Current Assets - (Total Deposits - Total Withdrawals)
+  const interestEarned = useMemo(() => {
+    if (!currentVaultPosition || !vaultData || assetPriceUsd === 0 || userTransactions.length === 0) {
+      return { tokens: 0, usd: 0 };
+    }
+
+    // Get current assets in raw units
+    let currentAssetsRaw = BigInt(0);
+    let rawValue: number | null = null;
+    
+    // First priority: Use position.assets if available (from GraphQL)
+    if (currentVaultPosition.assets) {
+      rawValue = parseFloat(currentVaultPosition.assets) / Math.pow(10, vaultData.assetDecimals || 18);
+    } else {
+      // Second priority: Calculate from shares using share price
+      const sharesDecimal = parseFloat(currentVaultPosition.shares) / WEI_PER_ETHER;
+      
+      if (vaultData.sharePrice && sharesDecimal > 0) {
+        rawValue = sharesDecimal * vaultData.sharePrice;
+      } else if (currentVaultPosition.vault?.state?.totalSupply && vaultData.totalAssets) {
+        // Third priority: Calculate share price from totalAssets / totalSupply
+        const totalSupplyDecimal = parseFloat(currentVaultPosition.vault.state.totalSupply) / WEI_PER_ETHER;
+        const totalAssetsDecimal = parseFloat(vaultData.totalAssets) / Math.pow(10, vaultData.assetDecimals || 18);
+        
+        if (totalSupplyDecimal > 0) {
+          const sharePriceInAsset = totalAssetsDecimal / totalSupplyDecimal;
+          rawValue = sharesDecimal * sharePriceInAsset;
+        }
+      }
+    }
+
+    // Convert to raw units
+    if (rawValue !== null && !isNaN(rawValue) && rawValue > 0) {
+      const assetDecimals = vaultData.assetDecimals || 18;
+      currentAssetsRaw = BigInt(Math.floor(rawValue * Math.pow(10, assetDecimals)));
+    }
+
+    // If we can't determine current assets, return 0
+    if (currentAssetsRaw === BigInt(0)) {
+      return { tokens: 0, usd: 0 };
+    }
+
+    // Sum deposits and withdrawals
+    let totalDepositsRaw = BigInt(0);
+    let totalWithdrawalsRaw = BigInt(0);
+
+    userTransactions.forEach(tx => {
+      if (!tx.assets) return;
+      
+      try {
+        const assetsRaw = BigInt(tx.assets);
+        if (tx.type === 'deposit') {
+          totalDepositsRaw += assetsRaw;
+        } else if (tx.type === 'withdraw') {
+          totalWithdrawalsRaw += assetsRaw;
+        }
+      } catch {
+        // Skip invalid asset values
+      }
+    });
+
+    // Calculate interest earned in raw units
+    const netDeposits = totalDepositsRaw - totalWithdrawalsRaw;
+    const interestRaw = currentAssetsRaw > netDeposits 
+      ? currentAssetsRaw - netDeposits 
+      : BigInt(0);
+
+    // Convert to decimal
+    const assetDecimals = vaultData.assetDecimals || 18;
+    const interestTokens = Number(interestRaw) / Math.pow(10, assetDecimals);
+    const interestUsd = interestTokens * assetPriceUsd;
+
+    return {
+      tokens: Math.max(0, interestTokens),
+      usd: Math.max(0, interestUsd)
+    };
+  }, [currentVaultPosition, vaultData, userTransactions, assetPriceUsd]);
 
   const formatDateShort = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
@@ -474,24 +608,73 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     <div className="space-y-6">
       {/* Position Value */}
       <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-[var(--foreground)]">Your Deposits</h2>
-          <div className="flex items-center gap-6">
-            <div className="text-right">
-              <p className="text-xs text-[var(--foreground-secondary)] mb-1">Current Earnings Rate</p>
-              <p className="text-3xl font-bold text-[var(--foreground)]">
-                {apyPercent}%
-              </p>
-              <p className="text-xs text-[var(--foreground-secondary)] mt-1">
-                Annual return you can expect
-              </p>
-              {vaultData.apyChange !== undefined && vaultData.apyChange !== 0 && (
-                <p className={`text-xs mt-2 ${vaultData.apyChange > 0 ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
-                  {vaultData.apyChange > 0 ? '↑' : '↓'} {Math.abs(vaultData.apyChange * 100).toFixed(2)}% from last period
+        <div className="flex items-start justify-between gap-6 mb-4">
+          {/* Your Deposits */}
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">Your Deposits</h2>
+            {!isConnected ? (
+              <p className="text-sm text-[var(--foreground-muted)]">Connect wallet</p>
+            ) : !currentVaultPosition ? (
+              <p className="text-sm text-[var(--foreground-muted)]">No holdings</p>
+            ) : (
+              <>
+                <p className="text-4xl font-bold text-[var(--foreground)]">
+                  {formatAssetAmount(
+                    BigInt(Math.floor(userVaultAssetAmount * Math.pow(10, vaultData.assetDecimals || 18))),
+                    vaultData.assetDecimals || 18,
+                    vaultData.symbol
+                  )}
                 </p>
-              )}
-            </div>
-            {isConnected && (
+                <p className="text-sm text-[var(--foreground-secondary)] mt-1">
+                  {formatSmartCurrency(userVaultValueUsd)}
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* Interest Earned */}
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">Interest Earned</h2>
+            {!isConnected || !currentVaultPosition ? (
+              <>
+                <p className="text-4xl font-bold text-[var(--foreground)]">—</p>
+              </>
+            ) : (
+              <>
+                <p className="text-4xl font-bold text-[var(--foreground)]">
+                  {formatSmartCurrency(interestEarned.usd)}
+                </p>
+                <p className="text-sm text-[var(--foreground-secondary)] mt-1">
+                  {formatAssetAmount(
+                    BigInt(Math.floor(interestEarned.tokens * Math.pow(10, vaultData.assetDecimals || 18))),
+                    vaultData.assetDecimals || 18,
+                    vaultData.symbol
+                  )}
+                </p>
+              </>
+            )}
+          </div>
+
+          {/* Current Earnings Rate */}
+          <div>
+            <p className="text-xs text-[var(--foreground-secondary)] mb-1">Current Earnings Rate</p>
+            <p className="text-3xl font-bold text-[var(--foreground)]">
+              {apyPercent}%
+            </p>
+            <p className="text-xs text-[var(--foreground-secondary)] mt-1">
+              Annual return you can expect
+            </p>
+            {vaultData.apyChange !== undefined && vaultData.apyChange !== 0 && (
+              <p className={`text-xs mt-2 ${vaultData.apyChange > 0 ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
+                {vaultData.apyChange > 0 ? '↑' : '↓'} {Math.abs(vaultData.apyChange * 100).toFixed(2)}% from last period
+              </p>
+            )}
+          </div>
+
+          {/* Transaction Buttons */}
+          {isConnected && (
+            <div className="flex flex-col">
+              <p className="text-lg font-semibold text-[var(--foreground)] mb-1">Transaction</p>
               <div className="flex gap-2">
                 <Button
                   onClick={handleDeposit}
@@ -508,35 +691,9 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                   Withdraw
                 </Button>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
-        {!isConnected ? (
-          <div className="bg-[var(--surface-elevated)] rounded-lg p-6 text-center">
-            <p className="text-sm text-[var(--foreground-muted)]">
-              Connect your wallet to view your position
-            </p>
-          </div>
-        ) : !currentVaultPosition ? (
-          <div className="bg-[var(--surface-elevated)] rounded-lg p-6 text-center">
-            <p className="text-sm text-[var(--foreground-muted)]">
-              No holdings in this vault
-            </p>
-          </div>
-        ) : (
-          <div>
-            <p className="text-4xl font-bold text-[var(--foreground)]">
-              {formatAssetAmount(
-                BigInt(Math.floor(userVaultAssetAmount * Math.pow(10, vaultData.assetDecimals || 18))),
-                vaultData.assetDecimals || 18,
-                vaultData.symbol
-              )}
-            </p>
-            <p className="text-sm text-[var(--foreground-secondary)] mt-1">
-              {formatSmartCurrency(userVaultValueUsd)}
-            </p>
-          </div>
-        )}
       </div>
 
       {/* Chart */}

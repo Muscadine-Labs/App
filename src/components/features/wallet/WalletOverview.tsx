@@ -1,8 +1,9 @@
 'use client';
 
 import { useAccount } from 'wagmi';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useWallet } from '@/contexts/WalletContext';
+import { useVaultData } from '@/contexts/VaultDataContext';
 import { formatNumber, formatCurrency } from '@/lib/formatter';
 import {
     useFloating,
@@ -20,10 +21,14 @@ import {
 export default function WalletOverview() {
     const { address, isConnected } = useAccount();
     const { totalUsdValue, liquidUsdValue, morphoUsdValue, tokenBalances, morphoHoldings, loading: walletLoading } = useWallet();
+    const { getVaultData } = useVaultData();
     const [isMounted, setIsMounted] = useState(false);
     const [totalAssetsOpen, setTotalAssetsOpen] = useState(false);
     const [liquidAssetsOpen, setLiquidAssetsOpen] = useState(false);
     const [morphoVaultsOpen, setMorphoVaultsOpen] = useState(false);
+    const [interestEarnedOpen, setInterestEarnedOpen] = useState(false);
+    const [vaultInterests, setVaultInterests] = useState<Record<string, { usd: number; tokens: number; vaultName: string }>>({});
+    const [isLoadingInterest, setIsLoadingInterest] = useState(false);
 
     // Floating UI setup for Total Assets dropdown
     const totalAssets = useFloating({
@@ -63,6 +68,149 @@ export default function WalletOverview() {
         useDismiss(morphoVaults.context),
         useRole(morphoVaults.context),
     ]);
+
+    // Floating UI setup for Interest Earned dropdown
+    const interestEarned = useFloating({
+        open: interestEarnedOpen,
+        onOpenChange: setInterestEarnedOpen,
+        middleware: [offset(8), flip(), shift({ padding: 8 })],
+        whileElementsMounted: autoUpdate,
+    });
+    const interestEarnedInteractions = useInteractions([
+        useClick(interestEarned.context),
+        useDismiss(interestEarned.context),
+        useRole(interestEarned.context),
+    ]);
+
+    // Calculate total interest earned across all vaults
+    const totalInterestEarned = useMemo(() => {
+        return Object.values(vaultInterests).reduce((sum, interest) => sum + interest.usd, 0);
+    }, [vaultInterests]);
+
+    // Fetch interest earned for each vault position
+    useEffect(() => {
+        if (!address || !isConnected || morphoHoldings.positions.length === 0) {
+            setVaultInterests({});
+            setIsLoadingInterest(false);
+            return;
+        }
+
+        let cancelled = false;
+        setIsLoadingInterest(true);
+
+        const fetchAllVaultInterests = async () => {
+            const interests: Record<string, { usd: number; tokens: number; vaultName: string }> = {};
+
+            // Fetch interest for each vault position in parallel
+            const interestPromises = morphoHoldings.positions.map(async (position) => {
+                if (cancelled) return;
+
+                const vaultAddress = position.vault.address;
+                const vaultData = getVaultData(vaultAddress);
+                
+                if (!vaultData) return;
+
+                try {
+                    // Fetch transactions and asset price
+                    const [transactionsResponse, graphqlResponse] = await Promise.all([
+                        fetch(`/api/vaults/${vaultAddress}/activity?chainId=8453&userAddress=${address}`),
+                        fetch('https://api.morpho.org/graphql', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                query: `
+                                    query VaultAssetPrice($address: String!, $chainId: Int!) {
+                                        vaultByAddress(address: $address, chainId: $chainId) {
+                                            asset {
+                                                priceUsd
+                                                decimals
+                                            }
+                                        }
+                                    }
+                                `,
+                                variables: { address: vaultAddress, chainId: 8453 },
+                            }),
+                        })
+                    ]);
+
+                    if (cancelled) return;
+
+                    const transactionsData = await transactionsResponse.json().catch(() => ({ transactions: [] }));
+                    const graphqlData = await graphqlResponse.json().catch(() => ({}));
+                    
+                    const assetPriceUsd = graphqlData.data?.vaultByAddress?.asset?.priceUsd || 0;
+                    const assetDecimals = graphqlData.data?.vaultByAddress?.asset?.decimals || vaultData.assetDecimals || 18;
+                    const transactions = transactionsData.transactions || [];
+
+                    // Calculate current assets
+                    let currentAssetsRaw = BigInt(0);
+                    if (position.assets) {
+                        currentAssetsRaw = BigInt(position.assets);
+                    } else {
+                        const sharesDecimal = parseFloat(position.shares) / 1e18;
+                        if (vaultData.sharePrice && sharesDecimal > 0) {
+                            const rawValue = sharesDecimal * vaultData.sharePrice;
+                            currentAssetsRaw = BigInt(Math.floor(rawValue * Math.pow(10, assetDecimals)));
+                        } else if (position.vault?.state?.totalSupply && vaultData.totalAssets) {
+                            const totalSupplyDecimal = parseFloat(position.vault.state.totalSupply) / 1e18;
+                            const totalAssetsDecimal = parseFloat(vaultData.totalAssets) / Math.pow(10, assetDecimals);
+                            if (totalSupplyDecimal > 0) {
+                                const sharePriceInAsset = totalAssetsDecimal / totalSupplyDecimal;
+                                const rawValue = sharesDecimal * sharePriceInAsset;
+                                currentAssetsRaw = BigInt(Math.floor(rawValue * Math.pow(10, assetDecimals)));
+                            }
+                        }
+                    }
+
+                    // Sum deposits and withdrawals
+                    let totalDepositsRaw = BigInt(0);
+                    let totalWithdrawalsRaw = BigInt(0);
+
+                    transactions.forEach((tx: { type: string; assets?: string }) => {
+                        if (!tx.assets) return;
+                        try {
+                            const assetsRaw = BigInt(tx.assets);
+                            if (tx.type === 'deposit') {
+                                totalDepositsRaw += assetsRaw;
+                            } else if (tx.type === 'withdraw') {
+                                totalWithdrawalsRaw += assetsRaw;
+                            }
+                        } catch {
+                            // Skip invalid asset values
+                        }
+                    });
+
+                    // Calculate interest
+                    const netDeposits = totalDepositsRaw - totalWithdrawalsRaw;
+                    const interestRaw = currentAssetsRaw > netDeposits ? currentAssetsRaw - netDeposits : BigInt(0);
+                    const interestTokens = Number(interestRaw) / Math.pow(10, assetDecimals);
+                    const interestUsd = interestTokens * assetPriceUsd;
+
+                    interests[vaultAddress] = {
+                        usd: Math.max(0, interestUsd),
+                        tokens: Math.max(0, interestTokens),
+                        vaultName: position.vault.name,
+                    };
+                } catch (error) {
+                    // Skip vaults that fail to calculate interest
+                    console.warn(`Failed to calculate interest for vault ${vaultAddress}:`, error);
+                }
+            });
+
+            await Promise.all(interestPromises);
+
+            if (!cancelled) {
+                setVaultInterests(interests);
+                setIsLoadingInterest(false);
+            }
+        };
+
+        fetchAllVaultInterests();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [address, isConnected, morphoHoldings.positions, getVaultData]);
 
 
     // Prevent hydration mismatch by only rendering client-side content after mount
@@ -133,12 +281,11 @@ export default function WalletOverview() {
                     )}
                 </h1>
             </div>
-            <div className="flex items-start justify-between w-full">
+            <div className="flex items-start justify-between w-full gap-6">
                 <div className="flex flex-col items-start">
-                        <h1 className="text-md text-left text-[var(--foreground-secondary)]">
-                            Total Assets
-                        </h1>
-                    
+                    <h1 className="text-md text-left text-[var(--foreground-secondary)]">
+                        Total Assets
+                    </h1>
                     <div 
                         ref={totalAssets.refs.setReference}
                         {...totalAssetsInteractions.getReferenceProps()}
@@ -159,11 +306,55 @@ export default function WalletOverview() {
                     </div>
                 </div>
                 <div className="flex flex-col items-start">
-                    
-                        <h1 className="text-md text-left text-[var(--foreground-secondary)]">
-                            Liquid Assets
+                    <h1 className="text-md text-left text-[var(--foreground-secondary)]">
+                        Morpho Vaults
+                    </h1>
+                    <div 
+                        ref={morphoVaults.refs.setReference}
+                        {...morphoVaultsInteractions.getReferenceProps()}
+                        className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                    >
+                        <h1 className="text-3xl font-bold">
+                            {walletLoading || morphoHoldings.isLoading ? 'Loading...' : morphoUsdValue}
                         </h1>
-              
+                        <svg 
+                            width="16" 
+                            height="16" 
+                            viewBox="0 0 24 24" 
+                            fill="none" 
+                            className={`transition-transform ${morphoVaultsOpen ? 'rotate-180' : ''}`}
+                        >
+                            <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                    </div>
+                </div>
+                <div className="flex flex-col items-start">
+                    <h1 className="text-md text-left text-[var(--foreground-secondary)]">
+                        Interest Earned
+                    </h1>
+                    <div 
+                        ref={interestEarned.refs.setReference}
+                        {...interestEarnedInteractions.getReferenceProps()}
+                        className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                    >
+                        <h1 className="text-3xl font-bold">
+                            {isLoadingInterest ? 'Loading...' : formatCurrency(totalInterestEarned)}
+                        </h1>
+                        <svg 
+                            width="16" 
+                            height="16" 
+                            viewBox="0 0 24 24" 
+                            fill="none" 
+                            className={`transition-transform ${interestEarnedOpen ? 'rotate-180' : ''}`}
+                        >
+                            <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                    </div>
+                </div>
+                <div className="flex flex-col items-start">
+                    <h1 className="text-md text-left text-[var(--foreground-secondary)]">
+                        Liquid Assets
+                    </h1>
                     <div 
                         ref={liquidAssets.refs.setReference}
                         {...liquidAssetsInteractions.getReferenceProps()}
@@ -183,29 +374,6 @@ export default function WalletOverview() {
                         </svg>
                     </div>
                 </div>
-                <div className="flex flex-col items-start">
-                        <h1 className="text-md text-left text-[var(--foreground-secondary)]">
-                           In Morpho Vaults
-                        </h1>
-                   <div 
-                        ref={morphoVaults.refs.setReference}
-                        {...morphoVaultsInteractions.getReferenceProps()}
-                        className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
-                    >
-                       <h1 className="text-3xl font-bold">
-                           {walletLoading ? 'Loading...' : morphoUsdValue}
-                       </h1>
-                       <svg 
-                            width="16" 
-                            height="16" 
-                            viewBox="0 0 24 24" 
-                            fill="none" 
-                            className={`transition-transform ${morphoVaultsOpen ? 'rotate-180' : ''}`}
-                        >
-                            <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                   </div>
-               </div>
             </div>
             
             {/* Total Assets Dropdown */}
@@ -307,7 +475,11 @@ export default function WalletOverview() {
                         className="bg-[var(--surface-elevated)] rounded-lg p-4 shadow-lg border border-[var(--border-subtle)] min-w-[280px] z-[9999]"
                     >
                     <div className="flex flex-col gap-3">
-                        {sortedVaultPositions.length > 0 ? (
+                        {morphoHoldings.isLoading ? (
+                            <div className="text-sm text-[var(--foreground-secondary)]">
+                                Loading vaults...
+                            </div>
+                        ) : sortedVaultPositions.length > 0 ? (
                             sortedVaultPositions.map((position) => (
                                 <div key={position.address} className="flex justify-between items-center gap-4">
                                     <span className="text-sm font-medium text-[var(--foreground)] whitespace-nowrap">
@@ -323,16 +495,64 @@ export default function WalletOverview() {
                                 No vault positions
                             </div>
                         )}
-                        <div className="border-t border-[var(--border-subtle)] pt-3 mt-1">
-                            <div className="flex justify-between items-center gap-4">
-                                <span className="text-sm font-semibold text-[var(--foreground)] whitespace-nowrap">
-                                    Total
-                                </span>
-                                <span className="text-sm font-semibold text-[var(--foreground)] whitespace-nowrap">
-                                    {morphoUsdValue}
-                                </span>
+                        {!morphoHoldings.isLoading && (
+                            <div className="border-t border-[var(--border-subtle)] pt-3 mt-1">
+                                <div className="flex justify-between items-center gap-4">
+                                    <span className="text-sm font-semibold text-[var(--foreground)] whitespace-nowrap">
+                                        Total
+                                    </span>
+                                    <span className="text-sm font-semibold text-[var(--foreground)] whitespace-nowrap">
+                                        {morphoUsdValue}
+                                    </span>
+                                </div>
                             </div>
-                        </div>
+                        )}
+                    </div>
+                </div>
+                </FloatingPortal>
+            )}
+
+            {/* Interest Earned Dropdown */}
+            {isMounted && interestEarnedOpen && (
+                <FloatingPortal>
+                    <div 
+                        ref={interestEarned.refs.setFloating}
+                        style={interestEarned.floatingStyles}
+                        {...interestEarnedInteractions.getFloatingProps()}
+                        className="bg-[var(--surface-elevated)] rounded-lg p-4 shadow-lg border border-[var(--border-subtle)] min-w-[280px] z-[9999]"
+                    >
+                    <div className="flex flex-col gap-3">
+                        {Object.keys(vaultInterests).length > 0 ? (
+                            Object.entries(vaultInterests)
+                                .filter(([_, interest]) => interest.usd > 0)
+                                .sort(([_, a], [__, b]) => b.usd - a.usd)
+                                .map(([vaultAddress, interest]) => (
+                                    <div key={vaultAddress} className="flex justify-between items-center gap-4">
+                                        <span className="text-sm font-medium text-[var(--foreground)] whitespace-nowrap">
+                                            {interest.vaultName}
+                                        </span>
+                                        <span className="text-sm text-[var(--foreground)] font-medium whitespace-nowrap">
+                                            {formatCurrency(interest.usd)}
+                                        </span>
+                                    </div>
+                                ))
+                        ) : (
+                            <div className="text-sm text-[var(--foreground-secondary)]">
+                                {isLoadingInterest ? 'Calculating...' : 'No interest earned'}
+                            </div>
+                        )}
+                        {Object.keys(vaultInterests).length > 0 && (
+                            <div className="border-t border-[var(--border-subtle)] pt-3 mt-1">
+                                <div className="flex justify-between items-center gap-4">
+                                    <span className="text-sm font-semibold text-[var(--foreground)] whitespace-nowrap">
+                                        Total
+                                    </span>
+                                    <span className="text-sm font-semibold text-[var(--foreground)] whitespace-nowrap">
+                                        {formatCurrency(totalInterestEarned)}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
                 </FloatingPortal>

@@ -130,15 +130,15 @@ export default function VaultStatGrid({ vaultData }: VaultStatGridProps) {
       {/* Total Deposits */}
       <StatCard
         label="Total Deposits"
-        value={totalDepositsUsd}
-        subValue={totalDepositsRaw}
+        value={totalDepositsRaw}
+        subValue={totalDepositsUsd}
       />
 
       {/* Liquidity */}
       <StatCard
         label="Liquidity"
-        value={liquidityUsd}
-        subValue={liquidityRaw}
+        value={liquidityRaw}
+        subValue={liquidityUsd}
       />
 
       {/* Exposure */}

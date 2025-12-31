@@ -63,10 +63,10 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
                             <div className="flex-1"></div>
                             <div className="flex items-center gap-6 flex-1 justify-end">
                                 <div className="text-sm text-[var(--foreground-secondary)] text-right min-w-[140px]">
-                                    Balance
+                                    Your Position
                                 </div>
                                 <div className="text-sm text-[var(--foreground-secondary)] text-right min-w-[140px]">
-                                    Your Position
+                                    Interest Earned
                                 </div>
                                 <div className="text-sm text-[var(--foreground-secondary)] text-right min-w-[120px]">
                                     APY / TVL

@@ -32,7 +32,6 @@ const PERIOD_SECONDS: Record<Period, number> = {
 export default function VaultOverview({ vaultData }: VaultOverviewProps) {
   const [period, setPeriod] = useState<Period>('all');
   const [allHistoryData, setAllHistoryData] = useState<HistoryDataPoint[]>([]);
-  const [historyData, setHistoryData] = useState<HistoryDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [chartType, setChartType] = useState<'apy' | 'tvl'>('apy');
   const [valueType, setValueType] = useState<'usd' | 'token'>('usd');
@@ -47,6 +46,38 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
 
   // Format APY
   const apyPercent = (vaultData.apy * 100).toFixed(2);
+
+  // Filter history data based on selected period and find first non-zero value
+  const historyData = useMemo(() => {
+    let filtered = allHistoryData;
+    
+    if (period !== 'all' && allHistoryData.length > 0) {
+      const now = Math.floor(Date.now() / 1000);
+      const cutoffTimestamp = now - PERIOD_SECONDS[period];
+      filtered = allHistoryData.filter(d => d.timestamp >= cutoffTimestamp);
+    }
+    
+    // Find the first non-zero value based on chart type
+    // For APY chart, filter out zero APY values
+    // For TVL chart, filter out zero totalAssetsUsd/totalAssets values
+    if (filtered.length > 0) {
+      let firstNonZeroIndex = -1;
+      
+      if (chartType === 'apy') {
+        firstNonZeroIndex = filtered.findIndex(d => d.apy > 0);
+      } else {
+        firstNonZeroIndex = filtered.findIndex(d => 
+          (valueType === 'usd' ? d.totalAssetsUsd : (d.totalAssets || 0)) > 0
+        );
+      }
+      
+      if (firstNonZeroIndex > 0) {
+        filtered = filtered.slice(firstNonZeroIndex);
+      }
+    }
+    
+    return filtered;
+  }, [allHistoryData, period, chartType, valueType]);
 
   // Calculate Y-axis domain for APY chart
   const apyYAxisDomain = useMemo(() => {
@@ -129,43 +160,6 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
 
     fetchAllHistory();
   }, [vaultData.address, vaultData.chainId]);
-
-  // Filter history data based on selected period and find first non-zero value
-  useEffect(() => {
-    let filtered = allHistoryData;
-    
-    if (period !== 'all' && allHistoryData.length > 0) {
-      const now = Math.floor(Date.now() / 1000);
-      const cutoffTimestamp = now - PERIOD_SECONDS[period];
-      filtered = allHistoryData.filter(d => d.timestamp >= cutoffTimestamp);
-    }
-    
-    // Find the first non-zero value based on chart type
-    // For APY chart, filter out zero APY values
-    // For TVL chart, filter out zero totalAssetsUsd/totalAssets values
-    if (filtered.length > 0) {
-      let firstNonZeroIndex = -1;
-      
-      if (chartType === 'apy') {
-        firstNonZeroIndex = filtered.findIndex(d => d.apy > 0);
-      } else {
-        // TVL chart - check based on valueType
-        if (valueType === 'usd') {
-          firstNonZeroIndex = filtered.findIndex(d => d.totalAssetsUsd > 0);
-        } else {
-          firstNonZeroIndex = filtered.findIndex(d => (d.totalAssets || 0) > 0);
-        }
-      }
-      
-      // If we found a non-zero value, start from that point
-      if (firstNonZeroIndex >= 0) {
-        filtered = filtered.slice(firstNonZeroIndex);
-      }
-    }
-    
-    setHistoryData(filtered);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allHistoryData.length, period, chartType, valueType]);
 
   // Calculate available periods based on data range
   const availablePeriods = useMemo(() => {
@@ -274,6 +268,122 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
     return ticks.length > 0 ? ticks : undefined;
   }, [period, historyData]);
 
+  // Get ticks for 90d period - show every 5 days
+  const get90dTicks = useMemo(() => {
+    if (period !== '90d' || historyData.length === 0) return undefined;
+    
+    const ticks: number[] = [];
+    const seenDates = new Set<string>();
+    let dayCount = 0;
+    
+    // Sort data by timestamp to ensure chronological order
+    const sortedData = [...historyData].sort((a, b) => a.timestamp - b.timestamp);
+    
+    sortedData.forEach((point: HistoryDataPoint) => {
+      const date = new Date(point.timestamp * 1000);
+      const dateKey = date.toDateString();
+      
+      // Only add tick if we haven't seen this date before
+      if (!seenDates.has(dateKey)) {
+        seenDates.add(dateKey);
+        // Add every 5 days (dayCount: 0, 5, 10, 15...)
+        if (dayCount % 5 === 0) {
+          ticks.push(point.timestamp);
+        }
+        dayCount++;
+      }
+    });
+    
+    return ticks.length > 0 ? ticks : undefined;
+  }, [period, historyData]);
+
+  // Get ticks for "all" period - show at start of each year, plus dynamic intervals
+  const getAllTicks = useMemo(() => {
+    if (period !== 'all' || historyData.length === 0) return undefined;
+    
+    const ticks: number[] = [];
+    const seenYears = new Set<string>();
+    const yearTicks = new Set<number>();
+    
+    // Sort data by timestamp to ensure chronological order
+    const sortedData = [...historyData].sort((a, b) => a.timestamp - b.timestamp);
+    
+    if (sortedData.length === 0) return undefined;
+    
+    // Calculate total time span in days
+    const firstTimestamp = sortedData[0].timestamp;
+    const lastTimestamp = sortedData[sortedData.length - 1].timestamp;
+    const totalDays = (lastTimestamp - firstTimestamp) / (24 * 60 * 60);
+    
+    // Determine interval based on total days
+    // For shorter spans (< 60 days), use 3-5 day intervals
+    // For medium spans (60-180 days), use 5-10 day intervals
+    // For longer spans (180-365 days), use 12 day intervals
+    // For very long spans (> 365 days), use 15-30 day intervals
+    let dayInterval = 3;
+    if (totalDays > 365) {
+      dayInterval = 30; // Every 30 days for very long spans
+    } else if (totalDays > 180) {
+      dayInterval = 12; // Every 12 days for long spans
+    } else if (totalDays > 90) {
+      dayInterval = 10; // Every 10 days for medium-long spans
+    } else if (totalDays > 60) {
+      dayInterval = 7; // Every 7 days for medium spans
+    } else if (totalDays > 30) {
+      dayInterval = 5; // Every 5 days for shorter spans
+    } else {
+      dayInterval = 3; // Every 3 days for very short spans
+    }
+    
+    // First, collect all year boundary ticks
+    sortedData.forEach((point: HistoryDataPoint) => {
+      const date = new Date(point.timestamp * 1000);
+      const year = date.getFullYear();
+      const yearKey = `${year}`;
+      
+      // Always add tick at start of new year
+      if (!seenYears.has(yearKey)) {
+        ticks.push(point.timestamp);
+        yearTicks.add(point.timestamp);
+        seenYears.add(yearKey);
+      }
+    });
+    
+    // Then add regular interval ticks between year boundaries
+    const seenDates = new Set<string>();
+    let lastTickTimestamp = firstTimestamp;
+    
+    sortedData.forEach((point: HistoryDataPoint) => {
+      const date = new Date(point.timestamp * 1000);
+      const dateKey = date.toDateString();
+      
+      // Skip if already added as year boundary
+      if (yearTicks.has(point.timestamp)) {
+        return;
+      }
+      
+      // Skip if we've seen this date before
+      if (seenDates.has(dateKey)) {
+        return;
+      }
+      
+      // Calculate days since last tick
+      const daysSinceLastTick = (point.timestamp - lastTickTimestamp) / (24 * 60 * 60);
+      
+      // Add tick if interval has passed
+      if (daysSinceLastTick >= dayInterval) {
+        ticks.push(point.timestamp);
+        seenDates.add(dateKey);
+        lastTickTimestamp = point.timestamp;
+      }
+    });
+    
+    // Sort all ticks by timestamp
+    ticks.sort((a, b) => a - b);
+    
+    return ticks.length > 0 ? ticks : undefined;
+  }, [period, historyData]);
+
   // Format date for tooltip - always shows accurate date/time
   const formatTooltipDate = useCallback((timestamp: number | string) => {
     const date = typeof timestamp === 'number' 
@@ -326,23 +436,23 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
           <div>
             <p className="text-xs text-[var(--foreground-secondary)] mb-1">Total Deposited</p>
             <p className="text-2xl font-bold text-[var(--foreground)]">
-              {formatSmartCurrency(vaultData.totalValueLocked || 0, { alwaysTwoDecimals: true })}
-            </p>
-            <p className="text-xs text-[var(--foreground-secondary)] mt-1">
               {formatAssetAmount(
                 BigInt(vaultData.totalAssets || '0'),
                 vaultData.assetDecimals || 18,
                 vaultData.symbol
               )}
             </p>
+            <p className="text-xs text-[var(--foreground-secondary)] mt-1">
+              {formatSmartCurrency(vaultData.totalValueLocked || 0, { alwaysTwoDecimals: true })}
+            </p>
           </div>
           <div>
             <p className="text-xs text-[var(--foreground-secondary)] mb-1">Liquidity</p>
             <p className="text-2xl font-bold text-[var(--foreground)]">
-              {liquidityUsd}
+              {liquidityRaw}
             </p>
             <p className="text-xs text-[var(--foreground-secondary)] mt-1">
-              {liquidityRaw}
+              {liquidityUsd}
             </p>
           </div>
           <div>
@@ -453,7 +563,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                       tickFormatter={formatDate}
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
-                      ticks={period === '7d' ? get7dTicks : period === '30d' ? get30dTicks : undefined}
+                      ticks={period === '7d' ? get7dTicks : period === '30d' ? get30dTicks : period === '90d' ? get90dTicks : period === 'all' ? getAllTicks : undefined}
                     />
                     <YAxis 
                       domain={apyYAxisDomain}
@@ -489,7 +599,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                           tickFormatter={formatDate}
                           stroke="var(--foreground-secondary)"
                           style={{ fontSize: '12px' }}
-                          ticks={period === '7d' ? get7dTicks : period === '30d' ? get30dTicks : undefined}
+                          ticks={period === '7d' ? get7dTicks : period === '30d' ? get30dTicks : period === '90d' ? get90dTicks : period === 'all' ? getAllTicks : undefined}
                         />
                         <YAxis 
                           domain={tvlYAxisDomain}
