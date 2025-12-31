@@ -43,7 +43,11 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
         const data = await response.json();
         
         if (data.history && data.history.length > 0) {
-          setHistoryData(data.history);
+          // Ensure timestamps are unique and sorted
+          const uniqueData = data.history.filter((point: HistoryDataPoint, index: number, self: HistoryDataPoint[]) => 
+            index === self.findIndex((p) => p.timestamp === point.timestamp)
+          );
+          setHistoryData(uniqueData);
         } else {
           setHistoryData([]);
         }
