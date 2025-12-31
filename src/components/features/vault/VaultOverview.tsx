@@ -61,16 +61,44 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
     fetchHistory();
   }, [vaultData.address, vaultData.chainId, period]);
 
-  // Format date for chart - accepts timestamp in seconds
-  const formatDate = (timestamp: number | string) => {
-    // Handle both timestamp (number) and date string (for backwards compatibility)
+  // Get ticks for 7d period - only midnight and midday
+  const get7dTicks = () => {
+    if (period !== '7d' || historyData.length === 0) return undefined;
+    
+    const ticks: number[] = [];
+    const seenDates = new Set<string>();
+    
+    historyData.forEach((point: HistoryDataPoint) => {
+      const date = new Date(point.timestamp * 1000);
+      const dateKey = date.toDateString();
+      const hours = date.getHours();
+      const minutes = date.getMinutes();
+      
+      // Add midnight tick (once per day)
+      if (hours === 0 && minutes < 30 && !seenDates.has(dateKey)) {
+        ticks.push(point.timestamp);
+        seenDates.add(dateKey);
+      }
+      // Add midday tick
+      else if (hours === 12 && minutes < 30) {
+        ticks.push(point.timestamp);
+      }
+    });
+    
+    return ticks.length > 0 ? ticks : undefined;
+  };
+
+  // Format date for tooltip - always shows accurate date/time
+  const formatTooltipDate = (timestamp: number | string) => {
     const date = typeof timestamp === 'number' 
       ? new Date(timestamp * 1000) 
       : new Date(timestamp);
     
     if (period === '7d') {
-      // For 7 days, show month, day, and hour
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' });
+      // For 7 days, show date and time
+      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      return `${dateStr}, ${timeStr}`;
     } else if (period === '30d') {
       // For 30 days, show month and day
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -78,8 +106,44 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
       // For 90 days, show month and day
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     } else {
-      // For 1 year, show month, day, and year to ensure unique dates
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' });
+      // For 1 year, show month and day (no year)
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    }
+  };
+
+  // Format date for chart X-axis labels - accepts timestamp in seconds
+  const formatDate = (timestamp: number | string) => {
+    // Handle both timestamp (number) and date string (for backwards compatibility)
+    const date = typeof timestamp === 'number' 
+      ? new Date(timestamp * 1000) 
+      : new Date(timestamp);
+    
+    if (period === '7d') {
+      // For 7 days, show date at midnight, time at midday
+      const hours = date.getHours();
+      const minutes = date.getMinutes();
+      
+      // At midnight (00:00) or very close to it, show the date
+      if (hours === 0 && minutes < 30) {
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+      // At midday (12:00) or very close to it, show the time
+      else if (hours === 12 && minutes < 30) {
+        return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      }
+      // For all other times, return empty string (no label)
+      else {
+        return '';
+      }
+    } else if (period === '30d') {
+      // For 30 days, show month and day
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } else if (period === '90d') {
+      // For 90 days, show month and day
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } else {
+      // For 1 year, show month and day (no year)
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
   };
 
@@ -201,6 +265,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                       tickFormatter={formatDate}
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
+                      ticks={period === '7d' ? get7dTicks() : undefined}
                     />
                     <YAxis 
                       tickFormatter={(value) => `${value.toFixed(2)}%`}
@@ -215,7 +280,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                       }}
                       labelFormatter={(label) => {
                         const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
-                        return `Date: ${formatDate(timestamp)}`;
+                        return `Date: ${formatTooltipDate(timestamp)}`;
                       }}
                       formatter={(value: number) => [`${value.toFixed(2)}%`, 'APY']}
                     />
@@ -235,6 +300,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                       tickFormatter={formatDate}
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
+                      ticks={period === '7d' ? get7dTicks() : undefined}
                     />
                     <YAxis 
                       tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
@@ -249,7 +315,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                       }}
                       labelFormatter={(label) => {
                         const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
-                        return `Date: ${formatDate(timestamp)}`;
+                        return `Date: ${formatTooltipDate(timestamp)}`;
                       }}
                       formatter={(value: number) => [formatSmartCurrency(value), 'Total Deposits']}
                     />
