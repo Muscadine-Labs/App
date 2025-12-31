@@ -57,14 +57,24 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
     fetchHistory();
   }, [vaultData.address, vaultData.chainId, period]);
 
-  // Format date for chart
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+  // Format date for chart - accepts timestamp in seconds
+  const formatDate = (timestamp: number | string) => {
+    // Handle both timestamp (number) and date string (for backwards compatibility)
+    const date = typeof timestamp === 'number' 
+      ? new Date(timestamp * 1000) 
+      : new Date(timestamp);
+    
     if (period === '7d') {
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      // For 7 days, show month, day, and hour
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric' });
     } else if (period === '30d') {
+      // For 30 days, show month and day
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    } else if (period === '90d') {
+      // For 90 days, show month and day
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     } else {
+      // For 1 year, show month and year
       return date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
     }
   };
@@ -183,7 +193,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                   <LineChart data={historyData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                     <XAxis 
-                      dataKey="date" 
+                      dataKey="timestamp" 
                       tickFormatter={formatDate}
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
@@ -199,7 +209,10 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                         border: '1px solid var(--border-subtle)',
                         borderRadius: '8px',
                       }}
-                      labelFormatter={(label) => `Date: ${formatDate(label)}`}
+                      labelFormatter={(label) => {
+                        const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
+                        return `Date: ${formatDate(timestamp)}`;
+                      }}
                       formatter={(value: number) => [`${value.toFixed(2)}%`, 'APY']}
                     />
                     <Line 
@@ -214,7 +227,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                   <AreaChart data={historyData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                     <XAxis 
-                      dataKey="date" 
+                      dataKey="timestamp" 
                       tickFormatter={formatDate}
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
@@ -230,7 +243,10 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                         border: '1px solid var(--border-subtle)',
                         borderRadius: '8px',
                       }}
-                      labelFormatter={(label) => `Date: ${formatDate(label)}`}
+                      labelFormatter={(label) => {
+                        const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
+                        return `Date: ${formatDate(timestamp)}`;
+                      }}
                       formatter={(value: number) => [formatSmartCurrency(value), 'Total Deposits']}
                     />
                     <Area 
