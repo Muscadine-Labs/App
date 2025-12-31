@@ -88,6 +88,35 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
     return ticks.length > 0 ? ticks : undefined;
   };
 
+  // Get ticks for 30d period - only every other day
+  const get30dTicks = () => {
+    if (period !== '30d' || historyData.length === 0) return undefined;
+    
+    const ticks: number[] = [];
+    const seenDates = new Set<string>();
+    let dayCount = 0;
+    
+    // Sort data by timestamp to ensure chronological order
+    const sortedData = [...historyData].sort((a, b) => a.timestamp - b.timestamp);
+    
+    sortedData.forEach((point: HistoryDataPoint) => {
+      const date = new Date(point.timestamp * 1000);
+      const dateKey = date.toDateString();
+      
+      // Only add tick if we haven't seen this date before
+      if (!seenDates.has(dateKey)) {
+        seenDates.add(dateKey);
+        // Add every other day (even dayCount: 0, 2, 4, 6...)
+        if (dayCount % 2 === 0) {
+          ticks.push(point.timestamp);
+        }
+        dayCount++;
+      }
+    });
+    
+    return ticks.length > 0 ? ticks : undefined;
+  };
+
   // Format date for tooltip - always shows accurate date/time
   const formatTooltipDate = (timestamp: number | string) => {
     const date = typeof timestamp === 'number' 
@@ -265,7 +294,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                       tickFormatter={formatDate}
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
-                      ticks={period === '7d' ? get7dTicks() : undefined}
+                      ticks={period === '7d' ? get7dTicks() : period === '30d' ? get30dTicks() : undefined}
                     />
                     <YAxis 
                       tickFormatter={(value) => `${value.toFixed(2)}%`}
@@ -300,7 +329,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                       tickFormatter={formatDate}
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
-                      ticks={period === '7d' ? get7dTicks() : undefined}
+                      ticks={period === '7d' ? get7dTicks() : period === '30d' ? get30dTicks() : undefined}
                     />
                     <YAxis 
                       tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}

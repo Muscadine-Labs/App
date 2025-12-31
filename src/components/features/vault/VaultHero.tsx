@@ -17,7 +17,7 @@ export default function VaultHero({ vaultData }: VaultHeroProps) {
       await navigator.clipboard.writeText(vaultData.address);
       setCopied(true);
       setTimeout(() => setCopied(false), 1000);
-    } catch (err) {
+    } catch {
       // Silently fail if clipboard API is not available
     }
   };

@@ -134,7 +134,7 @@ export function AccountSelector({
       return { value: parseFloat(ethBalance || '0'), symbol: 'ETH' };
     } else {
       const vaultAccount = account as VaultAccount;
-      let vaultData = getVaultData(vaultAccount.address);
+      const vaultData = getVaultData(vaultAccount.address);
       const position = morphoHoldings.positions.find(
         (pos) => pos.vault.address.toLowerCase() === vaultAccount.address.toLowerCase()
       );
