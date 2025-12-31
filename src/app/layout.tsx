@@ -7,7 +7,6 @@ import { cookieToInitialState } from 'wagmi'
 import { Providers } from './Providers'
 import { config } from './config'
 import { PriceProvider } from './PriceContext'
-import { TransactionModal } from '@/components/ui'
 
 const figtree = Figtree({ 
   subsets: ['latin'],
@@ -64,7 +63,6 @@ export default async function RootLayout({
           <Providers initialState={initialState}>
               <PriceProvider>
                 <AppLayout>{children}</AppLayout>
-                <TransactionModal />
               </PriceProvider>
           </Providers>
       </body>

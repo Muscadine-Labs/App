@@ -35,8 +35,10 @@ export default function CopiableAddress({
   return (
     <button
       onClick={handleCopy}
-      className={`font-figtree text-sm transition-all duration-200 hover:bg-[var(--surface-hover)] rounded px-2 py-1 ${className} ${
-        copied ? 'text-[var(--success)]' : 'text-[var(--foreground)]'
+      className={`font-figtree text-sm transition-all duration-200 text-left ${className} ${
+        copied 
+          ? 'text-[var(--success)]' 
+          : 'text-[var(--foreground)] hover:text-[var(--primary)]'
       }`}
       title={`Click to copy: ${address}`}
     >

@@ -30,6 +30,11 @@ export const navigationItems: NavItem[] = [
         id: 'vaults',
         label: 'Vaults',
         icon: null
+    },
+    {
+        id: 'transactions',
+        label: 'Transact',
+        icon: null
     }
 ];
 

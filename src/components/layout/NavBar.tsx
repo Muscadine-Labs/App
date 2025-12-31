@@ -3,11 +3,12 @@
 import React, { useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { VaultsDropdown } from "./VaultsDropdown";
 import { navigationItems, NavItem } from "@/config/navigation";
 import { ConnectButton } from "../features/wallet";
 import { Icon } from "../ui/Icon";
+import { Button } from "../ui/Button";
 
 interface NavBarProps {
     isRightSidebarCollapsed?: boolean;
@@ -16,6 +17,7 @@ interface NavBarProps {
 
 export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps) {
     const pathname = usePathname();
+    const router = useRouter();
 
     const isActive = useCallback((item: NavItem): boolean => {
         // Vaults dropdown is active if we're on a vault page
@@ -54,6 +56,16 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                             <div key={item.id} onClick={(e) => e.stopPropagation()}>
                                 {item.id === 'vaults' && (
                                     <VaultsDropdown isActive={isActive(item)} />
+                                )}
+                                {item.id === 'transactions' && (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className={`min-w-fit hover:bg-transparent hover:underline ${pathname === '/transactions' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)]' : ''}`}
+                                        onClick={() => router.push('/transactions')}
+                                    >
+                                        {item.label}
+                                    </Button>
                                 )}
                             </div>
                         ))}

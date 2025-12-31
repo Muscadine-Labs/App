@@ -9,7 +9,6 @@ import { useVaultListPreloader } from '@/hooks/useVaultDataFetch';
 import { VAULTS } from '@/lib/vaults';
 import VaultHero from '@/components/features/vault/VaultHero';
 import VaultOverview from '@/components/features/vault/VaultOverview';
-import VaultActionCard from '@/components/features/vault/VaultActionCard';
 import VaultTabs from '@/components/features/vault/VaultTabs';
 import VaultPosition from '@/components/features/vault/VaultPosition';
 import VaultHistory from '@/components/features/vault/VaultHistory';
@@ -146,32 +145,24 @@ export default function VaultPage() {
 
       {/* Main Content */}
       <div className="flex flex-col w-full mx-auto flex-1 min-h-0">
-        {/* Tab content & interaction card */}
-        <div className="flex gap-6 flex-1 min-h-0">
-            {/* Left Column - Tab Content */}
-            <div className="flex-1 flex flex-col min-h-0">
-                <div ref={tabsRef} className="flex-shrink-0">
-                  <VaultTabs
-                      activeTab={activeTab}
-                      onTabChange={setActiveTab}
-                  />
-                </div>
+        {/* Tab content */}
+        <div className="flex flex-col flex-1 min-h-0">
+          <div ref={tabsRef} className="flex-shrink-0">
+            <VaultTabs
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+            />
+          </div>
 
-                {/* Tab Content - Scrollable */}
-                <div 
-                  className="overflow-y-auto pr-2 pl-6 tab-content-scroll"
-                  style={{ height: tabContentHeight }}
-                >
-                    {activeTab === 'overview' && <VaultOverview vaultData={vaultData} />}
-                    {activeTab === 'position' && <VaultPosition vaultData={vaultData} />}
-                    {activeTab === 'history' && <VaultHistory vaultData={vaultData} />}
-                </div>
-            </div>
-
-            {/* Right Column - Action Card (Fixed Width) */}
-            <div className="w-80 flex-shrink-0 h-fit">
-                <VaultActionCard vaultData={vaultData} />
-            </div>
+          {/* Tab Content - Scrollable */}
+          <div 
+            className="overflow-y-auto pr-2 pl-6 tab-content-scroll"
+            style={{ height: tabContentHeight }}
+          >
+            {activeTab === 'overview' && <VaultOverview vaultData={vaultData} />}
+            {activeTab === 'position' && <VaultPosition vaultData={vaultData} />}
+            {activeTab === 'history' && <VaultHistory vaultData={vaultData} />}
+          </div>
         </div>
       </div>
 

@@ -111,123 +111,35 @@ export function formatAssetAmount(
  * Gets the display precision for a token symbol.
  * This centralizes the precision rules used across the app.
  * @param symbol - The token symbol (case-insensitive).
- * @param assetDecimals - The actual token decimals (fallback for unknown tokens).
+ * @param assetDecimals - Optional asset decimals (used to determine precision if symbol doesn't match known patterns).
  * @returns The number of decimal places to display.
  */
 export function getTokenDisplayPrecision(symbol: string, assetDecimals?: number): number {
   const upperSymbol = symbol.toUpperCase();
+  
+  // ETH and WETH use 4 decimal places
+  if (upperSymbol === 'ETH' || upperSymbol === 'WETH') {
+    return 4;
+  }
+  
+  // cbBTC uses 6 decimal places
+  if (upperSymbol === 'CBBTC' || upperSymbol === 'CBTC') {
+    return 6;
+  }
   
   // Stablecoins use 2 decimal places for display (even though USDC has 6 decimals)
   if (upperSymbol === 'USDC' || upperSymbol === 'USDT' || upperSymbol === 'DAI') {
     return 2;
   }
   
-  // Use actual token decimals for other tokens
-  return assetDecimals ?? 18;
-}
-
-/**
- * Formats asset amounts for display with safe rounding-down behavior.
- * Ensures formatted value never exceeds the original (important for balance displays and validation).
- * 
- * @param value - The decimal amount (already converted from BigInt).
- * @param options - Formatting options.
- * @returns Formatted string without symbol (caller adds symbol if needed).
- */
-export function formatAssetAmountSafe(
-  value: number,
-  options: {
-    decimals: number;
-    symbol?: string; // Optional, for determining display precision
-    roundMode?: 'down' | 'nearest'; // Default: 'down' for safety
-    trimZeros?: boolean; // Default: true
-    minDisplayable?: number; // For edge case handling (defaults to 1 / 10^decimals)
+  // For other tokens, determine precision based on asset decimals
+  if (assetDecimals === 6) {
+    return 2; // USDC-like tokens
+  } else if (assetDecimals === 8) {
+    return 4; // BTC-like tokens
+  } else {
+    return 4; // Default for 18-decimal tokens (WETH, etc.)
   }
-): string {
-  if (value <= 0) {
-    return '0';
-  }
-  
-  const {
-    decimals,
-    symbol,
-    roundMode = 'down',
-    trimZeros = true,
-    minDisplayable,
-  } = options;
-  
-  // Determine display precision
-  const displayPrecision = symbol 
-    ? getTokenDisplayPrecision(symbol, decimals)
-    : decimals;
-  
-  const precisionMultiplier = Math.pow(10, displayPrecision);
-  
-  // Round down or nearest based on mode
-  const rounded = roundMode === 'down'
-    ? Math.floor(value * precisionMultiplier) / precisionMultiplier
-    : Math.round(value * precisionMultiplier) / precisionMultiplier;
-  
-  // Handle edge case: if rounded to 0 but value is close to minimum displayable unit
-  const minDisplay = minDisplayable ?? (1 / precisionMultiplier);
-  const normalizedValue = (rounded === 0 && value >= minDisplay * 0.99)
-    ? minDisplay
-    : rounded;
-  
-  // Format with full precision first
-  let formatted = normalizedValue.toFixed(displayPrecision);
-  
-  // Trim trailing zeros if requested
-  if (trimZeros && formatted.includes('.')) {
-    formatted = formatted.replace(/\.?0+$/, '');
-  }
-  
-  return formatted === '' ? '0' : formatted;
-}
-
-/**
- * Formats asset amounts for input/transaction use.
- * Preserves full contract decimals precision (no trimming) to ensure
- * parseUnits can accurately reconstruct the exact amount.
- * 
- * @param value - The decimal amount (already converted from BigInt).
- * @param decimals - The contract decimals (e.g., 18 for ETH, 6 for USDC).
- * @param roundMode - How to round the value (default: 'down' for safety).
- * @returns Formatted string with full precision, suitable for parseUnits.
- */
-export function formatAssetAmountForInput(
-  value: number,
-  decimals: number,
-  roundMode: 'down' | 'nearest' = 'down'
-): string {
-  if (value <= 0) {
-    return '0';
-  }
-  
-  const precisionMultiplier = Math.pow(10, decimals);
-  
-  // Round down or nearest based on mode
-  // Use Math.floor to ensure we never exceed the original value
-  const rounded = roundMode === 'down'
-    ? Math.floor(value * precisionMultiplier) / precisionMultiplier
-    : Math.round(value * precisionMultiplier) / precisionMultiplier;
-  
-  // Convert to string - use toFixed to ensure exact decimal places
-  // But we need to be careful: toFixed can round, so we ensure we rounded down first
-  const roundedStr = rounded.toFixed(decimals);
-  
-  // Parse back to verify it's not larger than original (safety check)
-  // This handles edge cases where floating point precision might cause issues
-  const parsed = parseFloat(roundedStr);
-  
-  if (parsed > value) {
-    // If somehow larger, subtract one unit at the smallest precision
-    const oneUnit = 1 / precisionMultiplier;
-    const corrected = Math.max(0, parsed - oneUnit);
-    return corrected.toFixed(decimals);
-  }
-  
-  return roundedStr;
 }
 
 /**
@@ -249,6 +161,122 @@ export function formatBigIntForInput(
   // Use formatUnits directly - this is the most accurate way to convert BigInt to decimal string
   // formatUnits handles the conversion without any floating-point precision loss
   return formatUnits(balance, decimals);
+}
+
+/**
+ * Formats asset balance for display (unified function for both wallet and vault balances).
+ * Uses appropriate precision based on symbol and asset decimals.
+ * For small amounts, shows more precision to avoid rounding to zero.
+ * @param balance - The balance value (string or number).
+ * @param symbol - The asset symbol (e.g., 'ETH', 'WETH', 'USDC', 'cbBTC').
+ * @param assetDecimals - Optional asset decimals (used to determine precision if symbol doesn't match known patterns).
+ * @param includeSymbol - Whether to include the symbol in the output (default: true).
+ * @returns Formatted balance string (e.g., "1.2345 ETH" or "1.23" if includeSymbol is false).
+ */
+export function formatAssetBalance(
+  balance: string | number,
+  symbol: string,
+  assetDecimals?: number,
+  includeSymbol: boolean = true
+): string {
+  const numValue = typeof balance === 'string' ? parseFloat(balance || '0') : balance;
+  if (isNaN(numValue) || numValue <= 0) {
+    return includeSymbol ? `0.00 ${symbol}` : '0.00';
+  }
+  
+  const basePrecision = getTokenDisplayPrecision(symbol, assetDecimals);
+  
+  // For small amounts (< 0.01), show more precision to avoid rounding to zero
+  // Find the first significant digit and show at least 6 significant digits total
+  if (numValue < 0.01) {
+    // Count leading zeros after decimal point
+    const str = numValue.toString();
+    const decimalIndex = str.indexOf('.');
+    if (decimalIndex !== -1) {
+      const afterDecimal = str.substring(decimalIndex + 1);
+      let leadingZeros = 0;
+      for (let i = 0; i < afterDecimal.length; i++) {
+        if (afterDecimal[i] === '0') {
+          leadingZeros++;
+        } else {
+          break;
+        }
+      }
+      // Show at least 6 significant digits: leading zeros + significant digits
+      const precision = Math.max(leadingZeros + 6, basePrecision);
+      const formatted = numValue.toFixed(precision);
+      // Remove trailing zeros but keep at least basePrecision decimals
+      const trimmed = parseFloat(formatted).toFixed(Math.max(precision, basePrecision));
+      return includeSymbol ? `${trimmed} ${symbol}` : trimmed;
+    }
+  }
+  
+  const formatted = numValue.toFixed(basePrecision);
+  
+  return includeSymbol ? `${formatted} ${symbol}` : formatted;
+}
+
+/**
+ * Formats available balance for display in input fields.
+ * Shows "Available: X SYMBOL" format.
+ * @param balance - The balance value (string or number).
+ * @param symbol - The asset symbol.
+ * @param assetDecimals - Optional asset decimals for vault assets.
+ * @returns Formatted string (e.g., "Available: 1.2345 ETH" or "Available: 1.23 USDC").
+ */
+export function formatAvailableBalance(
+  balance: string | number,
+  symbol: string,
+  assetDecimals?: number
+): string {
+  const formatted = formatAssetBalance(balance, symbol, assetDecimals, true);
+  return `Available: ${formatted}`;
+}
+
+/**
+ * Formats asset amount for MAX button (input field).
+ * Returns just the number without symbol, suitable for input fields.
+ * For input fields, we preserve full precision to avoid rounding issues.
+ * @param amount - The amount as a number.
+ * @param symbol - The asset symbol.
+ * @param assetDecimals - Optional asset decimals.
+ * @returns Formatted string suitable for input field with full precision (e.g., "1.234567890123456789").
+ */
+export function formatAssetAmountForMax(
+  amount: number,
+  symbol: string,
+  assetDecimals?: number
+): string {
+  if (amount <= 0) return '0';
+  
+  // For input fields, preserve full precision to avoid rounding to zero for small amounts
+  // Convert to string with enough precision, then remove trailing zeros
+  const effectiveDecimals = assetDecimals ?? 18; // Default to 18 for ETH/WETH
+  const precision = Math.min(effectiveDecimals, 18); // Cap at 18 decimals
+  const formatted = amount.toFixed(precision);
+  
+  // Remove trailing zeros and unnecessary decimal point
+  return formatted.replace(/\.?0+$/, '') || '0';
+}
+
+// Legacy aliases for backward compatibility
+/** @deprecated Use formatAssetBalance instead */
+export function formatWalletBalance(balance: string | number, symbol: string): string {
+  return formatAssetBalance(balance, symbol, undefined, true);
+}
+
+/** @deprecated Use formatAssetBalance instead */
+export function formatVaultAssetBalance(
+  assetAmount: number,
+  assetDecimals: number,
+  symbol: string
+): string {
+  return formatAssetBalance(assetAmount, symbol, assetDecimals, true);
+}
+
+/** @deprecated Use getTokenDisplayPrecision instead */
+export function getTokenDisplayPrecisionDigits(symbol: string): number {
+  return getTokenDisplayPrecision(symbol);
 }
 
 /**

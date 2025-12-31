@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { MorphoVaultData } from '@/types/vault';
 import { useWallet } from '@/contexts/WalletContext';
 import { formatSmartCurrency, formatAssetAmount } from '@/lib/formatter';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Button } from '@/components/ui';
 
 interface VaultPositionProps {
   vaultData: MorphoVaultData;
@@ -24,6 +26,7 @@ interface Transaction {
 }
 
 export default function VaultPosition({ vaultData }: VaultPositionProps) {
+  const router = useRouter();
   const { address, isConnected } = useAccount();
   const { morphoHoldings } = useWallet();
   const [userTransactions, setUserTransactions] = useState<Transaction[]>([]);
@@ -161,11 +164,39 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
 
   const userDepositHistory = calculateUserDepositHistory();
 
+  const handleDeposit = () => {
+    router.push(`/transactions?vault=${vaultData.address}&action=deposit`);
+  };
+
+  const handleWithdraw = () => {
+    router.push(`/transactions?vault=${vaultData.address}&action=withdraw`);
+  };
+
   return (
     <div className="space-y-6">
       {/* Position Value */}
       <div>
-        <h2 className="text-lg font-semibold text-[var(--foreground)] mb-4">Your Deposits</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">Your Deposits</h2>
+          {isConnected && (
+            <div className="flex gap-2">
+              <Button
+                onClick={handleDeposit}
+                variant="primary"
+                size="sm"
+              >
+                Deposit
+              </Button>
+              <Button
+                onClick={handleWithdraw}
+                variant="secondary"
+                size="sm"
+              >
+                Withdraw
+              </Button>
+            </div>
+          )}
+        </div>
         {!isConnected ? (
           <div className="bg-[var(--surface-elevated)] rounded-lg p-6 text-center">
             <p className="text-sm text-[var(--foreground-muted)]">

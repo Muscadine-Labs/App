@@ -3,7 +3,7 @@
 import { useAccount } from 'wagmi';
 import { useState, useEffect } from 'react';
 import { useWallet } from '@/contexts/WalletContext';
-import { formatNumber, formatCurrency } from '@/lib/formatter';
+import { formatNumber, formatCurrency, getTokenDisplayPrecisionDigits } from '@/lib/formatter';
 import {
     useFloating,
     autoUpdate,
@@ -211,7 +211,7 @@ export default function WalletOverview() {
                                     <span className="text-xs text-[var(--foreground-secondary)]">
                                         {formatNumber(asset.formatted, {
                                             minimumFractionDigits: 0,
-                                            maximumFractionDigits: asset.symbol === 'ETH' || asset.symbol === 'WETH' ? 4 : asset.symbol === 'cbBTC' ? 6 : 2,
+                                            maximumFractionDigits: getTokenDisplayPrecisionDigits(asset.symbol),
                                         })}
                                     </span>
                                 </div>
@@ -274,7 +274,7 @@ export default function WalletOverview() {
                                     <span className="text-xs text-[var(--foreground-secondary)]">
                                         {formatNumber(asset.formatted, {
                                             minimumFractionDigits: 0,
-                                            maximumFractionDigits: asset.symbol === 'ETH' || asset.symbol === 'WETH' ? 4 : asset.symbol === 'cbBTC' ? 6 : 2,
+                                            maximumFractionDigits: getTokenDisplayPrecisionDigits(asset.symbol),
                                         })}
                                     </span>
                                 </div>

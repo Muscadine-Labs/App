@@ -115,3 +115,26 @@ export const RISK_LEVEL_COLORS = {
     medium: 'bg-[var(--warning-subtle)] text-[var(--warning)]',
     high: 'bg-[var(--danger-subtle)] text-[var(--danger)]',
 } as const;
+
+// Account types for transaction flow
+export type AccountType = 'wallet' | 'vault';
+
+export interface WalletAccount {
+    type: 'wallet';
+    address: 'wallet';
+    symbol: string;
+    balance: bigint;
+    assetAddress?: string; // For token balances
+}
+
+export interface VaultAccount {
+    type: 'vault';
+    address: string;
+    name: string;
+    symbol: string;
+    balance: bigint; // User's vault shares or withdrawable assets
+    assetAddress: string; // Underlying asset address
+    assetDecimals: number;
+}
+
+export type Account = WalletAccount | VaultAccount;

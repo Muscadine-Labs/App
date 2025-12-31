@@ -13,6 +13,7 @@ import { ApolloClient, HttpLink, InMemoryCache } from "@apollo/client";
 import { ApolloProvider } from '@apollo/client/react'
 import { VaultDataProvider } from '../contexts/VaultDataContext'
 import { WalletProvider } from '../contexts/WalletContext'
+import { TransactionProvider } from '../contexts/TransactionContext'
 import { TransactionModalProvider } from '../contexts/TransactionModalContext'
 import { ErrorBoundary } from '../components/common/ErrorBoundary'
 import { logger } from '../lib/logger'
@@ -59,7 +60,9 @@ export function Providers({ children, initialState }: Props) {
               <WalletProvider>
                 <TransactionModalProvider>
                   <VaultDataProvider>
-                    {children}
+                    <TransactionProvider>
+                      {children}
+                    </TransactionProvider>
                   </VaultDataProvider>
                 </TransactionModalProvider>
               </WalletProvider>

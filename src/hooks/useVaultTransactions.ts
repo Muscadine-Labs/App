@@ -9,8 +9,7 @@ import { DEFAULT_SLIPPAGE_TOLERANCE } from '@morpho-org/blue-sdk';
 import { parseUnits, type Address, getAddress, formatUnits } from 'viem';
 import { useVaultData } from '../contexts/VaultDataContext';
 import { useVaultSimulationState } from './useVaultSimulationState';
-import { useTransactionModal } from '../contexts/TransactionModalContext';
-import { BASE_WETH_ADDRESS, GAS_RESERVE_ETH } from '../lib/constants';
+import { BASE_WETH_ADDRESS } from '../lib/constants';
 
 // ABI for vault asset() function and ERC-4626 conversion functions
 const VAULT_ASSET_ABI = [
@@ -41,7 +40,7 @@ const ERC20_BALANCE_ABI = [
   },
 ] as const;
 
-type VaultAction = 'deposit' | 'withdraw' | 'withdrawAll';
+type VaultAction = 'deposit' | 'withdraw' | 'withdrawAll' | 'transfer';
 
 export type TransactionProgressStep = 
   | { type: 'signing'; stepIndex: number; totalSteps: number; stepLabel: string }
@@ -50,34 +49,33 @@ export type TransactionProgressStep =
 
 export type TransactionProgressCallback = (step: TransactionProgressStep) => void;
 
-export function useVaultTransactions(vaultAddress?: string) {
+export function useVaultTransactions(vaultAddress?: string, enabled: boolean = true) {
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
   const { address: accountAddress } = useAccount();
   const vaultDataContext = useVaultData();
-  const { modalState } = useTransactionModal();
   const [isLoading, setIsLoading] = useState(false);
   
-  // Use vault address from modal state if available, otherwise use prop
-  const activeVaultAddress = modalState.vaultAddress || vaultAddress;
-  const checksummedVaultAddress = activeVaultAddress ? getAddress(activeVaultAddress) : undefined;
+  // Use provided vault address
+  const checksummedVaultAddress = vaultAddress ? getAddress(vaultAddress) : undefined;
   
-  // Only enable simulation state when modal is open to reduce RPC calls
-  // The state will load quickly enough when user opens the modal
-  const shouldEnableSimulation = modalState.isOpen && !!checksummedVaultAddress;
+  // Enable simulation state when enabled and vault address is provided
+  const shouldEnableSimulation = enabled && !!checksummedVaultAddress;
   
   const { 
-    simulationState, 
+    simulationState: currentSimulationState, 
     isPending: isSimulationPending, 
     error: simulationError, 
-    bundler 
+    bundler,
+    refetch: refetchSimulationState
   } = useVaultSimulationState(
     checksummedVaultAddress,
     shouldEnableSimulation
   );
 
   const vaultData = checksummedVaultAddress ? vaultDataContext.getVaultData(checksummedVaultAddress) : null;
-  const assetDecimals = vaultData?.assetDecimals ?? 18;
+  // Use override if provided, otherwise fall back to vault data
+  const getAssetDecimals = (override?: number) => override ?? vaultData?.assetDecimals ?? 18;
 
   // Fetch asset address from vault contract
   const { data: assetAddress } = useReadContract({
@@ -87,41 +85,60 @@ export function useVaultTransactions(vaultAddress?: string) {
     query: { enabled: !!checksummedVaultAddress },
   });
 
-  // Get user's ETH balance to reserve gas when wrapping
-  const { data: ethBalance } = useBalance({
-    address: accountAddress as `0x${string}`,
-    query: { enabled: !!accountAddress },
-  });
-
-  // Get user's WETH balance (for WETH vaults - can deposit existing WETH directly)
-  const { data: wethBalance } = useReadContract({
-    address: assetAddress as Address,
-    abi: ERC20_BALANCE_ABI,
-    functionName: 'balanceOf',
-    args: accountAddress ? [accountAddress as Address] : undefined,
-    query: { enabled: !!accountAddress && !!assetAddress && assetAddress?.toLowerCase() === BASE_WETH_ADDRESS.toLowerCase() },
-  });
+  // Check if this is a WETH vault by address (more reliable than waiting for assetAddress)
+  // WETH vault address: 0x21e0d366272798da3A977FEBA699FCB91959d120
+  const isWethVaultByAddress = checksummedVaultAddress?.toLowerCase() === '0x21e0d366272798da3A977FEBA699FCB91959d120'.toLowerCase();
 
   const executeVaultAction = useCallback(async (
     action: VaultAction,
     vault: string,
     amount?: string,
-    onProgress?: TransactionProgressCallback
+    onProgress?: TransactionProgressCallback,
+    destinationVault?: string, // For transfer operations
+    assetDecimalsOverride?: number // Override asset decimals from selected asset
   ): Promise<string> => {
-    if (!accountAddress) throw new Error('Wallet not connected');
-    if (!walletClient?.account?.address) throw new Error('Wallet client not available');
-    if (!simulationState) throw new Error('Simulation state not ready');
-    if (!bundler) throw new Error('Bundler not available');
+    if (!accountAddress) {
+      throw new Error('Wallet not connected.\n\nPlease connect your wallet and try again.');
+    }
+    if (!walletClient?.account?.address) {
+      throw new Error('Wallet client not available.\n\nPlease ensure your wallet is connected and try again.');
+    }
+    if (!currentSimulationState) {
+      throw new Error('Transaction system not ready.\n\nPlease wait a moment for the system to initialize and try again.');
+    }
+    if (!bundler) {
+      throw new Error('Transaction bundler not available.\n\nPlease wait a moment and try again.');
+    }
     if (isSimulationPending) {
-      throw new Error('Simulation state is still loading. Please wait a moment and try again.');
+      throw new Error('Transaction system is still loading.\n\nPlease wait a moment for the system to prepare and try again.');
     }
     
     // Additional check: ensure simulation state has data
-    if (!simulationState.vaults || Object.keys(simulationState.vaults).length === 0) {
-      throw new Error('Simulation state vaults not loaded. Please wait and try again.');
+    if (!currentSimulationState.vaults || Object.keys(currentSimulationState.vaults).length === 0) {
+      throw new Error('Vault data not loaded.\n\nPlease wait for the vault information to load and try again.');
     }
 
     setIsLoading(true);
+
+    // Refetch simulation state before executing to ensure we have fresh on-chain data
+    // This prevents "execution reverted" errors caused by stale simulation state
+    // The refetch function returns the fresh simulation state directly, avoiding race conditions
+    let simulationState = currentSimulationState;
+    try {
+      if (refetchSimulationState) {
+        const freshState = await refetchSimulationState();
+        if (freshState) {
+          simulationState = freshState;
+        }
+      }
+    } catch (refetchError) {
+      // Continue with cached state - it's better than failing completely
+    }
+    
+    // Re-validate simulation state after refetch
+    if (!simulationState || !simulationState.vaults || Object.keys(simulationState.vaults).length === 0) {
+      throw new Error('Vault data not loaded after refresh.\n\nPlease wait for the vault information to load and try again.');
+    }
 
     try {
       const normalizedVault = getAddress(vault);
@@ -171,6 +188,9 @@ export function useVaultTransactions(vaultAddress?: string) {
       } else if (!amount || parseFloat(amount) <= 0) {
         throw new Error('Invalid amount');
       } else {
+        // Use asset decimals override if provided
+        const effectiveAssetDecimals = getAssetDecimals(assetDecimalsOverride);
+        
         // Sanitize and validate amount string before parsing
         // Remove any whitespace and ensure it's a valid decimal number
         const sanitizedAmount = amount.trim().replace(/\s+/g, '');
@@ -186,45 +206,128 @@ export function useVaultTransactions(vaultAddress?: string) {
         const decimalPart = parts[1] || '';
         
         // Ensure decimal part doesn't exceed contract decimals
-        if (decimalPart.length > assetDecimals) {
+        if (decimalPart.length > effectiveAssetDecimals) {
           // Truncate to contract decimals (don't round to prevent exceeding balance)
-          const truncatedDecimal = decimalPart.substring(0, assetDecimals);
+          const truncatedDecimal = decimalPart.substring(0, effectiveAssetDecimals);
           const truncatedAmount = `${integerPart}.${truncatedDecimal}`;
-          amountBigInt = parseUnits(truncatedAmount, assetDecimals);
+          amountBigInt = parseUnits(truncatedAmount, effectiveAssetDecimals);
         } else {
           // Pad decimal part with zeros if needed (parseUnits requires exact decimal places)
-          const paddedDecimal = decimalPart.padEnd(assetDecimals, '0');
+          const paddedDecimal = decimalPart.padEnd(effectiveAssetDecimals, '0');
           const normalizedAmount = `${integerPart}.${paddedDecimal}`;
-          amountBigInt = parseUnits(normalizedAmount, assetDecimals);
+          amountBigInt = parseUnits(normalizedAmount, effectiveAssetDecimals);
         }
       }
 
       // Build input operations
       const inputOperations: InputBundlerOperation[] = [];
 
-      if (action === 'deposit') {
+      if (action === 'transfer' && destinationVault) {
+        // Vault-to-vault transfer: withdraw from source vault, deposit to destination vault
+        const destVault = getAddress(destinationVault);
+        
+        // First, withdraw from source vault
+        // Convert assets to shares for withdrawal
+        if (!publicClient) {
+          throw new Error('Public client not available');
+        }
+        
+        let sharesBigInt: bigint;
+        try {
+          sharesBigInt = await publicClient.readContract({
+            address: normalizedVault,
+            abi: VAULT_ASSET_ABI,
+            functionName: 'convertToShares',
+            args: [amountBigInt],
+          });
+        } catch {
+          throw new Error('Failed to convert assets to shares. Please try again.');
+        }
+        
+        // Withdraw from source vault
+        inputOperations.push({
+          type: 'MetaMorpho_Withdraw',
+          address: normalizedVault,
+          sender: userAddress,
+          args: {
+            shares: sharesBigInt,
+            owner: userAddress,
+            receiver: userAddress, // Withdraw to wallet first, then deposit
+            slippage: DEFAULT_SLIPPAGE_TOLERANCE,
+          },
+        });
+        
+        // Then deposit to destination vault
+        inputOperations.push({
+          type: 'MetaMorpho_Deposit',
+          address: destVault,
+          sender: userAddress,
+          args: {
+            assets: amountBigInt, // Use the same asset amount
+            owner: userAddress,
+            slippage: DEFAULT_SLIPPAGE_TOLERANCE,
+          },
+        });
+      } else if (action === 'deposit') {
         if (isWethVault) {
           // --- SPECIAL FLOW FOR WETH VAULTS ---
           // Can deposit both existing WETH and wrap ETH as needed
-          const existingWeth = (wethBalance as bigint) || BigInt(0);
-          const availableEth = ethBalance?.value || BigInt(0);
+          // We handle wrapping manually (rather than via getRequirementOperations) to:
+          // 1. Ensure gas reserve calculations are explicit and safe
+          // 2. Provide clear error messages about available balances
+          // 3. Have full control over the wrapping logic
           
-          // Reserve ETH for gas fees
-          const GAS_RESERVE = parseUnits(GAS_RESERVE_ETH, 18);
+          // Fetch fresh balances at transaction time to ensure accuracy
+          // Using publicClient ensures we get the state at the moment the button was clicked
+          if (!publicClient || !accountAddress) {
+            throw new Error('Public client not available');
+          }
           
-          // Calculate how much ETH we can wrap (available ETH minus gas reserve)
-          const maxWrapAmount = availableEth > GAS_RESERVE 
-            ? availableEth - GAS_RESERVE 
-            : BigInt(0);
+          // Fetch WETH balance directly from contract
+          const existingWeth = await publicClient.readContract({
+            address: BASE_WETH_ADDRESS,
+            abi: ERC20_BALANCE_ABI,
+            functionName: 'balanceOf',
+            args: [accountAddress as Address],
+          }) as bigint;
           
-          // Total available: existing WETH + wrappable ETH
-          const totalAvailable = existingWeth + maxWrapAmount;
+          // Fetch fresh ETH balance
+          const availableEth = await publicClient.getBalance({
+            address: accountAddress as Address,
+          });
+          
+          // Estimate gas needed for wrapping ETH (if we need to wrap)
+          // A typical WETH wrap + deposit via bundler costs around 0.00005-0.0001 ETH
+          // We use a conservative but reasonable estimate
+          const estimatedGasForWrap = parseUnits('0.0001', 18); // Conservative estimate for wrap + deposit + bundler
+          
+          // Calculate wrappable ETH: available ETH minus estimated gas
+          // For very small balances, allow wrapping most of it (wallet will handle gas estimation)
+          const wrappableEth = availableEth > estimatedGasForWrap 
+            ? availableEth - estimatedGasForWrap 
+            : (availableEth > parseUnits('0.00005', 18) 
+              ? availableEth - parseUnits('0.00005', 18) // Reserve minimum for very small amounts
+              : BigInt(0));
+          
+          // Total available: existing WETH + wrappable ETH (ETH that can actually be wrapped)
+          const totalAvailable = existingWeth + wrappableEth;
+          
+          // Detailed balance information for error messages
+          const existingWethFormatted = formatUnits(existingWeth, 18);
+          const availableEthFormatted = formatUnits(availableEth, 18);
+          const wrappableEthFormatted = formatUnits(wrappableEth, 18);
+          const totalAvailableFormatted = formatUnits(totalAvailable, 18);
+          const requestedFormatted = formatUnits(amountBigInt, 18);
           
           if (amountBigInt > totalAvailable) {
             throw new Error(
-              `Insufficient balance. Available: ${formatUnits(totalAvailable, 18)} WETH ` +
-              `(${formatUnits(existingWeth, 18)} WETH + ${formatUnits(maxWrapAmount, 18)} ETH wrappable). ` +
-              `Requested: ${formatUnits(amountBigInt, 18)} WETH`
+              `Insufficient balance for WETH vault deposit.\n\n` +
+              `Requested: ${requestedFormatted} WETH\n` +
+              `Available: ${totalAvailableFormatted} WETH\n\n` +
+              `Breakdown:\n` +
+              `  • Existing WETH: ${existingWethFormatted} WETH\n` +
+              `  • Wrappable ETH: ${wrappableEthFormatted} ETH (${availableEthFormatted} ETH minus ~0.0001 ETH for gas)\n\n` +
+              `Please reduce the amount or add more funds to your wallet.`
             );
           }
           
@@ -233,15 +336,17 @@ export function useVaultTransactions(vaultAddress?: string) {
           
           // If we need to wrap ETH, add wrap operation
           if (ethToWrap > BigInt(0)) {
-            if (ethToWrap > maxWrapAmount) {
+            if (ethToWrap > wrappableEth) {
+              const ethToWrapFormatted = formatUnits(ethToWrap, 18);
               throw new Error(
-                `Cannot wrap ${formatUnits(ethToWrap, 18)} ETH. ` +
-                `Need at least ${formatUnits(GAS_RESERVE, 18)} ETH for gas fees. ` +
-                `Available to wrap: ${formatUnits(maxWrapAmount, 18)} ETH`
+                `Cannot wrap ${ethToWrapFormatted} ETH.\n\n` +
+                `Available ETH: ${availableEthFormatted} ETH\n` +
+                `Wrappable ETH (after gas): ${wrappableEthFormatted} ETH\n` +
+                `ETH needed to wrap: ${ethToWrapFormatted} ETH\n\n` +
+                `Some ETH is reserved for transaction gas fees. Please reduce the amount slightly.`
               );
             }
             
-            // Wrap Native ETH into WETH
             inputOperations.push({
               type: 'Erc20_Wrap',
               address: BASE_WETH_ADDRESS,
@@ -252,31 +357,19 @@ export function useVaultTransactions(vaultAddress?: string) {
               },
             });
           }
-          
-          // Deposit WETH into Vault (will use existing WETH + newly wrapped WETH)
-          inputOperations.push({
-            type: 'MetaMorpho_Deposit',
-            address: normalizedVault,
-            sender: userAddress,
-            args: {
-              assets: amountBigInt, // Total amount to deposit
-              owner: userAddress,
-              slippage: DEFAULT_SLIPPAGE_TOLERANCE,
-            },
-          });
-        } else {
-          // --- STANDARD FLOW (USDC, BTC, etc) ---
-          inputOperations.push({
-            type: 'MetaMorpho_Deposit',
-            address: normalizedVault,
-            sender: userAddress,
-            args: {
-              assets: amountBigInt,
-              owner: userAddress,
-              slippage: DEFAULT_SLIPPAGE_TOLERANCE,
-            },
-          });
         }
+        
+        // Deposit into vault (for both WETH and standard vaults)
+        inputOperations.push({
+          type: 'MetaMorpho_Deposit',
+          address: normalizedVault,
+          sender: userAddress,
+          args: {
+            assets: amountBigInt,
+            owner: userAddress,
+            slippage: DEFAULT_SLIPPAGE_TOLERANCE,
+          },
+        });
       } else if (action === 'withdraw' || action === 'withdrawAll') {
         // Use shares parameter for withdrawAll, assets for regular withdraw
         if (useSharesForWithdraw) {
@@ -329,11 +422,13 @@ export function useVaultTransactions(vaultAddress?: string) {
       }
 
       // Configure bundling options
+      // Note: We handle WETH wrapping manually (see deposit flow above) rather than via
+      // getRequirementOperations to maintain explicit gas reserve logic and better error messages.
+      // The bundler SDK will still automatically handle token approvals and other requirements.
       const bundlingOptions: BundlingOptions = {
         publicAllocatorOptions: {
           enabled: true,
         },
-        // We do not need getRequirementOperations because we manually handled the wrapping above
       };
       
       // setupBundle handles:
@@ -362,7 +457,9 @@ export function useVaultTransactions(vaultAddress?: string) {
       // Sign any required signatures - each signature is its own step
       for (let i = 0; i < signatureCount; i++) {
         const signature = bundle.requirements.signatures[i];
-        const stepLabel = signatureCount > 1 ? `Sign ${i + 1}/${signatureCount}` : 'Sign';
+        const stepLabel = signatureCount > 1 
+          ? `Pre authorize ${i + 1}/${signatureCount}` 
+          : 'Pre authorize';
         
         // Call progress callback - wallet will open for signing
         onProgress?.({ 
@@ -383,8 +480,8 @@ export function useVaultTransactions(vaultAddress?: string) {
         const prereqTx = bundle.requirements.txs[i];
         const contractAddress = prereqTx.tx.to || '';
         const stepLabel = prerequisiteTxCount > 1 
-          ? `Approve ${i + 1}/${prerequisiteTxCount}` 
-          : 'Approve';
+          ? `Pre authorize ${i + 1}/${prerequisiteTxCount}` 
+          : 'Pre authorize';
         
         // Call progress callback BEFORE sending - wallet will open for approval
         onProgress?.({ 
@@ -412,20 +509,11 @@ export function useVaultTransactions(vaultAddress?: string) {
         });
         
         if (publicClient) {
+          // waitForTransactionReceipt already ensures state propagation on-chain
           await publicClient.waitForTransactionReceipt({ hash: prereqHash });
         }
         
-        // After each prerequisite transaction, wait a moment for state to propagate
-        if (i < prerequisiteTxCount - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        
         currentStepIndex++;
-      }
-      
-      // Final wait after all prerequisite transactions
-      if (prerequisiteTxCount > 0) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
       }
 
       // Send the main bundle transaction
@@ -434,65 +522,6 @@ export function useVaultTransactions(vaultAddress?: string) {
       // For bundler 3, the transaction should be sent to the bundler contract
       if (!bundleTx.to) {
         throw new Error('Bundle transaction missing "to" address');
-      }
-
-      // Estimate gas first
-      let gasEstimate: bigint | undefined;
-      if (publicClient && walletClient.account) {
-        try {
-          gasEstimate = await publicClient.estimateGas({
-            account: walletClient.account,
-            to: bundleTx.to,
-            data: bundleTx.data,
-            value: bundleTx.value || BigInt(0),
-          });
-        } catch (gasError: unknown) {
-          // If we had prerequisite transactions and gas estimation fails with an allowance error,
-          // it might be because the state hasn't propagated yet. Try recreating the bundle.
-          const errorString = gasError instanceof Error ? gasError.message : String(gasError);
-          const isAllowanceError = errorString.toLowerCase().includes('allowance') || 
-                                   errorString.toLowerCase().includes('transfer amount exceeds');
-          
-          if (prerequisiteTxCount > 0 && isAllowanceError) {
-            // Wait a bit longer for state to propagate, then recreate bundle
-            await new Promise(resolve => setTimeout(resolve, 2000));
-            
-            // Recreate the bundle with updated simulation state
-            const { bundle: refreshedBundle } = setupBundle(
-              inputOperations,
-              simulationState,
-              userAddress,
-              {
-                ...bundlingOptions,
-                supportsSignature: false,
-              }
-            );
-            
-            const refreshedBundleTx = refreshedBundle.tx();
-            if (refreshedBundleTx.to) {
-              try {
-                gasEstimate = await publicClient.estimateGas({
-                  account: walletClient.account,
-                  to: refreshedBundleTx.to,
-                  data: refreshedBundleTx.data,
-                  value: refreshedBundleTx.value || BigInt(0),
-                });
-                // Use the refreshed bundle transaction
-                const refreshedTxHash = await walletClient.sendTransaction({
-                  to: refreshedBundleTx.to,
-                  data: refreshedBundleTx.data,
-                  value: refreshedBundleTx.value || BigInt(0),
-                  account: walletClient.account,
-                  gas: gasEstimate,
-                });
-                return refreshedTxHash;
-              } catch {
-                // If retry still fails, proceed without gas estimate
-              }
-            }
-          }
-          // Proceed without gas estimate - wallet will estimate
-        }
       }
 
       // Notify that we're about to send the main transaction - wallet will open
@@ -505,12 +534,12 @@ export function useVaultTransactions(vaultAddress?: string) {
       });
 
       // Wallet opens here for main transaction
+      // Let the wallet handle gas estimation - it's more reliable and handles edge cases better
       const txHash = await walletClient.sendTransaction({
         to: bundleTx.to,
         data: bundleTx.data,
         value: bundleTx.value || BigInt(0),
         account: walletClient.account,
-        gas: gasEstimate,
       });
 
       // Update progress with actual txHash after transaction is sent
@@ -533,13 +562,12 @@ export function useVaultTransactions(vaultAddress?: string) {
     walletClient, 
     publicClient,
     bundler, 
-    assetDecimals,
     accountAddress,
-    simulationState,
+    currentSimulationState,
     isSimulationPending,
     assetAddress,
-    ethBalance,
-    wethBalance
+    vaultDataContext,
+    refetchSimulationState
   ]);
 
   return {
