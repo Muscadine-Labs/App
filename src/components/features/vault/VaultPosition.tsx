@@ -159,15 +159,20 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
         if (userResponseData.error) {
           logger.warn(
             'Activity API returned error',
-            new Error(userResponseData.error),
-            { vaultAddress: vaultData.address, userAddress: address }
+            { 
+              error: userResponseData.error,
+              vaultAddress: vaultData.address, 
+              userAddress: address 
+            }
           );
         }
         if (historyData.error) {
           logger.warn(
             'History API returned error',
-            new Error(historyData.error),
-            { vaultAddress: vaultData.address }
+            { 
+              error: historyData.error,
+              vaultAddress: vaultData.address 
+            }
           );
         }
         
