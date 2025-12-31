@@ -50,9 +50,9 @@ export function Providers({ children, initialState }: Props) {
             <RainbowKitProvider
               initialChain={base}
               theme={darkTheme({
-                accentColor: 'var(--primary)', // Dynamically reads --accent from globals.css
+                accentColor: 'var(--primary)',
                 accentColorForeground: 'white',
-                borderRadius: 'medium', // Matches site's rounded corners
+                borderRadius: 'medium',
                 fontStack: 'system',
                 overlayBlur: 'small',
               })}

@@ -18,7 +18,14 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
     const pathname = usePathname();
     const router = useRouter();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const settingsRef = useRef<HTMLDivElement>(null);
+    
+    // Settings state with defaults
+    const [version, setVersion] = useState<'V1' | 'V2'>('V1');
+    const [mode, setMode] = useState<'Advanced' | 'Simple'>('Advanced');
+    const [theme, setTheme] = useState<'Dark' | 'Light' | 'Auto'>('Auto');
 
     const isActive = useCallback((item: NavItem): boolean => {
         // Vaults dropdown is active if we're on a vault page
@@ -31,16 +38,19 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
             if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
                 setIsMenuOpen(false);
             }
+            if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
+                setIsSettingsOpen(false);
+            }
         };
 
-        if (isMenuOpen) {
+        if (isMenuOpen || isSettingsOpen) {
             document.addEventListener('mousedown', handleClickOutside);
         }
 
         return () => {
             document.removeEventListener('mousedown', handleClickOutside);
         };
-    }, [isMenuOpen]);
+    }, [isMenuOpen, isSettingsOpen]);
 
     return (
         <>
@@ -126,6 +136,7 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                         >
                                             Risk Analytics
                                         </a>
+                                        <div className="border-t border-[var(--border)]"></div>
                                         <a
                                             href="https://muscadine.io/terms"
                                             target="_blank"
@@ -134,6 +145,15 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                             onClick={() => setIsMenuOpen(false)}
                                         >
                                             Terms of Use
+                                        </a>
+                                        <a
+                                            href="https://muscadine.io/legal"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block py-2 text-sm text-[var(--foreground)] hover:text-[var(--primary)] transition-colors"
+                                            onClick={() => setIsMenuOpen(false)}
+                                        >
+                                            Legal Disclaimer
                                         </a>
                                         <a
                                             href="https://muscadine.io/privacy"
@@ -180,7 +200,9 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                             onClick={() => setIsMenuOpen(false)}
                                             aria-label="Contact"
                                         >
-                                            <span className="text-base">📧</span>
+                                            <svg className="w-4 h-4 text-[var(--foreground)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                            </svg>
                                         </a>
                                     </div>
                                 </div>
@@ -219,8 +241,150 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                         </nav>
                     </div>
 
-                    {/* Right side: Connect Button and Sidebar Toggle */}
+                    {/* Right side: Settings, Connect Button and Sidebar Toggle */}
                     <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
+                        {/* Settings Dropdown */}
+                        <div className="relative flex items-center" ref={settingsRef}>
+                            <button
+                                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                                className="flex items-center gap-2 hover:opacity-80 transition-opacity p-2"
+                                aria-label="Settings"
+                            >
+                                <Icon 
+                                    name="settings"
+                                    size="md" 
+                                    color="secondary"
+                                    className="transition-transform duration-200"
+                                />
+                                <Icon 
+                                    name={isSettingsOpen ? "chevron-up" : "chevron-down"}
+                                    size="xs" 
+                                    color="secondary"
+                                    className="transition-transform duration-200"
+                                />
+                            </button>
+
+                            {/* Settings Dropdown Menu */}
+                            {isSettingsOpen && (
+                                <div className="absolute right-0 top-full mt-2 w-48 bg-[var(--surface)] border border-[var(--border)] rounded-2xl shadow-xl py-4 z-50 animate-[fadeInUp_0.2s_ease-out]">
+                                    {/* Version Section */}
+                                    <div className="px-4 mb-4">
+                                        <div className="flex items-center justify-between">
+                                            <button
+                                                onClick={() => {
+                                                    setVersion('V2');
+                                                    setIsSettingsOpen(false);
+                                                }}
+                                                className={`flex-1 py-2 px-3 text-sm rounded-lg transition-colors ${
+                                                    version === 'V2'
+                                                        ? 'bg-[var(--primary)] text-white'
+                                                        : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
+                                                }`}
+                                            >
+                                                V2
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setVersion('V1');
+                                                    setIsSettingsOpen(false);
+                                                }}
+                                                className={`flex-1 py-2 px-3 text-sm rounded-lg transition-colors ${
+                                                    version === 'V1'
+                                                        ? 'bg-[var(--primary)] text-white'
+                                                        : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
+                                                }`}
+                                            >
+                                                V1
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Divider */}
+                                    <div className="border-t border-[var(--border)] mb-4"></div>
+
+                                    {/* Mode Section */}
+                                    <div className="px-4 mb-4">
+                                        <div className="flex items-center justify-between">
+                                            <button
+                                                onClick={() => {
+                                                    setMode('Advanced');
+                                                    setIsSettingsOpen(false);
+                                                }}
+                                                className={`flex-1 py-2 px-3 text-sm rounded-lg transition-colors ${
+                                                    mode === 'Advanced'
+                                                        ? 'bg-[var(--primary)] text-white'
+                                                        : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
+                                                }`}
+                                            >
+                                                Advanced
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setMode('Simple');
+                                                    setIsSettingsOpen(false);
+                                                }}
+                                                className={`flex-1 py-2 px-3 text-sm rounded-lg transition-colors ${
+                                                    mode === 'Simple'
+                                                        ? 'bg-[var(--primary)] text-white'
+                                                        : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
+                                                }`}
+                                            >
+                                                Simple
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Divider */}
+                                    <div className="border-t border-[var(--border)] mb-4"></div>
+
+                                    {/* Theme Section */}
+                                    <div className="px-4">
+                                        <div className="flex items-center justify-between gap-1">
+                                            <button
+                                                onClick={() => {
+                                                    setTheme('Dark');
+                                                    setIsSettingsOpen(false);
+                                                }}
+                                                className={`flex-1 py-2 px-2 text-sm rounded-lg transition-colors ${
+                                                    theme === 'Dark'
+                                                        ? 'bg-[var(--primary)] text-white'
+                                                        : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
+                                                }`}
+                                            >
+                                                Dark
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setTheme('Light');
+                                                    setIsSettingsOpen(false);
+                                                }}
+                                                className={`flex-1 py-2 px-2 text-sm rounded-lg transition-colors ${
+                                                    theme === 'Light'
+                                                        ? 'bg-[var(--primary)] text-white'
+                                                        : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
+                                                }`}
+                                            >
+                                                Light
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setTheme('Auto');
+                                                    setIsSettingsOpen(false);
+                                                }}
+                                                className={`flex-1 py-2 px-2 text-sm rounded-lg transition-colors ${
+                                                    theme === 'Auto'
+                                                        ? 'bg-[var(--primary)] text-white'
+                                                        : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
+                                                }`}
+                                            >
+                                                Auto
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         <ConnectButton />
                         {onToggleSidebar && (
                             <button
