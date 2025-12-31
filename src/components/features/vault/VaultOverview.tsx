@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { formatSmartCurrency, formatAssetAmount } from '@/lib/formatter';
+import { calculateYAxisDomain } from '@/lib/vault-utils';
 import { MorphoVaultData } from '@/types/vault';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
@@ -13,14 +14,27 @@ interface HistoryDataPoint {
   timestamp: number;
   date: string;
   totalAssetsUsd: number;
+  totalAssets?: number;
   apy: number;
 }
 
+type Period = 'all' | '7d' | '30d' | '90d' | '1y';
+
+const PERIOD_SECONDS: Record<Period, number> = {
+  all: 0, // 0 means all data
+  '7d': 7 * 24 * 60 * 60,
+  '30d': 30 * 24 * 60 * 60,
+  '90d': 90 * 24 * 60 * 60,
+  '1y': 365 * 24 * 60 * 60,
+};
+
 export default function VaultOverview({ vaultData }: VaultOverviewProps) {
-  const [period, setPeriod] = useState<'7d' | '30d' | '90d' | '1y'>('30d');
+  const [period, setPeriod] = useState<Period>('all');
+  const [allHistoryData, setAllHistoryData] = useState<HistoryDataPoint[]>([]);
   const [historyData, setHistoryData] = useState<HistoryDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [chartType, setChartType] = useState<'apy' | 'tvl'>('apy');
+  const [valueType, setValueType] = useState<'usd' | 'token'>('usd');
 
   // Format liquidity
   const liquidityUsd = formatSmartCurrency(vaultData.currentLiquidity);
@@ -33,12 +47,50 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
   // Format APY
   const apyPercent = (vaultData.apy * 100).toFixed(2);
 
+  // Calculate Y-axis domain for APY chart
+  const apyYAxisDomain = useMemo(() => {
+    if (historyData.length === 0 || chartType !== 'apy') return undefined;
+    
+    const apyValues = historyData.map(d => d.apy).filter(v => v !== null && v !== undefined && !isNaN(v));
+    return calculateYAxisDomain(apyValues, {
+      bottomPaddingPercent: 0.5,
+      topPaddingPercent: 0.2,
+      thresholdPercent: 0.01,
+    });
+  }, [historyData, chartType]);
+
+  // Memoize chart data for TVL chart to avoid recalculating on every render
+  const tvlChartData = useMemo(() => {
+    if (chartType !== 'tvl') return [];
+    return historyData.map(item => ({
+      ...item,
+      value: valueType === 'usd' ? item.totalAssetsUsd : (item.totalAssets || 0),
+    }));
+  }, [historyData, chartType, valueType]);
+
+  // Calculate Y-axis domain for Total Deposits chart
+  const tvlYAxisDomain = useMemo(() => {
+    if (tvlChartData.length === 0 || chartType !== 'tvl') return undefined;
+    
+    const values = tvlChartData.map(d => d.value).filter(v => v !== null && v !== undefined && !isNaN(v));
+    
+    return calculateYAxisDomain(values, {
+      bottomPaddingPercent: 0.25,
+      topPaddingPercent: 0.2,
+      thresholdPercent: valueType === 'usd' ? 0.02 : undefined,
+      filterPositiveOnly: true,
+      tokenThreshold: valueType === 'token' ? 1000 : undefined,
+    });
+  }, [tvlChartData, chartType, valueType]);
+
+  // Fetch all history data once, then filter based on period
   useEffect(() => {
-    const fetchHistory = async () => {
+    const fetchAllHistory = async () => {
       setLoading(true);
       try {
+        // Always fetch 1y worth of data to get all available history
         const response = await fetch(
-          `/api/vaults/${vaultData.address}/history?chainId=${vaultData.chainId}&period=${period}`
+          `/api/vaults/${vaultData.address}/history?chainId=${vaultData.chainId}&period=1y`
         );
         const data = await response.json();
         
@@ -47,49 +99,113 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
           const uniqueData = data.history.filter((point: HistoryDataPoint, index: number, self: HistoryDataPoint[]) => 
             index === self.findIndex((p) => p.timestamp === point.timestamp)
           );
-          setHistoryData(uniqueData);
+          setAllHistoryData(uniqueData);
         } else {
-          setHistoryData([]);
+          setAllHistoryData([]);
         }
       } catch {
-        setHistoryData([]);
+        setAllHistoryData([]);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchHistory();
-  }, [vaultData.address, vaultData.chainId, period]);
+    fetchAllHistory();
+  }, [vaultData.address, vaultData.chainId]);
 
-  // Get ticks for 7d period - only midnight and midday
-  const get7dTicks = () => {
+  // Filter history data based on selected period
+  useEffect(() => {
+    if (period === 'all' || allHistoryData.length === 0) {
+      setHistoryData(allHistoryData);
+      return;
+    }
+    
+    const now = Math.floor(Date.now() / 1000);
+    const cutoffTimestamp = now - PERIOD_SECONDS[period];
+    
+    setHistoryData(allHistoryData.filter(d => d.timestamp >= cutoffTimestamp));
+  }, [allHistoryData, period]);
+
+  // Calculate available periods based on data range
+  const availablePeriods = useMemo(() => {
+    if (allHistoryData.length === 0) return ['all' as Period];
+    
+    const now = Math.floor(Date.now() / 1000);
+    const oldestTimestamp = allHistoryData[0]?.timestamp || now;
+    const dataRangeSeconds = now - oldestTimestamp;
+    
+    const periods: Period[] = ['all'];
+    
+    // Only add periods that are <= the available data range
+    if (dataRangeSeconds >= PERIOD_SECONDS['1y']) {
+      periods.push('1y');
+    }
+    if (dataRangeSeconds >= PERIOD_SECONDS['90d']) {
+      periods.push('90d');
+    }
+    if (dataRangeSeconds >= PERIOD_SECONDS['30d']) {
+      periods.push('30d');
+    }
+    if (dataRangeSeconds >= PERIOD_SECONDS['7d']) {
+      periods.push('7d');
+    }
+    
+    return periods;
+  }, [allHistoryData]);
+
+  // Get ticks for 7d period - show every day, prefer midnight but fallback to first data point of day
+  const get7dTicks = useMemo(() => {
     if (period !== '7d' || historyData.length === 0) return undefined;
     
     const ticks: number[] = [];
     const seenDates = new Set<string>();
     
-    historyData.forEach((point: HistoryDataPoint) => {
+    // Sort data by timestamp
+    const sortedData = [...historyData].sort((a, b) => a.timestamp - b.timestamp);
+    
+    sortedData.forEach((point: HistoryDataPoint) => {
       const date = new Date(point.timestamp * 1000);
       const dateKey = date.toDateString();
       const hours = date.getHours();
-      const minutes = date.getMinutes();
       
-      // Add midnight tick (once per day)
-      if (hours === 0 && minutes < 30 && !seenDates.has(dateKey)) {
-        ticks.push(point.timestamp);
-        seenDates.add(dateKey);
-      }
-      // Add midday tick
-      else if (hours === 12 && minutes < 30) {
-        ticks.push(point.timestamp);
+      // Add tick for each day - prefer midnight (00:00-02:00), otherwise use first point of the day
+      if (!seenDates.has(dateKey)) {
+        // If it's early morning (0-2 AM), use it as the tick
+        if (hours >= 0 && hours < 2) {
+          ticks.push(point.timestamp);
+          seenDates.add(dateKey);
+        }
       }
     });
     
+    // If we don't have enough ticks, add first point of each day
+    if (ticks.length < 3) {
+      const dayTicks: number[] = [];
+      const daySeen = new Set<string>();
+      
+      sortedData.forEach((point: HistoryDataPoint) => {
+        const date = new Date(point.timestamp * 1000);
+        const dateKey = date.toDateString();
+        
+        if (!daySeen.has(dateKey)) {
+          dayTicks.push(point.timestamp);
+          daySeen.add(dateKey);
+        }
+      });
+      
+      // Use every other day if we have too many points
+      if (dayTicks.length > 7) {
+        return dayTicks.filter((_, index) => index % 2 === 0);
+      }
+      
+      return dayTicks.length > 0 ? dayTicks : undefined;
+    }
+    
     return ticks.length > 0 ? ticks : undefined;
-  };
+  }, [period, historyData]);
 
   // Get ticks for 30d period - only every other day
-  const get30dTicks = () => {
+  const get30dTicks = useMemo(() => {
     if (period !== '30d' || historyData.length === 0) return undefined;
     
     const ticks: number[] = [];
@@ -115,10 +231,10 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
     });
     
     return ticks.length > 0 ? ticks : undefined;
-  };
+  }, [period, historyData]);
 
   // Format date for tooltip - always shows accurate date/time
-  const formatTooltipDate = (timestamp: number | string) => {
+  const formatTooltipDate = useCallback((timestamp: number | string) => {
     const date = typeof timestamp === 'number' 
       ? new Date(timestamp * 1000) 
       : new Date(timestamp);
@@ -128,53 +244,22 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
       const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
       return `${dateStr}, ${timeStr}`;
-    } else if (period === '30d') {
-      // For 30 days, show month and day
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } else if (period === '90d') {
-      // For 90 days, show month and day
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     } else {
-      // For 1 year, show month and day (no year)
+      // For 30d, 90d, 1y, show month and day
       return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     }
-  };
+  }, [period]);
 
   // Format date for chart X-axis labels - accepts timestamp in seconds
-  const formatDate = (timestamp: number | string) => {
+  const formatDate = useCallback((timestamp: number | string) => {
     // Handle both timestamp (number) and date string (for backwards compatibility)
     const date = typeof timestamp === 'number' 
       ? new Date(timestamp * 1000) 
       : new Date(timestamp);
     
-    if (period === '7d') {
-      // For 7 days, show date at midnight, time at midday
-      const hours = date.getHours();
-      const minutes = date.getMinutes();
-      
-      // At midnight (00:00) or very close to it, show the date
-      if (hours === 0 && minutes < 30) {
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      }
-      // At midday (12:00) or very close to it, show the time
-      else if (hours === 12 && minutes < 30) {
-        return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-      }
-      // For all other times, return empty string (no label)
-      else {
-        return '';
-      }
-    } else if (period === '30d') {
-      // For 30 days, show month and day
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } else if (period === '90d') {
-      // For 90 days, show month and day
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    } else {
-      // For 1 year, show month and day (no year)
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }
-  };
+    // All periods show month and day
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }, []);
 
 
   return (
@@ -200,10 +285,14 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
           <div>
             <p className="text-xs text-[var(--foreground-secondary)] mb-1">Total Deposited</p>
             <p className="text-2xl font-bold text-[var(--foreground)]">
-              {formatSmartCurrency(vaultData.totalValueLocked || 0)}
+              {formatSmartCurrency(vaultData.totalValueLocked || 0, { alwaysTwoDecimals: true })}
             </p>
             <p className="text-xs text-[var(--foreground-secondary)] mt-1">
-              Total value in this vault
+              {formatAssetAmount(
+                BigInt(vaultData.totalAssets || '0'),
+                vaultData.assetDecimals || 18,
+                vaultData.symbol
+              )}
             </p>
           </div>
           <div>
@@ -260,21 +349,50 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
           </button>
         </div>
 
-        {/* Period Selector */}
-        <div className="flex gap-2">
-          {(['7d', '30d', '90d', '1y'] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
-                period === p
-                  ? 'bg-[var(--primary)] text-white'
-                  : 'bg-[var(--surface-elevated)] text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
-              }`}
-            >
-              {p.toUpperCase()}
-            </button>
-          ))}
+        {/* Controls Row */}
+        <div className="flex items-center justify-between">
+          {/* Period Selector */}
+          <div className="flex gap-2">
+            {availablePeriods.map((p) => (
+              <button
+                key={p}
+                onClick={() => setPeriod(p)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                  period === p
+                    ? 'bg-[var(--primary)] text-white'
+                    : 'bg-[var(--surface-elevated)] text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                {p === 'all' ? 'All' : p.toUpperCase()}
+              </button>
+            ))}
+          </div>
+          
+          {/* Value Type Toggle - Only show for Total Deposits chart */}
+          {chartType === 'tvl' && (
+            <div className="flex items-center gap-2 bg-[var(--surface)] rounded-lg p-1">
+              <button
+                onClick={() => setValueType('usd')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                  valueType === 'usd'
+                    ? 'bg-[var(--primary)] text-white'
+                    : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                USD
+              </button>
+              <button
+                onClick={() => setValueType('token')}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                  valueType === 'token'
+                    ? 'bg-[var(--primary)] text-white'
+                    : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
+                }`}
+              >
+                {vaultData.symbol || 'Token'}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Chart */}
@@ -294,9 +412,10 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                       tickFormatter={formatDate}
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
-                      ticks={period === '7d' ? get7dTicks() : period === '30d' ? get30dTicks() : undefined}
+                      ticks={period === '7d' ? get7dTicks : period === '30d' ? get30dTicks : undefined}
                     />
                     <YAxis 
+                      domain={apyYAxisDomain}
                       tickFormatter={(value) => `${value.toFixed(2)}%`}
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
@@ -322,40 +441,71 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                     />
                   </LineChart>
                 ) : (
-                  <AreaChart data={historyData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                    <XAxis 
-                      dataKey="timestamp" 
-                      tickFormatter={formatDate}
-                      stroke="var(--foreground-secondary)"
-                      style={{ fontSize: '12px' }}
-                      ticks={period === '7d' ? get7dTicks() : period === '30d' ? get30dTicks() : undefined}
-                    />
-                    <YAxis 
-                      tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
-                      stroke="var(--foreground-secondary)"
-                      style={{ fontSize: '12px' }}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'var(--surface-elevated)',
-                        border: '1px solid var(--border-subtle)',
-                        borderRadius: '8px',
-                      }}
-                      labelFormatter={(label) => {
-                        const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
-                        return `Date: ${formatTooltipDate(timestamp)}`;
-                      }}
-                      formatter={(value: number) => [formatSmartCurrency(value), 'Total Deposits']}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="totalAssetsUsd" 
-                      stroke="var(--primary)" 
-                      fill="var(--primary-subtle)"
-                      strokeWidth={2}
-                    />
-                  </AreaChart>
+                  <AreaChart data={tvlChartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                        <XAxis 
+                          dataKey="timestamp" 
+                          tickFormatter={formatDate}
+                          stroke="var(--foreground-secondary)"
+                          style={{ fontSize: '12px' }}
+                          ticks={period === '7d' ? get7dTicks : period === '30d' ? get30dTicks : undefined}
+                        />
+                        <YAxis 
+                          domain={tvlYAxisDomain}
+                          tickFormatter={(value) => {
+                            if (valueType === 'usd') {
+                              return `$${(value / 1000).toFixed(2)}k`;
+                            } else {
+                              // Format token amount: use k format if >= 1000, otherwise show full value
+                              if (value >= 1000) {
+                                return `${(value / 1000).toFixed(2)}k`;
+                              } else {
+                                return value.toFixed(2);
+                              }
+                            }
+                          }}
+                          stroke="var(--foreground-secondary)"
+                          style={{ fontSize: '12px' }}
+                        />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'var(--surface-elevated)',
+                            border: '1px solid var(--border-subtle)',
+                            borderRadius: '8px',
+                          }}
+                          labelFormatter={(label) => {
+                            const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
+                            return `Date: ${formatTooltipDate(timestamp)}`;
+                          }}
+                          formatter={(value: number) => {
+                            if (valueType === 'usd') {
+                              return [formatSmartCurrency(value, { alwaysTwoDecimals: true }), 'Total Deposits'];
+                            } else {
+                              // Format token amount: use k format if >= 1000, otherwise show full value
+                              if (value >= 1000) {
+                                const valueInK = value / 1000;
+                                return [`${valueInK.toFixed(2)}k ${vaultData.symbol || 'Token'}`, 'Total Deposits'];
+                              } else {
+                                return [
+                                  formatAssetAmount(
+                                    BigInt(Math.floor(value * Math.pow(10, vaultData.assetDecimals || 18))),
+                                    vaultData.assetDecimals || 18,
+                                    vaultData.symbol
+                                  ),
+                                  'Total Deposits'
+                                ];
+                              }
+                            }
+                          }}
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="value" 
+                          stroke="var(--primary)" 
+                          fill="var(--primary-subtle)"
+                          strokeWidth={2}
+                        />
+                      </AreaChart>
                 )}
               </ResponsiveContainer>
             </div>
