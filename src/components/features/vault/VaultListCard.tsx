@@ -4,7 +4,7 @@ import { useVaultData } from '../../../contexts/VaultDataContext';
 import { useWallet } from '../../../contexts/WalletContext';
 import { formatSmartCurrency, formatCurrency, formatNumber } from '../../../lib/formatter';
 import { useRouter, usePathname } from 'next/navigation';
-import { getVaultRoute } from '../../../lib/vault-utils';
+import { getVaultRoute, calculateCurrentAssetsRaw, calculateInterestEarned, resolveAssetPriceUsd } from '../../../lib/vault-utils';
 import { useAccount } from 'wagmi';
 import { useState, useEffect, useMemo, useRef } from 'react';
 
@@ -24,6 +24,7 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
     const loading = isLoading(vault.address);
     const [userTransactions, setUserTransactions] = useState<Array<{ type: 'deposit' | 'withdraw'; assets: string }>>([]);
     const [assetPriceUsd, setAssetPriceUsd] = useState<number>(0);
+    const [assetDecimals, setAssetDecimals] = useState<number>(vaultData?.assetDecimals || 18);
     const [isLoadingInterest, setIsLoadingInterest] = useState(false);
     const hasFetchedRef = useRef<string>('');
     
@@ -58,73 +59,46 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
         const fetchData = async () => {
             setIsLoadingInterest(true);
             try {
-                // Fetch both in parallel
-                const [transactionsResponse, graphqlResponse] = await Promise.all([
-                    fetch(`/api/vaults/${vault.address}/activity?chainId=${vault.chainId}&userAddress=${address}`),
-                    fetch('https://api.morpho.org/graphql', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            query: `
-                                query VaultAssetPrice($address: String!, $chainId: Int!) {
-                                    vaultByAddress(address: $address, chainId: $chainId) {
-                                        asset {
-                                            priceUsd
-                                        }
-                                    }
-                                }
-                            `,
-                            variables: {
-                                address: vault.address,
-                                chainId: vault.chainId,
-                            },
-                        }),
-                    })
-                ]);
+                const activityResponse = await fetch(`/api/vaults/${vault.address}/activity?chainId=${vault.chainId}&userAddress=${address}`);
 
                 if (cancelled) return;
 
-                // Process transactions - fetch ALL transactions, not just first 100
-                const transactionsData = await transactionsResponse.json();
-                if (transactionsData.transactions && Array.isArray(transactionsData.transactions)) {
-                    // Filter and map all transactions (deposits and withdrawals)
-                    const relevantTxs = transactionsData.transactions
-                        .filter((tx: { type: string; assets?: string }) => 
+                const activityData = await activityResponse.json().catch(() => ({}));
+
+                const relevantTxs = Array.isArray(activityData.transactions)
+                    ? activityData.transactions
+                        .filter((tx: { type: string; assets?: string }) =>
                             (tx.type === 'deposit' || tx.type === 'withdraw') && tx.assets
                         )
                         .map((tx: { type: string; assets: string }) => ({
                             type: tx.type as 'deposit' | 'withdraw',
                             assets: tx.assets
-                        }));
-                    if (!cancelled) {
-                        setUserTransactions(relevantTxs);
-                        hasFetchedRef.current = fetchKey;
-                    }
-                } else {
-                    if (!cancelled) {
-                        setUserTransactions([]);
-                        hasFetchedRef.current = fetchKey;
-                    }
-                }
+                        }))
+                    : [];
 
-                // Process asset price
-                const graphqlData = await graphqlResponse.json().catch(() => ({}));
-                const priceUsd = graphqlData.data?.vaultByAddress?.asset?.priceUsd || 0;
                 if (!cancelled) {
-                    setAssetPriceUsd(priceUsd);
+                    setUserTransactions(relevantTxs);
+                    setAssetDecimals(activityData.assetDecimals || vaultData?.assetDecimals || 18);
+
+                    const resolvedPrice = resolveAssetPriceUsd({
+                        quotedPriceUsd: activityData.assetPriceUsd,
+                        vaultData,
+                        assetDecimals: activityData.assetDecimals || vaultData?.assetDecimals || 18,
+                        fallbackSharePriceUsd: userPosition.vault.state?.sharePriceUsd,
+                    });
+
+                    setAssetPriceUsd(resolvedPrice);
+                    hasFetchedRef.current = fetchKey;
                 }
             } catch (error) {
-                // Log error but continue - we'll use fallback price
                 console.warn('Failed to fetch asset price for interest calculation:', error);
-                if (!cancelled) {
-                    // Try to get price from vaultData or use default
-                    const fallbackPrice = vaultData?.sharePrice ? 
-                        (vaultData.totalValueLocked && vaultData.totalAssets ? 
-                            vaultData.totalValueLocked / (parseFloat(vaultData.totalAssets) / Math.pow(10, vaultData.assetDecimals || 18)) : 
-                            1) : 
-                        1;
+                if (!cancelled && vaultData) {
+                    const fallbackPrice = resolveAssetPriceUsd({
+                        quotedPriceUsd: null,
+                        vaultData,
+                        assetDecimals: vaultData.assetDecimals,
+                        fallbackSharePriceUsd: userPosition?.vault.state?.sharePriceUsd,
+                    });
                     setAssetPriceUsd(fallbackPrice);
                     hasFetchedRef.current = fetchKey;
                 }
@@ -224,83 +198,24 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
                 1);
 
         // Get current assets in raw units - use same logic as getUserVaultBalance for consistency
-        let currentAssetsRaw = BigInt(0);
-        let rawValue: number | null = null;
-        
-        // First priority: Use position.assets if available (from GraphQL)
-        if (userPosition.assets) {
-            rawValue = parseFloat(userPosition.assets) / Math.pow(10, vaultData.assetDecimals || 18);
-        } else {
-            // Second priority: Calculate from shares using share price
-            const sharesDecimal = parseFloat(userPosition.shares) / 1e18;
-            
-            if (vaultData.sharePrice && sharesDecimal > 0) {
-                rawValue = sharesDecimal * vaultData.sharePrice;
-            } else if (userPosition.vault?.state?.totalSupply && vaultData.totalAssets) {
-                // Third priority: Calculate share price from totalAssets / totalSupply
-                const totalSupplyDecimal = parseFloat(userPosition.vault.state.totalSupply) / 1e18;
-                const totalAssetsDecimal = parseFloat(vaultData.totalAssets) / Math.pow(10, vaultData.assetDecimals || 18);
-                
-                if (totalSupplyDecimal > 0) {
-                    const sharePriceInAsset = totalAssetsDecimal / totalSupplyDecimal;
-                    rawValue = sharesDecimal * sharePriceInAsset;
-                }
-            }
-        }
-
-        // Convert to raw units
-        if (rawValue !== null && !isNaN(rawValue) && rawValue > 0) {
-            const assetDecimals = vaultData.assetDecimals || 18;
-            currentAssetsRaw = BigInt(Math.floor(rawValue * Math.pow(10, assetDecimals)));
-        }
-
-        // If we can't determine current assets, return 0
-        if (currentAssetsRaw === BigInt(0)) {
-            return { tokens: 0, usd: 0 };
-        }
-
-        // Sum deposits and withdrawals
-        let totalDepositsRaw = BigInt(0);
-        let totalWithdrawalsRaw = BigInt(0);
-
-        userTransactions.forEach(tx => {
-            if (!tx.assets) return; // Skip transactions without assets data
-            
-            try {
-                const assetsRaw = BigInt(tx.assets);
-                if (tx.type === 'deposit') {
-                    totalDepositsRaw += assetsRaw;
-                } else if (tx.type === 'withdraw') {
-                    totalWithdrawalsRaw += assetsRaw;
-                }
-            } catch {
-                // Skip invalid asset values
-                console.warn('Invalid asset value in transaction:', tx);
-            }
+        const currentAssetsRaw = calculateCurrentAssetsRaw({
+            positionAssets: userPosition.assets,
+            positionShares: userPosition.shares,
+            sharePriceInAsset: vaultData.sharePrice,
+            totalAssets: vaultData.totalAssets,
+            totalSupply: userPosition.vault?.state?.totalSupply,
+            assetDecimals,
         });
 
-        // Calculate interest earned in raw units
-        // Interest = Current Assets - (Total Deposits - Total Withdrawals)
-        const netDeposits = totalDepositsRaw - totalWithdrawalsRaw;
-        
-        // Calculate interest - if no transactions, assume all current assets are from deposits
-        // (this handles the case where transaction history might be incomplete)
-        const interestRaw = currentAssetsRaw > netDeposits 
-            ? currentAssetsRaw - netDeposits 
-            : BigInt(0);
+        const interest = calculateInterestEarned({
+            currentAssetsRaw,
+            transactions: userTransactions,
+            assetDecimals,
+            assetPriceUsd: effectivePriceUsd,
+        });
 
-        // Convert to decimal
-        const assetDecimals = vaultData.assetDecimals || 18;
-        const interestTokens = Number(interestRaw) / Math.pow(10, assetDecimals);
-
-        // Calculate USD value using asset price (with fallback)
-        const interestUsd = interestTokens * effectivePriceUsd;
-
-        return {
-            tokens: Math.max(0, interestTokens), // Ensure non-negative
-            usd: Math.max(0, interestUsd) // Ensure non-negative
-        };
-    }, [userPosition, vaultData, userTransactions, assetPriceUsd, isLoadingInterest]);
+        return interest;
+    }, [userPosition, vaultData, userTransactions, assetPriceUsd, isLoadingInterest, assetDecimals]);
 
     return (
         <div 

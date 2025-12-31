@@ -5,6 +5,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useWallet } from '@/contexts/WalletContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
 import { formatNumber, formatCurrency } from '@/lib/formatter';
+import { calculateCurrentAssetsRaw, calculateInterestEarned, resolveAssetPriceUsd } from '@/lib/vault-utils';
 import {
     useFloating,
     autoUpdate,
@@ -101,103 +102,61 @@ export default function WalletOverview() {
         const fetchAllVaultInterests = async () => {
             const interests: Record<string, { usd: number; tokens: number; vaultName: string }> = {};
 
-            // Fetch interest for each vault position in parallel
-            const interestPromises = morphoHoldings.positions.map(async (position) => {
-                if (cancelled) return;
-
-                const vaultAddress = position.vault.address;
-                const vaultData = getVaultData(vaultAddress);
-                
-                if (!vaultData) return;
-
-                try {
-                    // Fetch transactions and asset price
-                    const [transactionsResponse, graphqlResponse] = await Promise.all([
-                        fetch(`/api/vaults/${vaultAddress}/activity?chainId=8453&userAddress=${address}`),
-                        fetch('https://api.morpho.org/graphql', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                query: `
-                                    query VaultAssetPrice($address: String!, $chainId: Int!) {
-                                        vaultByAddress(address: $address, chainId: $chainId) {
-                                            asset {
-                                                priceUsd
-                                                decimals
-                                            }
-                                        }
-                                    }
-                                `,
-                                variables: { address: vaultAddress, chainId: 8453 },
-                            }),
-                        })
-                    ]);
-
+            await Promise.allSettled(
+                morphoHoldings.positions.map(async (position) => {
                     if (cancelled) return;
 
-                    const transactionsData = await transactionsResponse.json().catch(() => ({ transactions: [] }));
-                    const graphqlData = await graphqlResponse.json().catch(() => ({}));
-                    
-                    const assetPriceUsd = graphqlData.data?.vaultByAddress?.asset?.priceUsd || 0;
-                    const assetDecimals = graphqlData.data?.vaultByAddress?.asset?.decimals || vaultData.assetDecimals || 18;
-                    const transactions = transactionsData.transactions || [];
+                    const vaultAddress = position.vault.address;
+                    const vaultData = getVaultData(vaultAddress);
 
-                    // Calculate current assets
-                    let currentAssetsRaw = BigInt(0);
-                    if (position.assets) {
-                        currentAssetsRaw = BigInt(position.assets);
-                    } else {
-                        const sharesDecimal = parseFloat(position.shares) / 1e18;
-                        if (vaultData.sharePrice && sharesDecimal > 0) {
-                            const rawValue = sharesDecimal * vaultData.sharePrice;
-                            currentAssetsRaw = BigInt(Math.floor(rawValue * Math.pow(10, assetDecimals)));
-                        } else if (position.vault?.state?.totalSupply && vaultData.totalAssets) {
-                            const totalSupplyDecimal = parseFloat(position.vault.state.totalSupply) / 1e18;
-                            const totalAssetsDecimal = parseFloat(vaultData.totalAssets) / Math.pow(10, assetDecimals);
-                            if (totalSupplyDecimal > 0) {
-                                const sharePriceInAsset = totalAssetsDecimal / totalSupplyDecimal;
-                                const rawValue = sharesDecimal * sharePriceInAsset;
-                                currentAssetsRaw = BigInt(Math.floor(rawValue * Math.pow(10, assetDecimals)));
-                            }
-                        }
+                    if (!vaultData) return;
+
+                    try {
+                        const activityResponse = await fetch(
+                            `/api/vaults/${vaultAddress}/activity?chainId=8453&userAddress=${address}`
+                        );
+
+                        if (cancelled) return;
+
+                        const activityData = await activityResponse.json().catch(() => ({}));
+                        const transactions = (activityData.transactions || []).filter(
+                            (tx: { type: string }) => tx.type === 'deposit' || tx.type === 'withdraw'
+                        );
+
+                        const assetDecimals = activityData.assetDecimals || vaultData.assetDecimals || 18;
+                        const assetPriceUsd = resolveAssetPriceUsd({
+                            quotedPriceUsd: activityData.assetPriceUsd,
+                            vaultData,
+                            assetDecimals,
+                            fallbackSharePriceUsd: position.vault.state?.sharePriceUsd,
+                        });
+
+                        const currentAssetsRaw = calculateCurrentAssetsRaw({
+                            positionAssets: position.assets,
+                            positionShares: position.shares,
+                            sharePriceInAsset: vaultData.sharePrice,
+                            totalAssets: vaultData.totalAssets,
+                            totalSupply: position.vault?.state?.totalSupply,
+                            assetDecimals,
+                        });
+
+                        const interest = calculateInterestEarned({
+                            currentAssetsRaw,
+                            transactions,
+                            assetDecimals,
+                            assetPriceUsd,
+                        });
+
+                        interests[vaultAddress] = {
+                            usd: interest.usd,
+                            tokens: interest.tokens,
+                            vaultName: position.vault.name,
+                        };
+                    } catch (error) {
+                        console.warn(`Failed to calculate interest for vault ${vaultAddress}:`, error);
                     }
-
-                    // Sum deposits and withdrawals
-                    let totalDepositsRaw = BigInt(0);
-                    let totalWithdrawalsRaw = BigInt(0);
-
-                    transactions.forEach((tx: { type: string; assets?: string }) => {
-                        if (!tx.assets) return;
-                        try {
-                            const assetsRaw = BigInt(tx.assets);
-                            if (tx.type === 'deposit') {
-                                totalDepositsRaw += assetsRaw;
-                            } else if (tx.type === 'withdraw') {
-                                totalWithdrawalsRaw += assetsRaw;
-                            }
-                        } catch {
-                            // Skip invalid asset values
-                        }
-                    });
-
-                    // Calculate interest
-                    const netDeposits = totalDepositsRaw - totalWithdrawalsRaw;
-                    const interestRaw = currentAssetsRaw > netDeposits ? currentAssetsRaw - netDeposits : BigInt(0);
-                    const interestTokens = Number(interestRaw) / Math.pow(10, assetDecimals);
-                    const interestUsd = interestTokens * assetPriceUsd;
-
-                    interests[vaultAddress] = {
-                        usd: Math.max(0, interestUsd),
-                        tokens: Math.max(0, interestTokens),
-                        vaultName: position.vault.name,
-                    };
-                } catch (error) {
-                    // Skip vaults that fail to calculate interest
-                    console.warn(`Failed to calculate interest for vault ${vaultAddress}:`, error);
-                }
-            });
-
-            await Promise.all(interestPromises);
+                })
+            );
 
             if (!cancelled) {
                 setVaultInterests(interests);

@@ -328,6 +328,8 @@ export async function GET(
       deposits,
       withdrawals,
       events,
+      assetPriceUsd: assetPrice,
+      assetDecimals,
       cached: false,
       timestamp: Date.now(),
     }, {

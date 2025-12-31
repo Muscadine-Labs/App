@@ -6,7 +6,7 @@ import { useAccount } from 'wagmi';
 import { MorphoVaultData } from '@/types/vault';
 import { useWallet } from '@/contexts/WalletContext';
 import { formatSmartCurrency, formatAssetAmount } from '@/lib/formatter';
-import { calculateYAxisDomain } from '@/lib/vault-utils';
+import { calculateYAxisDomain, calculateCurrentAssetsRaw, calculateInterestEarned, resolveAssetPriceUsd } from '@/lib/vault-utils';
 import { logger } from '@/lib/logger';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Button } from '@/components/ui';
@@ -56,7 +56,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     assetPriceUsd?: number;
   }>>([]);
   const [assetPriceUsd, setAssetPriceUsd] = useState<number>(0);
-  const [assetPriceFetched, setAssetPriceFetched] = useState(false);
+  const [assetDecimals, setAssetDecimals] = useState<number>(vaultData.assetDecimals || 18);
 
   // Find the current vault position
   const currentVaultPosition = morphoHoldings.positions.find(
@@ -80,56 +80,6 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
         return sharesDecimal * sharePriceInAsset;
       })()
     : 0;
-
-  // Fetch asset price once when component mounts or vault changes
-  useEffect(() => {
-    if (assetPriceFetched || !vaultData.address) return;
-
-    let cancelled = false;
-    const fetchAssetPrice = async () => {
-      try {
-        const response = await fetch('https://api.morpho.org/graphql', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: `
-              query VaultAssetPrice($address: String!, $chainId: Int!) {
-                vaultByAddress(address: $address, chainId: $chainId) {
-                  asset {
-                    priceUsd
-                  }
-                }
-              }
-            `,
-            variables: {
-              address: vaultData.address,
-              chainId: vaultData.chainId,
-            },
-          }),
-        });
-
-        if (cancelled) return;
-
-        const data = await response.json().catch(() => ({}));
-        const priceUsd = data.data?.vaultByAddress?.asset?.priceUsd || 0;
-        
-        if (!cancelled) {
-          setAssetPriceUsd(priceUsd);
-          setAssetPriceFetched(true);
-        }
-      } catch {
-        if (!cancelled) {
-          setAssetPriceUsd(0);
-          setAssetPriceFetched(true);
-        }
-      }
-    };
-
-    fetchAssetPrice();
-    return () => {
-      cancelled = true;
-    };
-  }, [vaultData.address, vaultData.chainId, assetPriceFetched]);
 
   useEffect(() => {
     const fetchActivity = async () => {
@@ -181,6 +131,18 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
         } else {
           setUserTransactions([]);
         }
+
+        // Update asset price/decimals from activity response when available
+        const decimalsFromActivity = userResponseData.assetDecimals ?? vaultData.assetDecimals ?? 18;
+        setAssetDecimals(decimalsFromActivity);
+
+        const resolvedPrice = resolveAssetPriceUsd({
+          quotedPriceUsd: userResponseData.assetPriceUsd,
+          vaultData,
+          assetDecimals: decimalsFromActivity,
+          fallbackSharePriceUsd: currentVaultPosition?.vault.state?.sharePriceUsd,
+        });
+        setAssetPriceUsd(resolvedPrice);
         
         if (historyData.history && Array.isArray(historyData.history) && historyData.history.length > 0) {
           // Calculate historical share prices from totalAssetsUsd and totalAssets
@@ -240,7 +202,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     };
 
     fetchActivity();
-  }, [vaultData.address, vaultData.chainId, address, currentSharePriceUsd, currentTotalSupply, vaultData.sharePrice, vaultData.totalValueLocked]);
+  }, [vaultData, address, currentSharePriceUsd, currentTotalSupply, currentVaultPosition?.vault.state?.sharePriceUsd]);
 
   // Calculate interest earned: Current Assets - (Total Deposits - Total Withdrawals)
   const interestEarned = useMemo(() => {
@@ -248,77 +210,31 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
       return { tokens: 0, usd: 0 };
     }
 
-    // Get current assets in raw units
-    let currentAssetsRaw = BigInt(0);
-    let rawValue: number | null = null;
-    
-    // First priority: Use position.assets if available (from GraphQL)
-    if (currentVaultPosition.assets) {
-      rawValue = parseFloat(currentVaultPosition.assets) / Math.pow(10, vaultData.assetDecimals || 18);
-    } else {
-      // Second priority: Calculate from shares using share price
-      const sharesDecimal = parseFloat(currentVaultPosition.shares) / WEI_PER_ETHER;
-      
-      if (vaultData.sharePrice && sharesDecimal > 0) {
-        rawValue = sharesDecimal * vaultData.sharePrice;
-      } else if (currentVaultPosition.vault?.state?.totalSupply && vaultData.totalAssets) {
-        // Third priority: Calculate share price from totalAssets / totalSupply
-        const totalSupplyDecimal = parseFloat(currentVaultPosition.vault.state.totalSupply) / WEI_PER_ETHER;
-        const totalAssetsDecimal = parseFloat(vaultData.totalAssets) / Math.pow(10, vaultData.assetDecimals || 18);
-        
-        if (totalSupplyDecimal > 0) {
-          const sharePriceInAsset = totalAssetsDecimal / totalSupplyDecimal;
-          rawValue = sharesDecimal * sharePriceInAsset;
-        }
-      }
-    }
+    const decimals = assetDecimals || vaultData.assetDecimals || 18;
 
-    // Convert to raw units
-    if (rawValue !== null && !isNaN(rawValue) && rawValue > 0) {
-      const assetDecimals = vaultData.assetDecimals || 18;
-      currentAssetsRaw = BigInt(Math.floor(rawValue * Math.pow(10, assetDecimals)));
-    }
-
-    // If we can't determine current assets, return 0
-    if (currentAssetsRaw === BigInt(0)) {
-      return { tokens: 0, usd: 0 };
-    }
-
-    // Sum deposits and withdrawals
-    let totalDepositsRaw = BigInt(0);
-    let totalWithdrawalsRaw = BigInt(0);
-
-    userTransactions.forEach(tx => {
-      if (!tx.assets) return;
-      
-      try {
-        const assetsRaw = BigInt(tx.assets);
-        if (tx.type === 'deposit') {
-          totalDepositsRaw += assetsRaw;
-        } else if (tx.type === 'withdraw') {
-          totalWithdrawalsRaw += assetsRaw;
-        }
-      } catch {
-        // Skip invalid asset values
-      }
+    const currentAssetsRaw = calculateCurrentAssetsRaw({
+      positionAssets: currentVaultPosition.assets,
+      positionShares: currentVaultPosition.shares,
+      sharePriceInAsset: vaultData.sharePrice,
+      totalAssets: vaultData.totalAssets,
+      totalSupply: currentVaultPosition.vault?.state?.totalSupply,
+      assetDecimals: decimals,
     });
 
-    // Calculate interest earned in raw units
-    const netDeposits = totalDepositsRaw - totalWithdrawalsRaw;
-    const interestRaw = currentAssetsRaw > netDeposits 
-      ? currentAssetsRaw - netDeposits 
-      : BigInt(0);
+    const relevantTransactions = userTransactions.filter(
+      (tx): tx is Transaction & { type: 'deposit' | 'withdraw' } =>
+        (tx.type === 'deposit' || tx.type === 'withdraw') && !!tx.assets
+    );
 
-    // Convert to decimal
-    const assetDecimals = vaultData.assetDecimals || 18;
-    const interestTokens = Number(interestRaw) / Math.pow(10, assetDecimals);
-    const interestUsd = interestTokens * assetPriceUsd;
+    const interest = calculateInterestEarned({
+      currentAssetsRaw,
+      transactions: relevantTransactions,
+      assetDecimals: decimals,
+      assetPriceUsd,
+    });
 
-    return {
-      tokens: Math.max(0, interestTokens),
-      usd: Math.max(0, interestUsd)
-    };
-  }, [currentVaultPosition, vaultData, userTransactions, assetPriceUsd]);
+    return interest;
+  }, [currentVaultPosition, vaultData, userTransactions, assetPriceUsd, assetDecimals]);
 
   const formatDateShort = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
