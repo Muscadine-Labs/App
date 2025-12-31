@@ -126,6 +126,7 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                         >
                                             Risk Analytics
                                         </a>
+                                        <div className="border-t border-[var(--border)]"></div>
                                         <a
                                             href="https://muscadine.io/terms"
                                             target="_blank"
@@ -134,6 +135,15 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                             onClick={() => setIsMenuOpen(false)}
                                         >
                                             Terms of Use
+                                        </a>
+                                        <a
+                                            href="https://muscadine.io/legal"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="block py-2 text-sm text-[var(--foreground)] hover:text-[var(--primary)] transition-colors"
+                                            onClick={() => setIsMenuOpen(false)}
+                                        >
+                                            Legal Disclaimer
                                         </a>
                                         <a
                                             href="https://muscadine.io/privacy"
@@ -180,7 +190,9 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                             onClick={() => setIsMenuOpen(false)}
                                             aria-label="Contact"
                                         >
-                                            <span className="text-base">📧</span>
+                                            <svg className="w-4 h-4 text-[var(--foreground)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                            </svg>
                                         </a>
                                     </div>
                                 </div>

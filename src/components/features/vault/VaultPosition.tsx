@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { MorphoVaultData } from '@/types/vault';
 import { useWallet } from '@/contexts/WalletContext';
 import { formatSmartCurrency, formatAssetAmount } from '@/lib/formatter';
+import { calculateYAxisDomain } from '@/lib/vault-utils';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Button } from '@/components/ui';
 
@@ -25,12 +26,24 @@ interface Transaction {
   assetsUsd?: number;
 }
 
+type TimeFrame = 'all' | '1Y' | '90D' | '30D' | '7D';
+
+const TIME_FRAME_SECONDS: Record<TimeFrame, number> = {
+  all: 0, // 0 means all data
+  '1Y': 365 * 24 * 60 * 60,
+  '90D': 90 * 24 * 60 * 60,
+  '30D': 30 * 24 * 60 * 60,
+  '7D': 7 * 24 * 60 * 60,
+};
+
 export default function VaultPosition({ vaultData }: VaultPositionProps) {
   const router = useRouter();
   const { address, isConnected } = useAccount();
   const { morphoHoldings } = useWallet();
   const [userTransactions, setUserTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedTimeFrame, setSelectedTimeFrame] = useState<TimeFrame>('all');
+  const [valueType, setValueType] = useState<'usd' | 'token'>('usd');
 
   // Find the current vault position
   const currentVaultPosition = morphoHoldings.positions.find(
@@ -87,6 +100,35 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
+  // Calculate share price in asset terms (tokens per share)
+  const sharePriceInAsset = useMemo(() => {
+    // Calculate from totalAssets/totalSupply (most accurate)
+    if (currentVaultPosition && vaultData.totalAssets) {
+      const totalSupplyDecimal = parseFloat(currentVaultPosition.vault.state.totalSupply) / 1e18;
+      const totalAssetsDecimal = parseFloat(vaultData.totalAssets) / Math.pow(10, vaultData.assetDecimals || 18);
+      
+      if (totalSupplyDecimal > 0 && totalAssetsDecimal > 0) {
+        const calculated = totalAssetsDecimal / totalSupplyDecimal;
+        if (calculated > 0 && isFinite(calculated)) {
+          return calculated;
+        }
+      }
+    }
+    
+    // Fallback: use current position calculation
+    if (currentVaultPosition && userVaultAssetAmount > 0) {
+      const sharesDecimal = parseFloat(currentVaultPosition.shares) / 1e18;
+      if (sharesDecimal > 0) {
+        const calculated = userVaultAssetAmount / sharesDecimal;
+        if (calculated > 0 && isFinite(calculated)) {
+          return calculated;
+        }
+      }
+    }
+    
+    return 0;
+  }, [currentVaultPosition, vaultData.totalAssets, vaultData.assetDecimals, userVaultAssetAmount]);
+
   // Calculate user's position history by working backwards from current position
   const calculateUserDepositHistory = () => {
     if (!address || userTransactions.length === 0) return [];
@@ -99,34 +141,64 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
       ? currentVaultPosition.vault.state.sharePriceUsd 
       : (vaultData.sharePrice || 1);
     
+    // Calculate current asset amount - use userVaultAssetAmount if available, otherwise calculate from shares
+    const currentAssetsWei = (() => {
+      if (userVaultAssetAmount > 0) {
+        return BigInt(Math.floor(userVaultAssetAmount * Math.pow(10, vaultData.assetDecimals || 18)));
+      }
+      if (currentVaultPosition && sharePriceInAsset > 0) {
+        const sharesDecimal = parseFloat(currentVaultPosition.shares) / 1e18;
+        const assetAmount = sharesDecimal * sharePriceInAsset;
+        return BigInt(Math.floor(assetAmount * Math.pow(10, vaultData.assetDecimals || 18)));
+      }
+      return BigInt(0);
+    })();
+    
     const sorted = [...userTransactions].sort((a, b) => b.timestamp - a.timestamp);
     const sharesAtTimestamp = new Map<number, bigint>();
+    const assetsAtTimestamp = new Map<number, bigint>();
     
     const now = Math.floor(Date.now() / 1000);
     sharesAtTimestamp.set(now, currentSharesWei);
+    assetsAtTimestamp.set(now, currentAssetsWei);
     
     let runningShares = currentSharesWei;
+    let runningAssets = currentAssetsWei;
+    
     for (const tx of sorted) {
       const txSharesWei = tx.shares ? BigInt(tx.shares) : BigInt(0);
+      let txAssetsWei = tx.assets ? BigInt(tx.assets) : BigInt(0);
+      
+      // If assets not available in transaction, estimate from shares using current share price
+      if (txAssetsWei === BigInt(0) && txSharesWei > BigInt(0) && sharePriceInAsset > 0) {
+        const txSharesDecimal = Number(txSharesWei) / 1e18;
+        const estimatedAssets = txSharesDecimal * sharePriceInAsset;
+        txAssetsWei = BigInt(Math.floor(estimatedAssets * Math.pow(10, vaultData.assetDecimals || 18)));
+      }
+      
       sharesAtTimestamp.set(tx.timestamp, runningShares);
+      assetsAtTimestamp.set(tx.timestamp, runningAssets);
       
       if (tx.type === 'deposit') {
         runningShares = runningShares > txSharesWei ? runningShares - txSharesWei : BigInt(0);
+        runningAssets = runningAssets > txAssetsWei ? runningAssets - txAssetsWei : BigInt(0);
       } else if (tx.type === 'withdraw') {
         runningShares = runningShares + txSharesWei;
+        runningAssets = runningAssets + txAssetsWei;
       }
     }
     
     if (sorted.length > 0) {
       const oldestTx = sorted[sorted.length - 1];
       sharesAtTimestamp.set(oldestTx.timestamp - 1, runningShares);
+      assetsAtTimestamp.set(oldestTx.timestamp - 1, runningAssets);
     }
     
     const firstTx = sorted[sorted.length - 1];
     const firstTxDate = new Date(firstTx.timestamp * 1000);
     const today = new Date();
     
-    const dailyData: Array<{ timestamp: number; date: string; value: number }> = [];
+    const dailyData: Array<{ timestamp: number; date: string; valueUsd: number; valueToken: number }> = [];
     const currentDate = new Date(firstTxDate);
     currentDate.setHours(0, 0, 0, 0);
     const finalDate = new Date(today);
@@ -135,30 +207,43 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     while (currentDate <= finalDate) {
       const dayTimestamp = Math.floor(currentDate.getTime() / 1000);
       let sharesForDay = BigInt(0);
+      let assetsForDay = BigInt(0);
       let foundTimestamp = -1;
       
       for (const [txTimestamp, shares] of sharesAtTimestamp.entries()) {
         if (txTimestamp <= dayTimestamp && txTimestamp > foundTimestamp) {
           foundTimestamp = txTimestamp;
           sharesForDay = shares;
+          assetsForDay = assetsAtTimestamp.get(txTimestamp) || BigInt(0);
         }
       }
       
       if (foundTimestamp === -1) {
         if (dayTimestamp >= now) {
           sharesForDay = currentSharesWei;
+          assetsForDay = currentAssetsWei;
         } else {
           sharesForDay = BigInt(0);
+          assetsForDay = BigInt(0);
         }
       }
       
       const sharesDecimal = Number(sharesForDay) / 1e18;
       const positionValueUsd = sharesDecimal * currentSharePriceUsd;
       
+      // Calculate token value from tracked assets, or fallback to share price calculation
+      let positionValueToken = 0;
+      if (assetsForDay > BigInt(0)) {
+        positionValueToken = Number(assetsForDay) / Math.pow(10, vaultData.assetDecimals || 18);
+      } else if (sharePriceInAsset > 0 && sharesDecimal > 0) {
+        positionValueToken = sharesDecimal * sharePriceInAsset;
+      }
+      
       dailyData.push({
         timestamp: dayTimestamp,
         date: formatDateShort(dayTimestamp),
-        value: Math.max(0, positionValueUsd),
+        valueUsd: Math.max(0, positionValueUsd),
+        valueToken: Math.max(0, positionValueToken),
       });
       
       currentDate.setDate(currentDate.getDate() + 1);
@@ -168,6 +253,64 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
   };
 
   const userDepositHistory = calculateUserDepositHistory();
+
+  // Calculate available time frames based on data range
+  const availableTimeFrames = useMemo(() => {
+    if (userDepositHistory.length === 0) return ['all' as TimeFrame];
+    
+    const now = Math.floor(Date.now() / 1000);
+    const oldestTimestamp = userDepositHistory[0]?.timestamp || now;
+    const dataRangeSeconds = now - oldestTimestamp;
+    
+    const frames: TimeFrame[] = ['all'];
+    
+    // Only add time frames that are <= the available data range
+    if (dataRangeSeconds >= TIME_FRAME_SECONDS['1Y']) {
+      frames.push('1Y');
+    }
+    if (dataRangeSeconds >= TIME_FRAME_SECONDS['90D']) {
+      frames.push('90D');
+    }
+    if (dataRangeSeconds >= TIME_FRAME_SECONDS['30D']) {
+      frames.push('30D');
+    }
+    if (dataRangeSeconds >= TIME_FRAME_SECONDS['7D']) {
+      frames.push('7D');
+    }
+    
+    return frames;
+  }, [userDepositHistory]);
+
+  // Filter chart data based on selected time frame and map to correct value type
+  const filteredChartData = useMemo(() => {
+    let data = userDepositHistory;
+    
+    if (selectedTimeFrame !== 'all' && userDepositHistory.length > 0) {
+      const now = Math.floor(Date.now() / 1000);
+      const cutoffTimestamp = now - TIME_FRAME_SECONDS[selectedTimeFrame];
+      data = userDepositHistory.filter(d => d.timestamp >= cutoffTimestamp);
+    }
+    
+    // Map to include the correct value based on valueType
+    return data.map(item => ({
+      ...item,
+      value: valueType === 'usd' ? item.valueUsd : item.valueToken,
+    }));
+  }, [userDepositHistory, selectedTimeFrame, valueType]);
+
+  // Calculate Y-axis domain for better fit
+  const yAxisDomain = useMemo(() => {
+    if (filteredChartData.length === 0) return [0, 100];
+    
+    const values = filteredChartData.map(d => d.value).filter(v => v !== null && v !== undefined && !isNaN(v));
+    const domain = calculateYAxisDomain(values, {
+      bottomPaddingPercent: 0.25,
+      topPaddingPercent: 0.2,
+      thresholdPercent: 0.02,
+    });
+    
+    return domain || [0, 100];
+  }, [filteredChartData]);
 
   const handleDeposit = () => {
     router.push(`/transactions?vault=${vaultData.address}&action=deposit`);
@@ -239,9 +382,50 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
             </div>
           ) : userDepositHistory.length > 0 ? (
             <div className="bg-[var(--surface-elevated)] rounded-lg p-4">
+              {/* Controls Row */}
+              <div className="flex items-center justify-between mb-4">
+                {/* Time Frame Selector */}
+                <div className="flex items-center gap-2">
+                  {availableTimeFrames.map((timeFrame) => (
+                    <Button
+                      key={timeFrame}
+                      onClick={() => setSelectedTimeFrame(timeFrame)}
+                      variant={selectedTimeFrame === timeFrame ? 'primary' : 'ghost'}
+                      size="sm"
+                      className="min-w-[3rem]"
+                    >
+                      {timeFrame === 'all' ? 'All' : timeFrame}
+                    </Button>
+                  ))}
+                </div>
+                
+                {/* Value Type Toggle */}
+                <div className="flex items-center gap-2 bg-[var(--surface)] rounded-lg p-1">
+                  <button
+                    onClick={() => setValueType('usd')}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                      valueType === 'usd'
+                        ? 'bg-[var(--primary)] text-white'
+                        : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
+                    }`}
+                  >
+                    USD
+                  </button>
+                  <button
+                    onClick={() => setValueType('token')}
+                    className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${
+                      valueType === 'token'
+                        ? 'bg-[var(--primary)] text-white'
+                        : 'text-[var(--foreground-secondary)] hover:text-[var(--foreground)]'
+                    }`}
+                  >
+                    {vaultData.symbol || 'Token'}
+                  </button>
+                </div>
+              </div>
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={userDepositHistory}>
+                  <AreaChart data={filteredChartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                     <XAxis 
                       dataKey="timestamp" 
@@ -251,7 +435,18 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                       interval="preserveStartEnd"
                     />
                     <YAxis 
-                      tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
+                      domain={yAxisDomain}
+                      tickFormatter={(value) => {
+                        if (valueType === 'usd') {
+                          return `$${(value / 1000).toFixed(0)}k`;
+                        } else {
+                          // Format token amount
+                          if (value >= 1000) {
+                            return `${(value / 1000).toFixed(1)}k`;
+                          }
+                          return value.toFixed(2);
+                        }
+                      }}
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
                     />
@@ -261,7 +456,20 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                         border: '1px solid var(--border-subtle)',
                         borderRadius: '8px',
                       }}
-                      formatter={(value: number) => [formatSmartCurrency(value), 'Your Position']}
+                      formatter={(value: number) => {
+                        if (valueType === 'usd') {
+                          return [formatSmartCurrency(value), 'Your Position'];
+                        } else {
+                          return [
+                            formatAssetAmount(
+                              BigInt(Math.floor(value * Math.pow(10, vaultData.assetDecimals || 18))),
+                              vaultData.assetDecimals || 18,
+                              vaultData.symbol
+                            ),
+                            'Your Position'
+                          ];
+                        }
+                      }}
                       labelFormatter={(label) => {
                         const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
                         return `Date: ${formatDateForChart(timestamp)}`;

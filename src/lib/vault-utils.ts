@@ -64,7 +64,6 @@ export function calculateYAxisDomain(
     topPaddingPercent?: number; // Default: 0.2 (20%)
     thresholdPercent?: number; // Default: 0.02 (2%) - percentage of max to consider "close to 0"
     defaultMin?: number; // Default: 0
-    defaultMax?: number; // Default: 100
     filterPositiveOnly?: boolean; // Default: false
     tokenThreshold?: number; // If provided and maxValue >= this, use different threshold for tokens
   } = {}
@@ -74,7 +73,6 @@ export function calculateYAxisDomain(
     topPaddingPercent = 0.2,
     thresholdPercent = 0.02,
     defaultMin = 0,
-    defaultMax = 100,
     filterPositiveOnly = false,
     tokenThreshold,
   } = options;

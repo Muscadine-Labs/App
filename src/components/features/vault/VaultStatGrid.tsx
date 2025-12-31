@@ -97,7 +97,7 @@ function StatCard({ label, value, subValue, tooltip, showApyBreakdown, vaultData
 
 export default function VaultStatGrid({ vaultData }: VaultStatGridProps) {
   // Format total deposits
-  const totalDepositsUsd = formatSmartCurrency(vaultData.totalDeposits);
+  const totalDepositsUsd = formatSmartCurrency(vaultData.totalDeposits, { alwaysTwoDecimals: true });
   const totalDepositsRaw = formatAssetAmount(
     BigInt(vaultData.totalAssets || '0'),
     vaultData.assetDecimals || 18,
