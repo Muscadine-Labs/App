@@ -513,6 +513,35 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     return ticks.length > 0 ? ticks : undefined;
   }, [selectedTimeFrame, filteredChartData]);
 
+  // Get ticks for 90D period - every 5 days
+  const get90DTicks = useMemo(() => {
+    if (selectedTimeFrame !== '90D' || filteredChartData.length === 0) return undefined;
+    
+    const ticks: number[] = [];
+    const seenDates = new Set<string>();
+    let dayCount = 0;
+    
+    // Sort data by timestamp to ensure chronological order
+    const sortedData = [...filteredChartData].sort((a, b) => a.timestamp - b.timestamp);
+    
+    sortedData.forEach((point) => {
+      const date = new Date(point.timestamp * 1000);
+      const dateKey = date.toDateString();
+      
+      // Only add tick if we haven't seen this date before
+      if (!seenDates.has(dateKey)) {
+        seenDates.add(dateKey);
+        // Add every 5 days (dayCount: 0, 5, 10, 15...)
+        if (dayCount % 5 === 0) {
+          ticks.push(point.timestamp);
+        }
+        dayCount++;
+      }
+    });
+    
+    return ticks.length > 0 ? ticks : undefined;
+  }, [selectedTimeFrame, filteredChartData]);
+
   const handleDeposit = () => {
     router.push(`/transactions?vault=${vaultData.address}&action=deposit`);
   };
@@ -676,7 +705,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
                       interval="preserveStartEnd"
-                      ticks={selectedTimeFrame === '30D' ? get30DTicks : undefined}
+                      ticks={selectedTimeFrame === '30D' ? get30DTicks : selectedTimeFrame === '90D' ? get90DTicks : undefined}
                     />
                     <YAxis 
                       domain={yAxisDomain}
