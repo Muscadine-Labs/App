@@ -27,9 +27,6 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
     const [version, setVersion] = useState<'V1' | 'V2'>('V1');
     const [mode, setMode] = useState<'Advanced' | 'Simple'>('Advanced');
     const { theme, setTheme } = useTheme();
-    
-    // Debug: Log theme value on render
-    console.log('[NavBar] Current theme from useTheme():', theme);
 
     const isActive = useCallback((item: NavItem): boolean => {
         // Vaults dropdown is active if we're on a vault page
@@ -369,11 +366,8 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                             <button
                                                 type="button"
                                                 onClick={(e) => {
-                                                    console.log('[NavBar] Dark button clicked');
                                                     e.stopPropagation();
-                                                    console.log('[NavBar] Current theme before setTheme:', theme);
                                                     setTheme('Dark');
-                                                    console.log('[NavBar] setTheme("Dark") called');
                                                     setIsSettingsOpen(false);
                                                 }}
                                                 className={`flex-1 py-2 px-2 text-sm rounded-lg transition-colors ${
@@ -387,11 +381,8 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                             <button
                                                 type="button"
                                                 onClick={(e) => {
-                                                    console.log('[NavBar] Light button clicked');
                                                     e.stopPropagation();
-                                                    console.log('[NavBar] Current theme before setTheme:', theme);
                                                     setTheme('Light');
-                                                    console.log('[NavBar] setTheme("Light") called');
                                                     setIsSettingsOpen(false);
                                                 }}
                                                 className={`flex-1 py-2 px-2 text-sm rounded-lg transition-colors ${
@@ -405,11 +396,8 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                             <button
                                                 type="button"
                                                 onClick={(e) => {
-                                                    console.log('[NavBar] Auto button clicked');
                                                     e.stopPropagation();
-                                                    console.log('[NavBar] Current theme before setTheme:', theme);
                                                     setTheme('Auto');
-                                                    console.log('[NavBar] setTheme("Auto") called');
                                                     setIsSettingsOpen(false);
                                                 }}
                                                 className={`flex-1 py-2 px-2 text-sm rounded-lg transition-colors ${
