@@ -7,6 +7,7 @@ import { cookieToInitialState } from 'wagmi'
 import { Providers } from './Providers'
 import { config } from './config'
 import { PriceProvider } from './PriceContext'
+import { Analytics } from '@vercel/analytics/react'
 
 const figtree = Figtree({ 
   subsets: ['latin'],
@@ -65,6 +66,7 @@ export default async function RootLayout({
                 <AppLayout>{children}</AppLayout>
               </PriceProvider>
           </Providers>
+          <Analytics />
       </body>
     </html>
   )

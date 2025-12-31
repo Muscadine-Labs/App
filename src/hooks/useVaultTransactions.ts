@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { useWalletClient, useAccount, usePublicClient, useReadContract, useBalance } from 'wagmi';
+import { useWalletClient, useAccount, usePublicClient, useReadContract } from 'wagmi';
 import { 
   setupBundle,
   type InputBundlerOperation,
@@ -74,8 +74,6 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
   );
 
   const vaultData = checksummedVaultAddress ? vaultDataContext.getVaultData(checksummedVaultAddress) : null;
-  // Use override if provided, otherwise fall back to vault data
-  const getAssetDecimals = (override?: number) => override ?? vaultData?.assetDecimals ?? 18;
 
   // Fetch asset address from vault contract
   const { data: assetAddress } = useReadContract({
@@ -84,10 +82,6 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
     functionName: "asset",
     query: { enabled: !!checksummedVaultAddress },
   });
-
-  // Check if this is a WETH vault by address (more reliable than waiting for assetAddress)
-  // WETH vault address: 0x21e0d366272798da3A977FEBA699FCB91959d120
-  const isWethVaultByAddress = checksummedVaultAddress?.toLowerCase() === '0x21e0d366272798da3A977FEBA699FCB91959d120'.toLowerCase();
 
   const executeVaultAction = useCallback(async (
     action: VaultAction,
@@ -131,7 +125,7 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
           simulationState = freshState;
         }
       }
-    } catch (refetchError) {
+    } catch {
       // Continue with cached state - it's better than failing completely
     }
     
@@ -188,8 +182,8 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
       } else if (!amount || parseFloat(amount) <= 0) {
         throw new Error('Invalid amount');
       } else {
-        // Use asset decimals override if provided
-        const effectiveAssetDecimals = getAssetDecimals(assetDecimalsOverride);
+        // Use asset decimals override if provided, otherwise fall back to vault data
+        const effectiveAssetDecimals = assetDecimalsOverride ?? vaultData?.assetDecimals ?? 18;
         
         // Sanitize and validate amount string before parsing
         // Remove any whitespace and ensure it's a valid decimal number
@@ -551,8 +545,8 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
     currentSimulationState,
     isSimulationPending,
     assetAddress,
-    vaultDataContext,
-    refetchSimulationState
+    refetchSimulationState,
+    vaultData
   ]);
 
   return {

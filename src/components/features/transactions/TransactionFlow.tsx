@@ -2,13 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { useWaitForTransactionReceipt } from 'wagmi';
-import { useAccount } from 'wagmi';
 import { VaultAccount } from '@/types/vault';
-import { useTransactionState, TransactionStatus } from '@/contexts/TransactionContext';
+import { useTransactionState } from '@/contexts/TransactionContext';
 import { useVaultTransactions, TransactionProgressStep } from '@/hooks/useVaultTransactions';
 import { isCancellationError, formatTransactionError } from '@/lib/transactionUtils';
 import { TransactionConfirmation } from './TransactionConfirmation';
-import { TransactionProgressBar } from './TransactionProgressBar';
 import { TransactionStatus as TransactionStatusComponent } from './TransactionStatus';
 
 interface TransactionFlowProps {
@@ -16,7 +14,6 @@ interface TransactionFlowProps {
 }
 
 export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
-  const { address } = useAccount();
   const {
     fromAccount,
     toAccount,
@@ -27,7 +24,6 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
     transactionType,
     derivedAsset,
     setStatus,
-    setAmount,
   } = useTransactionState();
 
 
@@ -258,40 +254,6 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
       { label: 'Confirm', completed: false, active: isConfirming }
     ];
   })() : [];
-
-  const transactionFlowSteps = (() => {
-    const baseSteps = [
-      { label: 'Select', completed: false, active: false },
-      { label: 'Review', completed: false, active: false },
-      { label: 'Confirmation', completed: false, active: false }
-    ];
-
-    if (isSuccess) {
-      return baseSteps.map(step => ({ ...step, completed: true }));
-    }
-    
-    if (isPreview) {
-      return [
-        { ...baseSteps[0], completed: true },
-        { ...baseSteps[1], active: true },
-        baseSteps[2]
-      ];
-    }
-    
-    if (isSigning || isApproving || isConfirming) {
-      return [
-        { ...baseSteps[0], completed: true },
-        { ...baseSteps[1], completed: true, active: true },
-        baseSteps[2]
-      ];
-    }
-    
-    return [
-      { ...baseSteps[0], active: true },
-      baseSteps[1],
-      baseSteps[2]
-    ];
-  })();
 
   const assetSymbol = derivedAsset?.symbol || (fromAccount?.type === 'vault' 
     ? (fromAccount as VaultAccount).symbol 

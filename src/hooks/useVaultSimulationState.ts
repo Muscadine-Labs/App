@@ -330,7 +330,7 @@ export const useVaultSimulationState = (
     });
     
     return state;
-  }, []);
+  }, [simulation]);
 
   // Manually ensure native ETH balance is in holdings if simulation state exists
   const enhancedSimulationState = useMemo(() => {

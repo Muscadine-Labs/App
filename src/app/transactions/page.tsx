@@ -10,10 +10,9 @@ import { useVaultData } from '@/contexts/VaultDataContext';
 import { usePrices } from '@/app/PriceContext';
 import { VAULTS } from '@/lib/vaults';
 import { VaultAccount, WalletAccount } from '@/types/vault';
-import { formatBigIntForInput, formatWalletBalance, formatVaultAssetBalance, formatAvailableBalance, formatAssetAmountForMax } from '@/lib/formatter';
+import { formatBigIntForInput, formatAvailableBalance, formatAssetAmountForMax } from '@/lib/formatter';
 import { Button } from '@/components/ui';
-import { formatUnits, parseUnits } from 'viem';
-import { BASE_WETH_ADDRESS } from '@/lib/constants';
+import { formatUnits } from 'viem';
 
 // ERC-4626 ABI for convertToAssets
 const ERC4626_ABI = [

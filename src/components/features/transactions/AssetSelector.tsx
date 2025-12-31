@@ -4,8 +4,6 @@ import { useState, useRef } from 'react';
 import Image from 'next/image';
 import { getVaultLogo } from '@/types/vault';
 import { SelectedAsset } from '@/hooks/useTransactionState';
-import { VAULTS } from '@/lib/vaults';
-import { useVaultData } from '@/contexts/VaultDataContext';
 import { useOnClickOutside } from '@/hooks/onClickOutside';
 
 interface AssetSelectorProps {
@@ -28,16 +26,11 @@ export function AssetSelector({
 }: AssetSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const vaultDataContext = useVaultData();
 
   useOnClickOutside(dropdownRef, () => setIsOpen(false));
 
   // Build asset options with addresses from vaults
   const assetOptions: SelectedAsset[] = AVAILABLE_ASSETS.map((asset) => {
-    // Find a vault that uses this asset to get the asset address
-    const vault = Object.values(VAULTS).find((v) => v.symbol === asset.symbol);
-    const vaultData = vault ? vaultDataContext.getVaultData(vault.address) : null;
-    
     // For now, we'll use empty string - the actual asset address will be fetched during transaction
     // Or we can fetch it from the vault's asset() function
     return {

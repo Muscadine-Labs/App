@@ -2,7 +2,7 @@
 
 import "core-js/proposals/iterator-helpers"; // Polyfill for Iterator Helpers used by @morpho-org/blue-sdk-wagmi
 
-import { ReactNode, useState, useEffect } from 'react'
+import { ReactNode, useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
 import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
@@ -30,7 +30,6 @@ type Props = {
 
 export function Providers({ children, initialState }: Props) {
   const [queryClient] = useState(() => new QueryClient())
-  const walletConnectProjectId = process.env.NEXT_PUBLIC_PROJECT_ID
 
   return (
     <ErrorBoundary
