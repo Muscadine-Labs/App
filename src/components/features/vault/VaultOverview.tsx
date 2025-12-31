@@ -130,18 +130,42 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
     fetchAllHistory();
   }, [vaultData.address, vaultData.chainId]);
 
-  // Filter history data based on selected period
+  // Filter history data based on selected period and find first non-zero value
   useEffect(() => {
-    if (period === 'all' || allHistoryData.length === 0) {
-      setHistoryData(allHistoryData);
-      return;
+    let filtered = allHistoryData;
+    
+    if (period !== 'all' && allHistoryData.length > 0) {
+      const now = Math.floor(Date.now() / 1000);
+      const cutoffTimestamp = now - PERIOD_SECONDS[period];
+      filtered = allHistoryData.filter(d => d.timestamp >= cutoffTimestamp);
     }
     
-    const now = Math.floor(Date.now() / 1000);
-    const cutoffTimestamp = now - PERIOD_SECONDS[period];
+    // Find the first non-zero value based on chart type
+    // For APY chart, filter out zero APY values
+    // For TVL chart, filter out zero totalAssetsUsd/totalAssets values
+    if (filtered.length > 0) {
+      let firstNonZeroIndex = -1;
+      
+      if (chartType === 'apy') {
+        firstNonZeroIndex = filtered.findIndex(d => d.apy > 0);
+      } else {
+        // TVL chart - check based on valueType
+        if (valueType === 'usd') {
+          firstNonZeroIndex = filtered.findIndex(d => d.totalAssetsUsd > 0);
+        } else {
+          firstNonZeroIndex = filtered.findIndex(d => (d.totalAssets || 0) > 0);
+        }
+      }
+      
+      // If we found a non-zero value, start from that point
+      if (firstNonZeroIndex >= 0) {
+        filtered = filtered.slice(firstNonZeroIndex);
+      }
+    }
     
-    setHistoryData(allHistoryData.filter(d => d.timestamp >= cutoffTimestamp));
-  }, [allHistoryData, period]);
+    setHistoryData(filtered);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allHistoryData.length, period, chartType, valueType]);
 
   // Calculate available periods based on data range
   const availablePeriods = useMemo(() => {

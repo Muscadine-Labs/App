@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { MorphoVaultData } from '@/types/vault';
@@ -13,7 +13,6 @@ import { Button } from '@/components/ui';
 
 // Constants
 const WEI_PER_ETHER = 1e18;
-const DEFAULT_HISTORY_PERIOD = '1y';
 
 interface VaultPositionProps {
   vaultData: MorphoVaultData;
@@ -54,6 +53,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     totalAssetsUsd: number;
     totalAssets: number;
     sharePriceUsd: number;
+    assetPriceUsd?: number;
   }>>([]);
 
   // Find the current vault position
@@ -95,7 +95,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
             `/api/vaults/${vaultData.address}/activity?chainId=${vaultData.chainId}&userAddress=${address}`
           ),
           fetch(
-            `/api/vaults/${vaultData.address}/history?chainId=${vaultData.chainId}&period=${DEFAULT_HISTORY_PERIOD}`
+            `/api/vaults/${vaultData.address}/history?chainId=${vaultData.chainId}&period=1y`
           )
         ]);
         
@@ -136,29 +136,29 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                 ? currentTotalAssetsUsd / totalSupplyDecimal 
                 : 1);
           
-          // Calculate historical share prices
+          // Calculate historical share prices using actual historical asset prices
           // sharePriceUsd = totalAssetsUsd / totalSupply
           // Since we don't have historical totalSupply, we estimate share price growth
           // by using the ratio of historical totalAssetsUsd to current totalAssetsUsd
           // This assumes share price grows proportionally to vault value
-          const historicalData = historyData.history.map((point: { timestamp: number; totalAssetsUsd: number; totalAssets: number }) => {
+          const historicalData = historyData.history.map((point: { 
+            timestamp: number; 
+            totalAssetsUsd: number; 
+            totalAssets: number;
+            assetPriceUsd?: number;
+            sharePriceUsd?: number;
+          }) => {
             const totalAssetsDecimal = point.totalAssets || 0;
-            
-            // Calculate share price growth based on totalAssetsUsd growth
-            // If current totalAssetsUsd is available, use ratio; otherwise use current share price
-            let historicalSharePriceUsd = sharePriceUsd;
-            if (currentTotalAssetsUsd > 0 && point.totalAssetsUsd > 0) {
-              // Estimate share price based on how totalAssetsUsd changed
-              // This approximates share price growth (assuming deposits/withdrawals don't drastically change the ratio)
-              const growthRatio = point.totalAssetsUsd / currentTotalAssetsUsd;
-              historicalSharePriceUsd = sharePriceUsd * growthRatio;
-            }
+            // Use sharePriceUsd from API if available (from GraphQL), otherwise fallback to calculation
+            const historicalSharePriceUsd = point.sharePriceUsd || sharePriceUsd;
+            const historicalAssetPriceUsd = point.assetPriceUsd || vaultData.sharePrice || 1;
             
             return {
               timestamp: point.timestamp,
               totalAssetsUsd: point.totalAssetsUsd,
               totalAssets: totalAssetsDecimal,
               sharePriceUsd: historicalSharePriceUsd,
+              assetPriceUsd: historicalAssetPriceUsd,
             };
           });
           
@@ -192,28 +192,6 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   };
 
-  // Helper function to find closest historical data point for a given timestamp
-  const findClosestHistoricalPoint = useCallback((timestamp: number) => {
-    if (historicalVaultData.length === 0) return null;
-    
-    // Binary search for better performance on large datasets
-    let left = 0;
-    let right = historicalVaultData.length - 1;
-    let closest = historicalVaultData[right];
-    
-    while (left <= right) {
-      const mid = Math.floor((left + right) / 2);
-      if (historicalVaultData[mid].timestamp <= timestamp) {
-        closest = historicalVaultData[mid];
-        left = mid + 1;
-      } else {
-        right = mid - 1;
-      }
-    }
-    
-    return closest;
-  }, [historicalVaultData]);
-
   // Calculate share price in asset terms (tokens per share)
   const sharePriceInAsset = useMemo(() => {
     // Calculate from totalAssets/totalSupply (most accurate)
@@ -243,17 +221,14 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     return 0;
   }, [currentVaultPosition, vaultData.totalAssets, vaultData.assetDecimals, userVaultAssetAmount]);
 
-  // Calculate user's position history by working backwards from current position
+  // Calculate user's position history using actual GraphQL data points
   const calculateUserDepositHistory = () => {
-    if (!address || userTransactions.length === 0) return [];
+    // Always use GraphQL data points, even if user has no transactions yet
+    if (historicalVaultData.length === 0) return [];
 
     const currentSharesWei = currentVaultPosition 
       ? BigInt(currentVaultPosition.shares) 
       : BigInt(0);
-    
-    const currentSharePriceUsd = currentVaultPosition 
-      ? currentVaultPosition.vault.state.sharePriceUsd 
-      : (vaultData.sharePrice || 1);
     
     // Calculate current asset amount - use userVaultAssetAmount if available, otherwise calculate from shares
     const currentAssetsWei = (() => {
@@ -268,6 +243,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
       return BigInt(0);
     })();
     
+    // Build map of user's shares/assets at each transaction timestamp
     const sorted = [...userTransactions].sort((a, b) => b.timestamp - a.timestamp);
     const sharesAtTimestamp = new Map<number, bigint>();
     const assetsAtTimestamp = new Map<number, bigint>();
@@ -308,76 +284,76 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
       assetsAtTimestamp.set(oldestTx.timestamp - 1, runningAssets);
     }
     
-    const firstTx = sorted[sorted.length - 1];
-    const firstTxDate = new Date(firstTx.timestamp * 1000);
-    const today = new Date();
-    
-    const dailyData: Array<{ timestamp: number; date: string; valueUsd: number; valueToken: number }> = [];
-    const currentDate = new Date(firstTxDate);
-    currentDate.setHours(0, 0, 0, 0);
-    const finalDate = new Date(today);
-    finalDate.setHours(0, 0, 0, 0);
-    
-    while (currentDate <= finalDate) {
-      const dayTimestamp = Math.floor(currentDate.getTime() / 1000);
-      let sharesForDay = BigInt(0);
-      let assetsForDay = BigInt(0);
+    // Helper function to get user's shares/assets at a given timestamp
+    const getUserPositionAtTimestamp = (timestamp: number): { shares: bigint; assets: bigint } => {
       let foundTimestamp = -1;
+      let shares = BigInt(0);
+      let assets = BigInt(0);
       
-      for (const [txTimestamp, shares] of sharesAtTimestamp.entries()) {
-        if (txTimestamp <= dayTimestamp && txTimestamp > foundTimestamp) {
+      for (const [txTimestamp, txShares] of sharesAtTimestamp.entries()) {
+        if (txTimestamp <= timestamp && txTimestamp > foundTimestamp) {
           foundTimestamp = txTimestamp;
-          sharesForDay = shares;
-          assetsForDay = assetsAtTimestamp.get(txTimestamp) || BigInt(0);
+          shares = txShares;
+          assets = assetsAtTimestamp.get(txTimestamp) || BigInt(0);
         }
       }
       
       if (foundTimestamp === -1) {
-        if (dayTimestamp >= now) {
-          sharesForDay = currentSharesWei;
-          assetsForDay = currentAssetsWei;
+        if (timestamp >= now) {
+          shares = currentSharesWei;
+          assets = currentAssetsWei;
         } else {
-          sharesForDay = BigInt(0);
-          assetsForDay = BigInt(0);
+          shares = BigInt(0);
+          assets = BigInt(0);
         }
       }
       
-      const sharesDecimal = Number(sharesForDay) / WEI_PER_ETHER;
+      return { shares, assets };
+    };
+    
+    // Use actual GraphQL data points - each point represents a daily snapshot
+    const dailyData: Array<{ timestamp: number; date: string; valueUsd: number; valueToken: number }> = [];
+    
+    // Sort historical data by timestamp
+    const sortedHistoricalData = [...historicalVaultData].sort((a, b) => a.timestamp - b.timestamp);
+    
+    for (const historicalPoint of sortedHistoricalData) {
+      const { shares } = getUserPositionAtTimestamp(historicalPoint.timestamp);
+      const sharesDecimal = Number(shares) / WEI_PER_ETHER;
       
-      // Find the closest historical share price for this day using helper function
-      const closestHistoricalPoint = findClosestHistoricalPoint(dayTimestamp);
-      const sharePriceUsdForDay = closestHistoricalPoint?.sharePriceUsd ?? currentSharePriceUsd;
+      // Use the historical share price from GraphQL data
+      const sharePriceUsdForDay = historicalPoint.sharePriceUsd;
       
+      // Calculate USD value: shares * sharePriceUsd
       const positionValueUsd = sharesDecimal * sharePriceUsdForDay;
       
-      // Calculate token value from tracked assets, or fallback to share price calculation
+      // Calculate token value using historical share price in asset terms
+      // Always calculate from shares × sharePriceInAsset to get daily updates
       let positionValueToken = 0;
-      if (assetsForDay > BigInt(0)) {
-        positionValueToken = Number(assetsForDay) / Math.pow(10, vaultData.assetDecimals || 18);
-      } else if (sharePriceInAsset > 0 && sharesDecimal > 0) {
-        // Use historical share price in asset terms if available
-        if (closestHistoricalPoint) {
-          // Calculate share price in asset terms from historical data with division by zero protection
-          const assetPriceUsd = vaultData.sharePrice && closestHistoricalPoint.totalAssets > 0
-            ? closestHistoricalPoint.totalAssetsUsd / closestHistoricalPoint.totalAssets
-            : 1;
-          const historicalSharePriceInAsset = assetPriceUsd > 0 && sharePriceUsdForDay > 0
-            ? sharePriceUsdForDay / assetPriceUsd
-            : sharePriceInAsset;
+      if (sharesDecimal > 0) {
+        // Get historical asset price for this day
+        const historicalAssetPriceUsd = historicalPoint.assetPriceUsd 
+          || (historicalPoint.totalAssets > 0 && historicalPoint.totalAssetsUsd > 0
+            ? historicalPoint.totalAssetsUsd / historicalPoint.totalAssets
+            : vaultData.sharePrice || 1);
+        
+        if (historicalAssetPriceUsd > 0 && sharePriceUsdForDay > 0) {
+          // sharePriceInAsset = sharePriceUsd / assetPriceUsd
+          // This changes daily as sharePriceUsd and assetPriceUsd change
+          const historicalSharePriceInAsset = sharePriceUsdForDay / historicalAssetPriceUsd;
           positionValueToken = sharesDecimal * historicalSharePriceInAsset;
-        } else {
+        } else if (sharePriceInAsset > 0) {
+          // Fallback to current share price in asset
           positionValueToken = sharesDecimal * sharePriceInAsset;
         }
       }
       
       dailyData.push({
-        timestamp: dayTimestamp,
-        date: formatDateShort(dayTimestamp),
+        timestamp: historicalPoint.timestamp,
+        date: formatDateShort(historicalPoint.timestamp),
         valueUsd: Math.max(0, positionValueUsd),
         valueToken: Math.max(0, positionValueToken),
       });
-      
-      currentDate.setDate(currentDate.getDate() + 1);
     }
     
     return dailyData;
@@ -423,10 +399,21 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     }
     
     // Map to include the correct value based on valueType
-    return data.map(item => ({
+    const mappedData = data.map(item => ({
       ...item,
       value: valueType === 'usd' ? item.valueUsd : item.valueToken,
     }));
+    
+    // Find the first index with a non-zero value
+    const firstNonZeroIndex = mappedData.findIndex(item => item.value > 0);
+    
+    // If we found a non-zero value, start from that point
+    // Otherwise, return all data (user might not have any position yet)
+    if (firstNonZeroIndex >= 0) {
+      return mappedData.slice(firstNonZeroIndex);
+    }
+    
+    return mappedData;
   }, [userDepositHistory, selectedTimeFrame, valueType]);
 
   // Calculate Y-axis domain for better fit

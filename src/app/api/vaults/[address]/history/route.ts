@@ -86,6 +86,7 @@ export async function GET(
         vaultByAddress(address: $address, chainId: $chainId) {
           address
           asset {
+            symbol
             decimals
             priceUsd
           }
@@ -103,6 +104,14 @@ export async function GET(
               y
             }
             totalAssets(options: $options) {
+              x
+              y
+            }
+            sharePriceUsd(options: $options) {
+              x
+              y
+            }
+            totalSupply(options: $options) {
               x
               y
             }
@@ -170,6 +179,8 @@ export async function GET(
     const netApyData = vaultV1.historicalState.netApy || [];
     const totalAssetsUsdData = vaultV1.historicalState.totalAssetsUsd || [];
     const totalAssetsData = vaultV1.historicalState.totalAssets || [];
+    const sharePriceUsdData = vaultV1.historicalState.sharePriceUsd || [];
+    const totalSupplyData = vaultV1.historicalState.totalSupply || [];
     
     const assetDecimals = vaultV1.asset?.decimals || 18;
     const assetPriceUsd = vaultV1.asset?.priceUsd || 0;
@@ -179,23 +190,27 @@ export async function GET(
     netApyData.forEach((point: { x: number; y: number }) => timestamps.add(point.x));
     totalAssetsUsdData.forEach((point: { x: number; y: number }) => timestamps.add(point.x));
     totalAssetsData.forEach((point: { x: number; y: number }) => timestamps.add(point.x));
+    sharePriceUsdData.forEach((point: { x: number; y: number }) => timestamps.add(point.x));
+    totalSupplyData.forEach((point: { x: number; y: number }) => timestamps.add(point.x));
 
     const apyMap = new Map(apyData.map((p: { x: number; y: number }) => [p.x, p.y]));
     const netApyMap = new Map(netApyData.map((p: { x: number; y: number }) => [p.x, p.y]));
     const totalAssetsUsdMap = new Map(totalAssetsUsdData.map((p: { x: number; y: number }) => [p.x, p.y]));
     const totalAssetsMap = new Map(totalAssetsData.map((p: { x: number; y: number }) => [p.x, p.y]));
+    const sharePriceUsdMap = new Map(sharePriceUsdData.map((p: { x: number; y: number }) => [p.x, p.y]));
+    const totalSupplyMap = new Map(totalSupplyData.map((p: { x: number; y: number }) => [p.x, p.y]));
 
     const history = Array.from(timestamps)
       .sort((a, b) => a - b)
       .map((timestamp) => {
         const apy = apyMap.get(timestamp) || 0;
         const netApy = netApyMap.get(timestamp) || 0;
-        const totalAssetsUsd = totalAssetsUsdMap.get(timestamp) || 0;
+        const totalAssetsUsd: number = (totalAssetsUsdMap.get(timestamp) || 0) as number;
         const totalAssetsRawValue = totalAssetsMap.get(timestamp);
         
         // Convert totalAssets from raw units to decimal
         // Note: Morpho GraphQL API's historicalState.totalAssets returns values in raw units (wei/smallest unit)
-        let totalAssets = 0;
+        let totalAssets: number = 0;
         if (totalAssetsRawValue !== undefined && totalAssetsRawValue !== null) {
           let rawValue: number = 0;
           if (typeof totalAssetsRawValue === 'string') {
@@ -249,6 +264,33 @@ export async function GET(
           }
         }
         
+        // Get historical sharePriceUsd from GraphQL if available
+        const historicalSharePriceUsd = sharePriceUsdMap.get(timestamp);
+        const historicalTotalSupplyRaw = totalSupplyMap.get(timestamp);
+        
+        // Calculate historical share price if not available from GraphQL
+        let sharePriceUsd: number = 0;
+        if (typeof historicalSharePriceUsd === 'number' && historicalSharePriceUsd > 0) {
+          sharePriceUsd = historicalSharePriceUsd;
+        } else if (historicalTotalSupplyRaw !== undefined && historicalTotalSupplyRaw !== null) {
+          // Calculate from totalAssetsUsd / totalSupply
+          const totalSupplyRaw = typeof historicalTotalSupplyRaw === 'string' 
+            ? parseFloat(historicalTotalSupplyRaw)
+            : (typeof historicalTotalSupplyRaw === 'number' ? historicalTotalSupplyRaw : 0);
+          if (totalSupplyRaw > 0) {
+            const totalSupplyDecimal = totalSupplyRaw / Math.pow(10, assetDecimals);
+            if (totalSupplyDecimal > 0 && totalAssetsUsd > 0) {
+              sharePriceUsd = totalAssetsUsd / totalSupplyDecimal;
+            }
+          }
+        }
+        
+        // Calculate historical asset price from GraphQL data: assetPriceUsd = totalAssetsUsd / totalAssets
+        let historicalAssetPriceUsd = assetPriceUsd; // Fallback to current price
+        if (totalAssets > 0 && totalAssetsUsd > 0) {
+          historicalAssetPriceUsd = totalAssetsUsd / totalAssets;
+        }
+        
         const apyValue = typeof apy === 'number' ? apy : 0;
         const netApyValue = typeof netApy === 'number' ? netApy : 0;
 
@@ -257,6 +299,8 @@ export async function GET(
           date: new Date(timestamp * 1000).toISOString().split('T')[0],
           totalAssetsUsd,
           totalAssets,
+          sharePriceUsd: sharePriceUsd || 0, // Historical share price from GraphQL or calculated
+          assetPriceUsd: historicalAssetPriceUsd, // Historical price calculated from GraphQL data
           apy: apyValue * 100,
           netApy: netApyValue * 100,
         };
