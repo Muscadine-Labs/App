@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { formatSmartCurrency, formatAssetAmount } from '@/lib/formatter';
 import { calculateYAxisDomain } from '@/lib/vault-utils';
+import { logger } from '@/lib/logger';
 import { MorphoVaultData } from '@/types/vault';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
@@ -92,9 +93,20 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
         const response = await fetch(
           `/api/vaults/${vaultData.address}/history?chainId=${vaultData.chainId}&period=1y`
         );
+        
+        // Validate HTTP response
+        if (!response.ok) {
+          throw new Error(`Failed to fetch history: ${response.status} ${response.statusText}`);
+        }
+        
         const data = await response.json();
         
-        if (data.history && data.history.length > 0) {
+        // Type validation for JSON response
+        if (!data || typeof data !== 'object') {
+          throw new Error('Invalid history response format');
+        }
+        
+        if (data.history && Array.isArray(data.history) && data.history.length > 0) {
           // Ensure timestamps are unique and sorted
           const uniqueData = data.history.filter((point: HistoryDataPoint, index: number, self: HistoryDataPoint[]) => 
             index === self.findIndex((p) => p.timestamp === point.timestamp)
@@ -103,7 +115,12 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
         } else {
           setAllHistoryData([]);
         }
-      } catch {
+      } catch (error) {
+        logger.error(
+          'Failed to fetch vault history data',
+          error instanceof Error ? error : new Error(String(error)),
+          { vaultAddress: vaultData.address, chainId: vaultData.chainId }
+        );
         setAllHistoryData([]);
       } finally {
         setLoading(false);
