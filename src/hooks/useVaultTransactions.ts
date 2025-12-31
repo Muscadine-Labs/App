@@ -273,9 +273,9 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
           // --- SPECIAL FLOW FOR WETH VAULTS ---
           // Can deposit both existing WETH and wrap ETH as needed
           // We handle wrapping manually (rather than via getRequirementOperations) to:
-          // 1. Ensure gas reserve calculations are explicit and safe
-          // 2. Provide clear error messages about available balances
-          // 3. Have full control over the wrapping logic
+          // 1. Provide clear error messages about available balances
+          // 2. Have full control over the wrapping logic
+          // Note: All ETH can be wrapped since USDC can be used for gas on Base
           
           // Fetch fresh balances at transaction time to ensure accuracy
           // Using publicClient ensures we get the state at the moment the button was clicked
@@ -296,26 +296,12 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
             address: accountAddress as Address,
           });
           
-          // Estimate gas needed for wrapping ETH (if we need to wrap)
-          // A typical WETH wrap + deposit via bundler costs around 0.00005-0.0001 ETH
-          // We use a conservative but reasonable estimate
-          const estimatedGasForWrap = parseUnits('0.0001', 18); // Conservative estimate for wrap + deposit + bundler
-          
-          // Calculate wrappable ETH: available ETH minus estimated gas
-          // For very small balances, allow wrapping most of it (wallet will handle gas estimation)
-          const wrappableEth = availableEth > estimatedGasForWrap 
-            ? availableEth - estimatedGasForWrap 
-            : (availableEth > parseUnits('0.00005', 18) 
-              ? availableEth - parseUnits('0.00005', 18) // Reserve minimum for very small amounts
-              : BigInt(0));
-          
-          // Total available: existing WETH + wrappable ETH (ETH that can actually be wrapped)
-          const totalAvailable = existingWeth + wrappableEth;
+          // Total available: existing WETH + all available ETH (all ETH can be wrapped)
+          const totalAvailable = existingWeth + availableEth;
           
           // Detailed balance information for error messages
           const existingWethFormatted = formatUnits(existingWeth, 18);
           const availableEthFormatted = formatUnits(availableEth, 18);
-          const wrappableEthFormatted = formatUnits(wrappableEth, 18);
           const totalAvailableFormatted = formatUnits(totalAvailable, 18);
           const requestedFormatted = formatUnits(amountBigInt, 18);
           
@@ -326,7 +312,7 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
               `Available: ${totalAvailableFormatted} WETH\n\n` +
               `Breakdown:\n` +
               `  • Existing WETH: ${existingWethFormatted} WETH\n` +
-              `  • Wrappable ETH: ${wrappableEthFormatted} ETH (${availableEthFormatted} ETH minus ~0.0001 ETH for gas)\n\n` +
+              `  • Wrappable ETH: ${availableEthFormatted} ETH\n\n` +
               `Please reduce the amount or add more funds to your wallet.`
             );
           }
@@ -336,14 +322,13 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
           
           // If we need to wrap ETH, add wrap operation
           if (ethToWrap > BigInt(0)) {
-            if (ethToWrap > wrappableEth) {
+            if (ethToWrap > availableEth) {
               const ethToWrapFormatted = formatUnits(ethToWrap, 18);
               throw new Error(
                 `Cannot wrap ${ethToWrapFormatted} ETH.\n\n` +
                 `Available ETH: ${availableEthFormatted} ETH\n` +
-                `Wrappable ETH (after gas): ${wrappableEthFormatted} ETH\n` +
                 `ETH needed to wrap: ${ethToWrapFormatted} ETH\n\n` +
-                `Some ETH is reserved for transaction gas fees. Please reduce the amount slightly.`
+                `Please reduce the amount or add more ETH to your wallet.`
               );
             }
             
@@ -423,7 +408,7 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
 
       // Configure bundling options
       // Note: We handle WETH wrapping manually (see deposit flow above) rather than via
-      // getRequirementOperations to maintain explicit gas reserve logic and better error messages.
+      // getRequirementOperations to provide better error messages and control.
       // The bundler SDK will still automatically handle token approvals and other requirements.
       const bundlingOptions: BundlingOptions = {
         publicAllocatorOptions: {

@@ -13,7 +13,6 @@ export const CACHE_DURATION_PRICES = 10 * 60 * 1000; // 10 minutes
 export const CACHE_DURATION_ACTIVITY = 60 * 1000; // 1 minute
 
 // Transaction configuration
-export const GAS_RESERVE_ETH = '0.0001'; // ETH to reserve for gas fees
 export const MAX_WITHDRAW_QUEUE_ITEMS = 30; // Maximum items to fetch from withdraw queue
 
 // Request timeouts

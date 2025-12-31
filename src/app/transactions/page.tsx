@@ -96,34 +96,35 @@ export default function TransactionsPage() {
     }
   }, [searchParams, vaultDataContext, morphoHoldings, setFromAccount, setToAccount]);
 
-  // Get vault position for convertToAssets call
+  // Get vault position for share balance
   const vaultPosition = fromAccount?.type === 'vault' 
     ? morphoHoldings.positions.find(
         (pos) => pos.vault.address.toLowerCase() === (fromAccount as VaultAccount).address.toLowerCase()
       )
     : null;
 
-  // Use convertToAssets contract call if position.assets is not available
+  // Use convertToAssets to convert user's shares to assets for accurate max calculation
+  // Following Morpho's recommendation: use shares as source of truth, then convert for display
   const { data: withdrawableAssetsBigInt } = useReadContract({
-    address: (fromAccount?.type === 'vault' && !vaultPosition?.assets ? (fromAccount as VaultAccount).address : undefined) as `0x${string}`,
+    address: (fromAccount?.type === 'vault' && vaultPosition ? (fromAccount as VaultAccount).address : undefined) as `0x${string}`,
     abi: ERC4626_ABI,
     functionName: 'convertToAssets',
-    args: vaultPosition && !vaultPosition.assets && fromAccount?.type === 'vault'
+    args: vaultPosition && fromAccount?.type === 'vault'
       ? [BigInt(vaultPosition.shares)]
       : undefined,
     query: {
-      enabled: fromAccount?.type === 'vault' && !!vaultPosition && !vaultPosition.assets,
+      enabled: fromAccount?.type === 'vault' && !!vaultPosition,
     },
   });
 
   // Helper function to get combined ETH + WETH balance for WETH vault deposits
+  // Note: All ETH can be wrapped since USDC can be used for gas on Base
   const getCombinedEthWethBalance = (): number => {
     const ethBal = parseFloat(ethBalance || '0');
     const wethToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'WETH');
     const wethBal = wethToken ? parseFloat(wethToken.formatted || '0') : 0;
-    const gasReserve = ethBal > 0.0001 ? 0.0001 : (ethBal > 0.00005 ? 0.00005 : 0);
-    const wrappableEth = ethBal > gasReserve ? ethBal - gasReserve : 0;
-    return wethBal + wrappableEth;
+    // All ETH can be wrapped - no gas reserve needed since USDC can be used for gas on Base
+    return wethBal + ethBal;
   };
 
   // Helper function to get wallet balance display text
@@ -160,6 +161,8 @@ export default function TransactionsPage() {
   };
 
   // Helper function to get vault balance display text
+  // For withdrawals, we display shares converted to assets for user-friendly display
+  // Following Morpho's recommendation: use shares as source of truth, convert to assets for display
   const getVaultBalanceText = (): string => {
     if (!fromAccount || fromAccount.type !== 'vault' || !derivedAsset) return '';
     
@@ -170,15 +173,25 @@ export default function TransactionsPage() {
     );
 
     if (position && vaultData) {
-      let assetAmount: number | null = null;
+      // Use shares directly as the source of truth (recommended by Morpho)
+      const sharesBigInt = BigInt(position.shares);
+      const sharesDecimal = parseFloat(formatUnits(sharesBigInt, 18)); // Vault shares use 18 decimals
       
-      if (position.assets) {
-        assetAmount = parseFloat(position.assets) / Math.pow(10, vaultData.assetDecimals || 18);
-      } else if (withdrawableAssetsBigInt !== undefined) {
-        assetAmount = parseFloat(formatUnits(withdrawableAssetsBigInt, vaultData.assetDecimals || 18));
+      if (sharesDecimal === 0) {
+        return `Available: 0.00 ${derivedAsset.symbol}`;
       }
       
-      if (assetAmount !== null) {
+      // Convert shares to assets using convertToAssets for accurate conversion
+      if (withdrawableAssetsBigInt !== undefined) {
+        const assetAmount = parseFloat(formatUnits(withdrawableAssetsBigInt, vaultData.assetDecimals || 18));
+        return formatAvailableBalance(assetAmount, derivedAsset.symbol, vaultData.assetDecimals || 18);
+      } else if (vaultData.sharePrice && vaultData.sharePrice > 0) {
+        // Fallback: use share price if convertToAssets result not available yet
+        const assetAmount = sharesDecimal * vaultData.sharePrice;
+        return formatAvailableBalance(assetAmount, derivedAsset.symbol, vaultData.assetDecimals || 18);
+      } else if (position.assets) {
+        // Final fallback: use position.assets if available
+        const assetAmount = parseFloat(position.assets) / Math.pow(10, vaultData.assetDecimals || 18);
         return formatAvailableBalance(assetAmount, derivedAsset.symbol, vaultData.assetDecimals || 18);
       }
     }
@@ -187,6 +200,8 @@ export default function TransactionsPage() {
   };
 
   // Get max amount as a number for validation
+  // For vaults, this returns the asset amount equivalent of the user's share balance
+  // Following Morpho's recommendation: use shares as the source of truth (maxRedeem approach)
   const getMaxAmount = (): number | null => {
     if (!fromAccount || !derivedAsset) return null;
 
@@ -209,15 +224,31 @@ export default function TransactionsPage() {
         return parseFloat(formatUnits(token.balance, token.decimals));
       }
     } else {
+      // For vault withdrawals: use shares as the source of truth (recommended by Morpho)
+      // Following ERC-4626 best practices: maxRedeem = user's share balance
       const vaultAccount = fromAccount as VaultAccount;
       const vaultData = vaultDataContext.getVaultData(vaultAccount.address);
       const position = vaultPosition;
 
       if (position && vaultData) {
-        if (position.assets) {
-          return parseFloat(position.assets) / Math.pow(10, vaultData.assetDecimals || 18);
-        } else if (withdrawableAssetsBigInt !== undefined) {
+        // Get user's share balance directly (this is the actual limit - maxRedeem approach)
+        const sharesBigInt = BigInt(position.shares);
+        const sharesDecimal = parseFloat(formatUnits(sharesBigInt, 18)); // Vault shares use 18 decimals
+        
+        if (sharesDecimal === 0) {
+          return 0;
+        }
+        
+        // Convert shares to assets using convertToAssets for accurate conversion
+        // This ensures we use the vault's own conversion logic which accounts for fees/performance
+        if (withdrawableAssetsBigInt !== undefined) {
           return parseFloat(formatUnits(withdrawableAssetsBigInt, vaultData.assetDecimals || 18));
+        } else if (vaultData.sharePrice && vaultData.sharePrice > 0) {
+          // Fallback: use share price if convertToAssets result not available yet
+          return sharesDecimal * vaultData.sharePrice;
+        } else if (position.assets) {
+          // Final fallback: use position.assets if available
+          return parseFloat(position.assets) / Math.pow(10, vaultData.assetDecimals || 18);
         }
       }
     }

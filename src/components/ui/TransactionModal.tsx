@@ -688,16 +688,16 @@ export function TransactionModal() {
                 </div>
               </div>
 
-              {/* Warning for WETH deposits */}
+              {/* Note for WETH deposits */}
               {modalState.type === 'deposit' && modalState.vaultSymbol?.toUpperCase() === 'WETH' && (
-                <div className="flex items-start gap-3 p-4 bg-[var(--warning-subtle)] rounded-lg border border-[var(--warning)]">
-                  <div className="w-5 h-5 rounded-full bg-[var(--warning)] flex items-center justify-center flex-shrink-0 mt-0.5">
+                <div className="flex items-start gap-3 p-4 bg-[var(--info-subtle)] rounded-lg border border-[var(--info)]">
+                  <div className="w-5 h-5 rounded-full bg-[var(--info)] flex items-center justify-center flex-shrink-0 mt-0.5">
                     <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                   </div>
                   <p className="text-sm text-[var(--foreground)]">
-                    <span className="font-medium">Warning:</span> Depositing all your available ETH may leave insufficient funds for gas fees, which could prevent you from executing future transactions.
+                    <span className="font-medium">Note:</span> Depositing ETH will wrap it to WETH. USDC can be used for gas fees on Base.
                   </p>
                 </div>
               )}
