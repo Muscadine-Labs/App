@@ -17,12 +17,12 @@ export default function VaultPage() {
   const params = useParams();
   const router = useRouter();
   const address = (params?.address as string) || '';
-  const [activeTab, setActiveTab] = useState<string>('overview');
+  const [activeTab, setActiveTab] = useState<string>('position');
 
-  // Redirect safety tab to overview if somehow accessed
+  // Redirect safety tab to position if somehow accessed
   useEffect(() => {
     if (activeTab === 'safety') {
-      setActiveTab('overview');
+      setActiveTab('position');
     }
   }, [activeTab]);
   const [tabContentHeight, setTabContentHeight] = useState<string>('0px');

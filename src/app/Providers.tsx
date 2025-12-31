@@ -6,7 +6,7 @@ import { ReactNode, useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WagmiProvider } from 'wagmi'
 import { RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit'
-import { config } from './config'
+import { config } from '@/config/wagmi'
 import { base } from 'wagmi/chains'
 import '@rainbow-me/rainbowkit/styles.css'
 import { ApolloClient, HttpLink, InMemoryCache } from "@apollo/client";
@@ -16,6 +16,7 @@ import { WalletProvider } from '../contexts/WalletContext'
 import { TransactionProvider } from '../contexts/TransactionContext'
 import { TransactionModalProvider } from '../contexts/TransactionModalContext'
 import { ToastProvider } from '../contexts/ToastContext'
+import { ThemeProvider } from '../contexts/ThemeContext'
 import { ErrorBoundary } from '../components/common/ErrorBoundary'
 import { logger } from '../lib/logger'
 
@@ -50,24 +51,26 @@ export function Providers({ children, initialState }: Props) {
             <RainbowKitProvider
               initialChain={base}
               theme={darkTheme({
-                accentColor: 'var(--primary)', // Dynamically reads --accent from globals.css
+                accentColor: 'var(--primary)',
                 accentColorForeground: 'white',
-                borderRadius: 'medium', // Matches site's rounded corners
+                borderRadius: 'medium',
                 fontStack: 'system',
                 overlayBlur: 'small',
               })}
             >
-              <ToastProvider>
-                <WalletProvider>
-                  <TransactionModalProvider>
-                    <VaultDataProvider>
-                      <TransactionProvider>
-                        {children}
-                      </TransactionProvider>
-                    </VaultDataProvider>
-                  </TransactionModalProvider>
-                </WalletProvider>
-              </ToastProvider>
+              <ThemeProvider>
+                <ToastProvider>
+                  <WalletProvider>
+                    <TransactionModalProvider>
+                      <VaultDataProvider>
+                        <TransactionProvider>
+                          {children}
+                        </TransactionProvider>
+                      </VaultDataProvider>
+                    </TransactionModalProvider>
+                  </WalletProvider>
+                </ToastProvider>
+              </ThemeProvider>
             </RainbowKitProvider>
           </QueryClientProvider>
         </WagmiProvider>

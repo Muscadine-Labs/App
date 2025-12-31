@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* Base html and body styles */
+html {
+  background-color: var(--background);
+  color: var(--foreground);
+}
+
 /* Hide scrollbars for circular navigation */
 .scrollbar-hide {
   -ms-overflow-style: none;  /* Internet Explorer 10+ */
@@ -35,7 +41,7 @@
 :root {
   color-scheme: light dark;
 
-  --background: #fafafa;         /* Softer than pure white */
+  --background: #f0f0f0;         /* Slightly darker than pure white */
   --surface: #ffffff;            /* Cards */
   --surface-elevated: #f9fafb;   /* Modals */
   --surface-hover: #f3f4f6;
@@ -95,8 +101,87 @@
 }
 
 
+/* Dark theme - applied via data-theme attribute */
+[data-theme="dark"] {
+  /* Lighter, more professional dark backgrounds */
+  --background: #15171a;
+  --surface: #1d1f23;
+  --surface-elevated: #25272d;
+  --surface-hover: #2d3036;
+  --surface-active: #353840;
+
+  /* Refined borders with better contrast */
+  --border: #2d3036;
+  --border-subtle: #25272d;
+  --border-strong: #6b7280;
+
+  /* Improved text contrast for readability */
+  --foreground: #f8f9fa;
+  --foreground-secondary: #adb5bd;
+  --foreground-muted: #6c757d;
+  --foreground-disabled: #495057;
+
+  /* Professional blue primary with better saturation */
+  --primary: #4dabf7;
+  --primary-hover: #339af0;
+  --primary-active: #228be6;
+  --primary-subtle: #1c3d5a;
+
+  /* Refined accent colors */
+  --accent: #9775fa;
+  --accent-hover: #845ef7;
+  --accent-subtle: #3d2f5a;
+
+  /* Status colors with better visibility */
+  --success: #51cf66;
+  --success-subtle: #1e4d2a;
+  --warning: #ffd43b;
+  --warning-subtle: #664d03;
+  --danger: #ff6b6b;
+  --danger-subtle: #7f1d1d;
+  --info: #4dabf7;
+  --info-subtle: #1c3d5a;
+}
+
+/* Light theme - explicitly set via data-theme attribute */
+[data-theme="light"] {
+  --background: #f0f0f0;
+  --surface: #ffffff;
+  --surface-elevated: #f9fafb;
+  --surface-hover: #f3f4f6;
+  --surface-active: #e5e7eb;
+
+  --border: #e5e7eb;
+  --border-subtle: #f0f1f3;
+  --border-strong: #9ca3af;
+
+  --foreground: #111827;
+  --foreground-secondary: #4b5563;
+  --foreground-muted: #6b7280;
+  --foreground-disabled: #9ca3af;
+
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-active: #1e40af;
+  --primary-subtle: #eff6ff;
+
+  --accent: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-subtle: #f5f3ff;
+
+  --success: #16a34a;
+  --success-subtle: #dcfce7;
+  --warning: #ca8a04;
+  --warning-subtle: #fef9c3;
+  --danger: #dc2626;
+  --danger-subtle: #fee2e2;
+  --info: #2563eb;
+  --info-subtle: #dbeafe;
+}
+
+/* Fallback to system preference when no data-theme is set (Auto mode) */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     /* Lighter, more professional dark backgrounds */
     --background: #15171a;
     --surface: #1d1f23;
@@ -189,6 +274,8 @@
 body {
   opacity: 1;
   transition: opacity 0.2s ease-in-out;
+  color: var(--foreground);
+  background-color: var(--background);
 }
 
 /* RainbowKit ConnectButton styling to match app buttons */

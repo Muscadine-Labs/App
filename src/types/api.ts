@@ -160,3 +160,15 @@ export interface MorphoUserVaultPositions {
     vaultPositions: MorphoVaultPosition[];
   };
 }
+
+// Merkl Rewards Types
+export interface MerklClaim {
+  user: string;
+  tokens: string[];
+  amounts: string[];
+  proofs: string[][];
+}
+
+export interface MerklClaimData {
+  claim: MerklClaim;
+}

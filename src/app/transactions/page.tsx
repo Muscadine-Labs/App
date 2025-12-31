@@ -7,7 +7,7 @@ import { AccountSelector, TransactionFlow, TransactionProgressBar } from '@/comp
 import { useTransactionState } from '@/contexts/TransactionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
-import { usePrices } from '@/app/PriceContext';
+import { usePrices } from '@/contexts/PriceContext';
 import { VAULTS } from '@/lib/vaults';
 import { VaultAccount, WalletAccount } from '@/types/vault';
 import { formatBigIntForInput, formatAvailableBalance, formatAssetAmountForMax } from '@/lib/formatter';

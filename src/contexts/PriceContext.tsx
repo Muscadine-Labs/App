@@ -1,4 +1,3 @@
-// src/contexts/PriceContext.tsx
 'use client';
 
 import { createContext, useContext, ReactNode } from 'react';
@@ -70,3 +69,4 @@ export function PriceProvider({ children }: { children: ReactNode }) {
   }
 
 export const usePrices = () => useContext(PriceContext);
+

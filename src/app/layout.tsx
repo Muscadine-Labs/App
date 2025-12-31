@@ -5,8 +5,8 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { headers } from 'next/headers'
 import { cookieToInitialState } from 'wagmi'
 import { Providers } from './Providers'
-import { config } from './config'
-import { PriceProvider } from './PriceContext'
+import { config } from '@/config/wagmi'
+import { PriceProvider } from '@/contexts/PriceContext'
 import { Analytics } from '@vercel/analytics/react'
 
 const figtree = Figtree({ 

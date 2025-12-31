@@ -75,10 +75,14 @@ export async function GET(
       ...(escapedUserAddress ? [`userAddress_in: ["${escapedUserAddress}"]`] : [])
     ].join(', ');
 
+    // Fetch all transactions with pagination if userAddress is provided
+    // Otherwise, limit to 100 for performance
+    const transactionLimit = userAddress ? 1000 : 100;
+    
     const query = `
       query VaultActivity {
         transactions(
-          first: 100
+          first: ${transactionLimit}
           orderBy: Timestamp
           orderDirection: Desc
           where: { 
@@ -111,40 +115,102 @@ export async function GET(
       }
     `;
 
-    const response = await fetch('https://api.morpho.org/graphql', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        query,
-      }),
-      next: { 
-        revalidate: 60, // 1 minute - activity data changes frequently
-      },
-    });
-
-    const responseText = await response.text();
+    let response: Response;
+    let responseText: string;
     let data: GraphQLResponse<GraphQLTransactionsData>;
     
     try {
-      data = JSON.parse(responseText) as GraphQLResponse<GraphQLTransactionsData>;
-    } catch {
-      throw new Error(`Morpho API error: ${response.status} - Invalid JSON response`);
-    }
+      response = await fetch('https://api.morpho.org/graphql', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          query,
+        }),
+        next: { 
+          revalidate: 60, // 1 minute - activity data changes frequently
+        },
+      });
 
-    if (!response.ok) {
-      throw new Error(`Morpho API error: ${response.status} - ${data.errors?.[0]?.message || responseText}`);
-    }
+      responseText = await response.text();
+      
+      try {
+        data = JSON.parse(responseText) as GraphQLResponse<GraphQLTransactionsData>;
+      } catch (parseError) {
+        // If JSON parsing fails, return empty results instead of throwing
+        logger.error(
+          'Failed to parse GraphQL response',
+          parseError instanceof Error ? parseError : new Error(String(parseError)),
+          { address, chainId: chainIdParam, responseStatus: response.status }
+        );
+        return NextResponse.json({
+          transactions: [],
+          deposits: [],
+          withdrawals: [],
+          events: [],
+          error: 'Invalid response from Morpho API',
+          cached: false,
+          timestamp: Date.now(),
+        });
+      }
 
-    if (data.errors) {
+      // Handle GraphQL errors gracefully
+      if (data.errors && data.errors.length > 0) {
+        logger.warn(
+          'GraphQL errors in activity query',
+          { 
+            address, 
+            chainId: chainIdParam,
+            errors: data.errors.map(e => e.message)
+          }
+        );
+        return NextResponse.json({
+          transactions: [],
+          deposits: [],
+          withdrawals: [],
+          events: [],
+          error: data.errors[0]?.message || 'GraphQL query failed',
+          cached: false,
+          timestamp: Date.now(),
+        });
+      }
+
+      // If HTTP response is not ok but we have valid JSON, still try to process
+      if (!response.ok && !data.errors) {
+        logger.warn(
+          'Non-OK HTTP response from Morpho API',
+          { 
+            address, 
+            chainId: chainIdParam,
+            status: response.status,
+            statusText: response.statusText
+          }
+        );
+        return NextResponse.json({
+          transactions: [],
+          deposits: [],
+          withdrawals: [],
+          events: [],
+          error: `Morpho API error: ${response.status} ${response.statusText}`,
+          cached: false,
+          timestamp: Date.now(),
+        });
+      }
+    } catch (fetchError) {
+      // Network or fetch errors
+      logger.error(
+        'Failed to fetch from Morpho GraphQL API',
+        fetchError instanceof Error ? fetchError : new Error(String(fetchError)),
+        { address, chainId: chainIdParam }
+      );
       return NextResponse.json({
         transactions: [],
         deposits: [],
         withdrawals: [],
         events: [],
-        error: data.errors[0]?.message || 'GraphQL query failed',
+        error: 'Failed to connect to Morpho API',
         cached: false,
         timestamp: Date.now(),
       });
@@ -262,6 +328,8 @@ export async function GET(
       deposits,
       withdrawals,
       events,
+      assetPriceUsd: assetPrice,
+      assetDecimals,
       cached: false,
       timestamp: Date.now(),
     }, {
