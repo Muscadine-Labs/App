@@ -2,7 +2,7 @@ import { Vault, getVaultLogo } from '../../../types/vault';
 import Image from 'next/image';
 import { useVaultData } from '../../../contexts/VaultDataContext';
 import { useWallet } from '../../../contexts/WalletContext';
-import { formatSmartCurrency } from '../../../lib/formatter';
+import { formatSmartCurrency, formatCurrency, formatNumber } from '../../../lib/formatter';
 import { useRouter, usePathname } from 'next/navigation';
 import { getVaultRoute } from '../../../lib/vault-utils';
 
@@ -43,6 +43,62 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
         }
     };
 
+    // Get user's vault balance from GraphQL (user's asset balance in this vault)
+    const getUserVaultBalance = () => {
+        if (!userPosition || !vaultData) return null;
+        
+        let rawValue: number;
+        
+        // First priority: Use position.assets if available (from GraphQL)
+        if (userPosition.assets) {
+            rawValue = parseFloat(userPosition.assets) / Math.pow(10, vaultData.assetDecimals || 18);
+        } else {
+            // Second priority: Calculate from shares using share price
+            const sharesDecimal = parseFloat(userPosition.shares) / 1e18;
+            
+            if (vaultData.sharePrice && sharesDecimal > 0) {
+                rawValue = sharesDecimal * vaultData.sharePrice;
+            } else if (userPosition.vault?.state?.totalSupply && vaultData.totalAssets) {
+                // Third priority: Calculate share price from totalAssets / totalSupply
+                const totalSupplyDecimal = parseFloat(userPosition.vault.state.totalSupply) / 1e18;
+                const totalAssetsDecimal = parseFloat(vaultData.totalAssets) / Math.pow(10, vaultData.assetDecimals || 18);
+                
+                if (totalSupplyDecimal > 0) {
+                    const sharePriceInAsset = totalAssetsDecimal / totalSupplyDecimal;
+                    rawValue = sharesDecimal * sharePriceInAsset;
+                } else {
+                    return null;
+                }
+            } else {
+                return null;
+            }
+        }
+        
+        if (isNaN(rawValue) || rawValue === 0) return null;
+        
+        // Count digits before decimal point
+        const integerPart = Math.floor(Math.abs(rawValue));
+        const digitCount = integerPart === 0 ? 0 : integerPart.toString().length;
+        
+        let decimalPlaces: number;
+        if (digitCount >= 3) {
+            decimalPlaces = 2; // 3+ digits: 2 decimals
+        } else if (digitCount === 2) {
+            decimalPlaces = 3; // 2 digits: 3 decimals
+        } else if (digitCount === 1) {
+            decimalPlaces = 4; // 1 digit: 4 decimals
+        } else {
+            decimalPlaces = 5; // Less than 1 (0.something): 5 decimals
+        }
+        
+        return formatNumber(rawValue, {
+            minimumFractionDigits: decimalPlaces,
+            maximumFractionDigits: decimalPlaces
+        });
+    };
+    
+    const userVaultBalance = getUserVaultBalance();
+
     return (
         <div 
             className={`flex items-center justify-between w-full cursor-pointer transition-all p-6 min-w-[320px] ${
@@ -53,7 +109,7 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
             onClick={handleClick}
         >
             {/* Left side - Vault info */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 flex-1">
                 <div className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden bg-white">
                     <Image
                         src={getVaultLogo(vault.symbol)} 
@@ -70,35 +126,47 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
                 </div>
             </div>
 
-            {/* Right side - User holdings, APY, and TVL */}
-            <div className="flex items-center gap-6">
-                {/* User Position Holdings */}
-                {userPosition && userPositionValue > 0 && (
-                    <div className="flex flex-col items-end">
+            {/* Right side - Balance, Your Position, APY, and TVL */}
+            <div className="flex items-center gap-6 flex-1 justify-end">
+                {/* Balance Column - User's Vault Balance from GraphQL */}
+                <div className="text-right min-w-[140px]">
+                    {userVaultBalance ? (
                         <span className="text-base font-semibold text-[var(--foreground)]">
-                            {formatSmartCurrency(userPositionValue)}
+                            {userVaultBalance} {vault.symbol}
                         </span>
-                        <span className="text-sm text-[var(--foreground-secondary)]">
-                            Your Position
+                    ) : (
+                        <span className="text-sm text-[var(--foreground-muted)]">-</span>
+                    )}
+                </div>
+
+                {/* Your Position Column */}
+                <div className="text-right min-w-[140px]">
+                    {userPosition && userPositionValue > 0 ? (
+                        <span className="text-base font-semibold text-[var(--foreground)]">
+                            {formatCurrency(userPositionValue)}
                         </span>
-                    </div>
-                )}
+                    ) : (
+                        <span className="text-sm text-[var(--foreground-muted)]">-</span>
+                    )}
+                </div>
                 
                 {/* APY and TVL */}
-                {loading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[var(--primary)]"></div>
-                ) : vaultData ? (
-                    <div className="flex flex-col items-end">
-                        <span className="text-base font-semibold text-[var(--primary)]">
-                            {(vaultData.apy * 100).toFixed(2)}% APY
-                        </span>
-                        <span className="text-sm text-foreground-secondary">
-                            {formatSmartCurrency(vaultData.totalValueLocked)} TVL
-                        </span>
-                    </div>
-                ) : (
-                    <span className="text-sm text-foreground-muted">No data</span>
-                )}
+                <div className="text-right min-w-[120px]">
+                    {loading ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[var(--primary)] mx-auto"></div>
+                    ) : vaultData ? (
+                        <div className="flex flex-col items-end">
+                            <span className="text-base font-semibold text-[var(--primary)]">
+                                {(vaultData.apy * 100).toFixed(2)}% APY
+                            </span>
+                            <span className="text-sm text-foreground-secondary">
+                                {formatSmartCurrency(vaultData.totalValueLocked)} TVL
+                            </span>
+                        </div>
+                    ) : (
+                        <span className="text-sm text-foreground-muted">No data</span>
+                    )}
+                </div>
             </div>
         </div>
     )

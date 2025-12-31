@@ -44,6 +44,12 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
   const [loading, setLoading] = useState(true);
   const [selectedTimeFrame, setSelectedTimeFrame] = useState<TimeFrame>('all');
   const [valueType, setValueType] = useState<'usd' | 'token'>('usd');
+  const [historicalVaultData, setHistoricalVaultData] = useState<Array<{
+    timestamp: number;
+    totalAssetsUsd: number;
+    totalAssets: number;
+    sharePriceUsd: number;
+  }>>([]);
 
   // Find the current vault position
   const currentVaultPosition = morphoHoldings.positions.find(
@@ -75,20 +81,73 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
 
       setLoading(true);
       try {
-        const userResponse = await fetch(
-          `/api/vaults/${vaultData.address}/activity?chainId=${vaultData.chainId}&userAddress=${address}`
-        );
+        const [userResponse, historyResponse] = await Promise.all([
+          fetch(
+            `/api/vaults/${vaultData.address}/activity?chainId=${vaultData.chainId}&userAddress=${address}`
+          ),
+          fetch(
+            `/api/vaults/${vaultData.address}/history?chainId=${vaultData.chainId}&period=1y`
+          )
+        ]);
+        
         const userResponseData = await userResponse.json();
         setUserTransactions(userResponseData.transactions || []);
+        
+        const historyData = await historyResponse.json();
+        if (historyData.history && historyData.history.length > 0) {
+          // Calculate historical share prices from totalAssetsUsd and totalAssets
+          // sharePriceUsd = totalAssetsUsd / totalSupply
+          // We can estimate sharePriceUsd from totalAssetsUsd if we know the current ratio
+          const currentTotalSupply = currentVaultPosition 
+            ? parseFloat(currentVaultPosition.vault.state.totalSupply) / 1e18 
+            : 0;
+          const currentTotalAssetsUsd = vaultData.totalValueLocked || 0;
+          const currentSharePriceUsd = currentVaultPosition 
+            ? currentVaultPosition.vault.state.sharePriceUsd 
+            : (currentTotalSupply > 0 && currentTotalAssetsUsd > 0 
+                ? currentTotalAssetsUsd / currentTotalSupply 
+                : 1);
+          
+          // Calculate historical share prices
+          // sharePriceUsd = totalAssetsUsd / totalSupply
+          // Since we don't have historical totalSupply, we estimate share price growth
+          // by using the ratio of historical totalAssetsUsd to current totalAssetsUsd
+          // This assumes share price grows proportionally to vault value
+          const historicalData = historyData.history.map((point: { timestamp: number; totalAssetsUsd: number; totalAssets: number }) => {
+            const totalAssetsDecimal = point.totalAssets || 0;
+            
+            // Calculate share price growth based on totalAssetsUsd growth
+            // If current totalAssetsUsd is available, use ratio; otherwise use current share price
+            let sharePriceUsd = currentSharePriceUsd;
+            if (currentTotalAssetsUsd > 0 && point.totalAssetsUsd > 0) {
+              // Estimate share price based on how totalAssetsUsd changed
+              // This approximates share price growth (assuming deposits/withdrawals don't drastically change the ratio)
+              const growthRatio = point.totalAssetsUsd / currentTotalAssetsUsd;
+              sharePriceUsd = currentSharePriceUsd * growthRatio;
+            }
+            
+            return {
+              timestamp: point.timestamp,
+              totalAssetsUsd: point.totalAssetsUsd,
+              totalAssets: totalAssetsDecimal,
+              sharePriceUsd: sharePriceUsd,
+            };
+          });
+          
+          setHistoricalVaultData(historicalData);
+        } else {
+          setHistoricalVaultData([]);
+        }
       } catch {
         setUserTransactions([]);
+        setHistoricalVaultData([]);
       } finally {
         setLoading(false);
       }
     };
 
     fetchActivity();
-  }, [vaultData.address, vaultData.chainId, address]);
+  }, [vaultData.address, vaultData.chainId, address, currentVaultPosition, vaultData.totalValueLocked, vaultData.totalAssets, vaultData.assetDecimals, vaultData.sharePrice]);
 
   const formatDateShort = (timestamp: number) => {
     const date = new Date(timestamp * 1000);
@@ -229,14 +288,48 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
       }
       
       const sharesDecimal = Number(sharesForDay) / 1e18;
-      const positionValueUsd = sharesDecimal * currentSharePriceUsd;
+      
+      // Find the closest historical share price for this day
+      let sharePriceUsdForDay = currentSharePriceUsd;
+      if (historicalVaultData.length > 0) {
+        // Find the closest historical data point (before or equal to this day)
+        let closestPoint = historicalVaultData[historicalVaultData.length - 1];
+        for (let i = historicalVaultData.length - 1; i >= 0; i--) {
+          if (historicalVaultData[i].timestamp <= dayTimestamp) {
+            closestPoint = historicalVaultData[i];
+            break;
+          }
+        }
+        sharePriceUsdForDay = closestPoint.sharePriceUsd;
+      }
+      
+      const positionValueUsd = sharesDecimal * sharePriceUsdForDay;
       
       // Calculate token value from tracked assets, or fallback to share price calculation
       let positionValueToken = 0;
       if (assetsForDay > BigInt(0)) {
         positionValueToken = Number(assetsForDay) / Math.pow(10, vaultData.assetDecimals || 18);
       } else if (sharePriceInAsset > 0 && sharesDecimal > 0) {
-        positionValueToken = sharesDecimal * sharePriceInAsset;
+        // Use historical share price in asset terms if available
+        if (historicalVaultData.length > 0) {
+          let closestPoint = historicalVaultData[historicalVaultData.length - 1];
+          for (let i = historicalVaultData.length - 1; i >= 0; i--) {
+            if (historicalVaultData[i].timestamp <= dayTimestamp) {
+              closestPoint = historicalVaultData[i];
+              break;
+            }
+          }
+          // Calculate share price in asset terms from historical data
+          const assetPriceUsd = vaultData.sharePrice ? 
+            (closestPoint.totalAssetsUsd / (closestPoint.totalAssets || 1)) : 
+            1;
+          const historicalSharePriceInAsset = assetPriceUsd > 0 && sharePriceUsdForDay > 0
+            ? sharePriceUsdForDay / assetPriceUsd
+            : sharePriceInAsset;
+          positionValueToken = sharesDecimal * historicalSharePriceInAsset;
+        } else {
+          positionValueToken = sharesDecimal * sharePriceInAsset;
+        }
       }
       
       dailyData.push({
@@ -312,6 +405,35 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     return domain || [0, 100];
   }, [filteredChartData]);
 
+  // Get ticks for 30D period - every 2 days
+  const get30DTicks = useMemo(() => {
+    if (selectedTimeFrame !== '30D' || filteredChartData.length === 0) return undefined;
+    
+    const ticks: number[] = [];
+    const seenDates = new Set<string>();
+    let dayCount = 0;
+    
+    // Sort data by timestamp to ensure chronological order
+    const sortedData = [...filteredChartData].sort((a, b) => a.timestamp - b.timestamp);
+    
+    sortedData.forEach((point) => {
+      const date = new Date(point.timestamp * 1000);
+      const dateKey = date.toDateString();
+      
+      // Only add tick if we haven't seen this date before
+      if (!seenDates.has(dateKey)) {
+        seenDates.add(dateKey);
+        // Add every other day (even dayCount: 0, 2, 4, 6...)
+        if (dayCount % 2 === 0) {
+          ticks.push(point.timestamp);
+        }
+        dayCount++;
+      }
+    });
+    
+    return ticks.length > 0 ? ticks : undefined;
+  }, [selectedTimeFrame, filteredChartData]);
+
   const handleDeposit = () => {
     router.push(`/transactions?vault=${vaultData.address}&action=deposit`);
   };
@@ -320,30 +442,49 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     router.push(`/transactions?vault=${vaultData.address}&action=withdraw`);
   };
 
+  // Format APY
+  const apyPercent = (vaultData.apy * 100).toFixed(2);
+
   return (
     <div className="space-y-6">
       {/* Position Value */}
       <div>
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold text-[var(--foreground)]">Your Deposits</h2>
-          {isConnected && (
-            <div className="flex gap-2">
-              <Button
-                onClick={handleDeposit}
-                variant="primary"
-                size="sm"
-              >
-                Deposit
-              </Button>
-              <Button
-                onClick={handleWithdraw}
-                variant="secondary"
-                size="sm"
-              >
-                Withdraw
-              </Button>
+          <div className="flex items-center gap-6">
+            <div className="text-right">
+              <p className="text-xs text-[var(--foreground-secondary)] mb-1">Current Earnings Rate</p>
+              <p className="text-3xl font-bold text-[var(--foreground)]">
+                {apyPercent}%
+              </p>
+              <p className="text-xs text-[var(--foreground-secondary)] mt-1">
+                Annual return you can expect
+              </p>
+              {vaultData.apyChange !== undefined && vaultData.apyChange !== 0 && (
+                <p className={`text-xs mt-2 ${vaultData.apyChange > 0 ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
+                  {vaultData.apyChange > 0 ? '↑' : '↓'} {Math.abs(vaultData.apyChange * 100).toFixed(2)}% from last period
+                </p>
+              )}
             </div>
-          )}
+            {isConnected && (
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleDeposit}
+                  variant="primary"
+                  size="sm"
+                >
+                  Deposit
+                </Button>
+                <Button
+                  onClick={handleWithdraw}
+                  variant="secondary"
+                  size="sm"
+                >
+                  Withdraw
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
         {!isConnected ? (
           <div className="bg-[var(--surface-elevated)] rounded-lg p-6 text-center">
@@ -433,16 +574,17 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
                       interval="preserveStartEnd"
+                      ticks={selectedTimeFrame === '30D' ? get30DTicks : undefined}
                     />
                     <YAxis 
                       domain={yAxisDomain}
                       tickFormatter={(value) => {
                         if (valueType === 'usd') {
-                          return `$${(value / 1000).toFixed(0)}k`;
+                          return `$${(value / 1000).toFixed(2)}k`;
                         } else {
                           // Format token amount
                           if (value >= 1000) {
-                            return `${(value / 1000).toFixed(1)}k`;
+                            return `${(value / 1000).toFixed(2)}k`;
                           }
                           return value.toFixed(2);
                         }
@@ -458,7 +600,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                       }}
                       formatter={(value: number) => {
                         if (valueType === 'usd') {
-                          return [formatSmartCurrency(value), 'Your Position'];
+                          return [formatSmartCurrency(value, { alwaysTwoDecimals: true }), 'Your Position'];
                         } else {
                           return [
                             formatAssetAmount(
