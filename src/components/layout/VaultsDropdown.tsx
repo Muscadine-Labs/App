@@ -42,7 +42,7 @@ export function VaultsDropdown({ isActive }: VaultsDropdownProps) {
       <Button
         variant="ghost"
         size="sm"
-        className={`min-w-fit hover:bg-transparent ${isActive ? 'bg-[var(--surface-elevated)] text-[var(--foreground)]' : ''}`}
+        className={`min-w-fit hover:bg-transparent hover:text-[var(--primary)] transition-colors ${isActive ? 'text-[var(--primary)]' : ''}`}
       >
         <span className="flex items-center gap-1.5">
           <span className="text-sm">Vaults</span>

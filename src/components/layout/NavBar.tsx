@@ -193,7 +193,7 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className={`min-w-fit hover:bg-transparent hover:underline ${pathname === '/' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)]' : ''}`}
+                                className={`min-w-fit hover:bg-transparent hover:text-[var(--primary)] transition-colors ${pathname === '/' ? 'text-[var(--primary)]' : ''}`}
                                 onClick={() => router.push('/')}
                             >
                                 Dashboard
@@ -208,7 +208,7 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                         <Button
                                             variant="ghost"
                                             size="sm"
-                                            className={`min-w-fit hover:bg-transparent hover:underline ${pathname === '/transactions' ? 'bg-[var(--surface-elevated)] text-[var(--foreground)]' : ''}`}
+                                            className={`min-w-fit hover:bg-transparent hover:text-[var(--primary)] transition-colors ${pathname === '/transactions' ? 'text-[var(--primary)]' : ''}`}
                                             onClick={() => router.push('/transactions')}
                                         >
                                             {item.label}
