@@ -631,7 +631,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                           domain={tvlYAxisDomain}
                           tickFormatter={(value) => {
                             if (valueType === 'usd') {
-                              return formatSmartCurrency(value / 1000).replace('$', '$').replace('K', 'k');
+                              return formatSmartCurrency(value / 1000).replace(/K/g, 'k');
                             } else {
                               // Format token amount: use k format if >= 1000, otherwise show full value
                               if (value >= 1000) {
