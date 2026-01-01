@@ -10,9 +10,10 @@ import { Button } from '../ui/Button';
 
 interface VaultsDropdownProps {
   isActive?: boolean;
+  onVaultSelect?: () => void;
 }
 
-export function VaultsDropdown({ isActive }: VaultsDropdownProps) {
+export function VaultsDropdown({ isActive, onVaultSelect }: VaultsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -27,9 +28,16 @@ export function VaultsDropdown({ isActive }: VaultsDropdownProps) {
     : null;
   const currentVault = currentVaultAddress ? findVaultByAddress(currentVaultAddress) : null;
 
-  const handleVaultClick = (address: string) => {
+  const handleVaultClick = (address: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent click from bubbling to click-outside handler
     router.push(getVaultRoute(address));
     setIsOpen(false);
+    onVaultSelect?.();
+  };
+
+  const handleToggleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsOpen(!isOpen);
   };
 
   return (
@@ -38,11 +46,13 @@ export function VaultsDropdown({ isActive }: VaultsDropdownProps) {
       className="relative"
       onMouseEnter={() => setIsOpen(true)}
       onMouseLeave={() => setIsOpen(false)}
+      onClick={(e) => e.stopPropagation()} // Stop clicks from bubbling
     >
       <Button
         variant="ghost"
         size="sm"
         className={`min-w-fit hover:bg-transparent hover:text-[var(--primary)] transition-colors ${isActive ? 'text-[var(--primary)]' : ''}`}
+        onClick={handleToggleClick}
       >
         <span className="flex items-center gap-1.5">
           <span className="text-sm">Vaults</span>
@@ -80,7 +90,7 @@ export function VaultsDropdown({ isActive }: VaultsDropdownProps) {
               return (
                 <button
                   key={vault.address}
-                  onClick={() => handleVaultClick(vault.address)}
+                  onClick={(e) => handleVaultClick(vault.address, e)}
                   className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-[var(--surface-hover)] transition-colors ${
                     isCurrentVault ? 'bg-[var(--primary-subtle)]' : ''
                   }`}
@@ -91,9 +101,10 @@ export function VaultsDropdown({ isActive }: VaultsDropdownProps) {
                       alt={`${vault.symbol} logo`}
                       width={32}
                       height={32}
-                      className={`w-full h-full object-contain ${
+                      className={`object-contain ${
                         vault.symbol === 'WETH' ? 'scale-75' : ''
                       }`}
+                      style={{ width: '100%', height: '100%' }}
                     />
                   </div>
                   <div className="flex-1 min-w-0">

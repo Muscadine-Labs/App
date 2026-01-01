@@ -55,9 +55,9 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
     return (
         <div className="flex rounded-lg w-full justify-center items-center">
             <div className="flex flex-col items-center justify-center h-full w-full">
-                <div className="flex flex-col items-start justify-start w-full h-full p-4">
-                    {/* Header Row: Available Vaults + Column Headers */}
-                    <div className="w-full px-6 pb-2 border-b border-[var(--border)] mb-0">
+                <div className="flex flex-col items-start justify-start w-full h-full p-2 sm:p-4">
+                    {/* Header Row: Available Vaults + Column Headers - Hidden on mobile */}
+                    <div className="hidden md:block w-full px-4 md:px-6 pb-2 border-b border-[var(--border)] mb-0">
                         <div className="flex items-center justify-between w-full">
                             <h1 className="text-md text-left text-[var(--foreground)]">Available Vaults</h1>
                             <div className="flex items-center gap-6 flex-1 justify-end">
@@ -69,6 +69,10 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
                                 </div>
                             </div>
                         </div>
+                    </div>
+                    {/* Mobile header - simpler */}
+                    <div className="md:hidden w-full px-2 pb-2 border-b border-[var(--border)] mb-0">
+                        <h1 className="text-md text-left text-[var(--foreground)]">Available Vaults</h1>
                     </div>
                     <div className="flex flex-col items-start justify-start w-full h-full overflow-y-auto pt-0">
                         {sortedVaults.map((vault, index) => (

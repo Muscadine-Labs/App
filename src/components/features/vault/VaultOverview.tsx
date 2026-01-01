@@ -425,7 +425,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
           <div>
             <p className="text-xs text-[var(--foreground-secondary)] mb-1">Current Earnings Rate</p>
             <p className="text-3xl font-bold text-[var(--foreground)]">
-              {apyPercent}%
+              {apyPercent}
             </p>
             <p className="text-xs text-[var(--foreground-secondary)] mt-1">
               Annual return you can expect

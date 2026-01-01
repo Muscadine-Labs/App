@@ -55,6 +55,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
   const [loading, setLoading] = useState(true);
   const [selectedTimeFrame, setSelectedTimeFrame] = useState<TimeFrame>('all');
   const [valueType, setValueType] = useState<'usd' | 'token'>('usd');
+  const [isTimeFrameMenuOpen, setIsTimeFrameMenuOpen] = useState(false);
   const [historicalVaultData, setHistoricalVaultData] = useState<Array<{
     timestamp: number;
     totalAssetsUsd: number;
@@ -528,9 +529,9 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     <div className="space-y-6">
       {/* Position Value */}
       <div>
-        <div className="flex items-start justify-between gap-6 mb-4">
+        <div className="flex flex-col md:flex-row items-start justify-between gap-6 mb-4">
           {/* Your Deposits */}
-          <div>
+          <div className="flex-1 w-full md:w-auto">
             <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">Your Deposits</h2>
             {!isConnected ? (
               <p className="text-sm text-[var(--foreground-muted)]">Connect wallet</p>
@@ -538,7 +539,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
               <p className="text-sm text-[var(--foreground-muted)]">No holdings</p>
             ) : (
               <>
-                <p className="text-4xl font-bold text-[var(--foreground)]">
+                <p className="text-3xl md:text-4xl font-bold text-[var(--foreground)]">
                   {formatAssetAmount(
                     BigInt(Math.floor(userVaultAssetAmount * Math.pow(10, vaultData.assetDecimals || 18))),
                     vaultData.assetDecimals || 18,
@@ -552,46 +553,46 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
             )}
           </div>
 
-
-          {/* Current Earnings Rate */}
-          <div>
-            <p className="text-xs text-[var(--foreground-secondary)] mb-1">Current Earnings Rate</p>
-            <p className="text-3xl font-bold text-[var(--foreground)]">
-              {apyPercent}
-            </p>
-            <p className="text-xs text-[var(--foreground-secondary)] mt-1">
-              Annual return you can expect
-            </p>
-            {vaultData.apyChange !== undefined && vaultData.apyChange !== 0 && (
-              <p className={`text-xs mt-2 ${vaultData.apyChange > 0 ? 'text-[var(--success)]' : 'text-[var(--danger)]'}`}>
-                {vaultData.apyChange > 0 ? '↑' : '↓'} {formatPercentage(Math.abs(vaultData.apyChange))} from last period
-              </p>
-            )}
-          </div>
-
-          {/* Transaction Buttons */}
+          {/* Transaction Buttons - Desktop: Show in second column */}
           {isConnected && (
-            <div className="flex flex-col">
-              <p className="text-lg font-semibold text-[var(--foreground)] mb-1">Transaction</p>
-              <div className="flex gap-2">
-                <Button
-                  onClick={handleDeposit}
-                  variant="primary"
-                  size="sm"
-                >
-                  Deposit
-                </Button>
-                <Button
-                  onClick={handleWithdraw}
-                  variant="secondary"
-                  size="sm"
-                >
-                  Withdraw
-                </Button>
-              </div>
+            <div className="hidden md:flex gap-2">
+              <Button
+                onClick={handleDeposit}
+                variant="primary"
+                size="sm"
+              >
+                Deposit
+              </Button>
+              <Button
+                onClick={handleWithdraw}
+                variant="secondary"
+                size="sm"
+              >
+                Withdraw
+              </Button>
             </div>
           )}
         </div>
+        
+        {/* Transaction Buttons - Mobile: Show below deposits */}
+        {isConnected && (
+          <div className="flex md:hidden gap-2 mt-4">
+            <Button
+              onClick={handleDeposit}
+              variant="primary"
+              size="sm"
+            >
+              Deposit
+            </Button>
+            <Button
+              onClick={handleWithdraw}
+              variant="secondary"
+              size="sm"
+            >
+              Withdraw
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Chart */}
@@ -602,22 +603,75 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
               <p className="text-sm text-[var(--foreground-muted)]">Loading chart data...</p>
             </div>
           ) : userDepositHistory.length > 0 ? (
-            <div className="bg-[var(--surface-elevated)] rounded-lg p-4">
+            <div className="bg-[var(--surface-elevated)] rounded-lg p-2 sm:p-4">
               {/* Controls Row */}
               <div className="flex items-center justify-between mb-4">
-                {/* Time Frame Selector */}
-                <div className="flex items-center gap-2">
-                  {availableTimeFrames.map((timeFrame) => (
-                    <Button
-                      key={timeFrame}
-                      onClick={() => setSelectedTimeFrame(timeFrame)}
-                      variant={selectedTimeFrame === timeFrame ? 'primary' : 'ghost'}
-                      size="sm"
-                      className="min-w-[3rem]"
+                {/* Time Frame Selector - Desktop: Buttons, Mobile: Hamburger Menu */}
+                <div className="relative">
+                  {/* Desktop: Show buttons */}
+                  <div className="hidden md:flex items-center gap-2">
+                    {availableTimeFrames.map((timeFrame) => (
+                      <Button
+                        key={timeFrame}
+                        onClick={() => setSelectedTimeFrame(timeFrame)}
+                        variant={selectedTimeFrame === timeFrame ? 'primary' : 'ghost'}
+                        size="sm"
+                        className="min-w-[3rem]"
+                      >
+                        {timeFrame === 'all' ? 'All' : timeFrame}
+                      </Button>
+                    ))}
+                  </div>
+
+                  {/* Mobile: Hamburger Menu */}
+                  <div className="md:hidden">
+                    <button
+                      onClick={() => setIsTimeFrameMenuOpen(!isTimeFrameMenuOpen)}
+                      className="flex items-center gap-2 px-3 py-2 bg-[var(--surface)] rounded-lg border border-[var(--border)] hover:bg-[var(--surface-hover)] transition-colors"
                     >
-                      {timeFrame === 'all' ? 'All' : timeFrame}
-                    </Button>
-                  ))}
+                      <span className="text-sm font-medium text-[var(--foreground)]">
+                        {selectedTimeFrame === 'all' ? 'All' : selectedTimeFrame}
+                      </span>
+                      <svg
+                        className={`w-4 h-4 text-[var(--foreground-secondary)] transition-transform ${
+                          isTimeFrameMenuOpen ? 'rotate-180' : ''
+                        }`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {isTimeFrameMenuOpen && (
+                      <>
+                        <div
+                          className="fixed inset-0 z-10"
+                          onClick={() => setIsTimeFrameMenuOpen(false)}
+                        />
+                        <div className="absolute left-0 top-full mt-2 bg-[var(--surface-elevated)] border border-[var(--border)] rounded-lg shadow-lg z-20 min-w-[120px]">
+                          {availableTimeFrames.map((timeFrame) => (
+                            <button
+                              key={timeFrame}
+                              onClick={() => {
+                                setSelectedTimeFrame(timeFrame);
+                                setIsTimeFrameMenuOpen(false);
+                              }}
+                              className={`w-full text-left px-4 py-2 text-sm transition-colors first:rounded-t-lg last:rounded-b-lg ${
+                                selectedTimeFrame === timeFrame
+                                  ? 'bg-[var(--primary-subtle)] text-[var(--primary)] font-medium'
+                                  : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
+                              }`}
+                            >
+                              {timeFrame === 'all' ? 'All' : timeFrame}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
                 </div>
                 
                 {/* Value Type Toggle */}

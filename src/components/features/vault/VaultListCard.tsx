@@ -105,7 +105,7 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
 
     return (
         <div 
-            className={`flex items-center justify-between w-full cursor-pointer transition-all p-6 min-w-[320px] ${
+            className={`flex flex-col md:flex-row items-start md:items-center justify-between w-full cursor-pointer transition-all p-4 md:p-6 gap-4 md:gap-0 ${
                 isActive 
                     ? 'bg-[var(--primary-subtle)] border-2 border-[var(--primary)] shadow-md rounded-lg' 
                     : 'hover:bg-[var(--surface-hover)] rounded-lg'
@@ -113,56 +113,57 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
             onClick={handleClick}
         >
             {/* Left side - Vault info */}
-            <div className="flex items-center gap-4 flex-1">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center overflow-hidden bg-white">
+            <div className="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
+                <div className="w-6 h-6 md:w-8 md:h-8 flex-shrink-0 rounded-full flex items-center justify-center overflow-hidden bg-white">
                     <Image
                         src={getVaultLogo(vault.symbol)} 
                         alt={`${vault.symbol} logo`}
-                        width={40}
-                        height={40}
-                        className={`w-full h-full object-contain ${
+                        width={32}
+                        height={32}
+                        className={`object-contain ${
                             vault.symbol === 'WETH' ? 'scale-75' : ''
                         }`}
+                        style={{ width: '100%', height: '100%' }}
                     />
                 </div>
-                <div className="flex flex-col">
-                    <h3 className="text-xl text-foreground font-funnel">{vault.name}</h3>
+                <div className="flex flex-col min-w-0 flex-1">
+                    <h3 className="text-base md:text-xl text-foreground font-funnel truncate">{vault.name}</h3>
                 </div>
             </div>
 
             {/* Right side - Your Position, APY, and TVL */}
-            <div className="flex items-center gap-6 flex-1 justify-end">
+            <div className="flex flex-row md:flex-row items-start md:items-center justify-between md:justify-end gap-4 md:gap-6 w-full md:w-auto md:flex-1">
                 {/* Your Position Column - Token balance on top, USD below */}
-                <div className="text-right min-w-[140px]">
+                <div className="text-left md:text-right w-auto md:min-w-[140px]">
                     {userPosition && userPositionValue > 0 && userVaultBalance ? (
-                        <div className="flex flex-col">
-                            <span className="text-base font-semibold text-[var(--foreground)]">
+                        <div className="flex flex-col md:items-end">
+                            <span className="text-sm md:text-base font-semibold text-[var(--foreground)]">
                                 {userVaultBalance} {vault.symbol}
                             </span>
-                            <span className="text-sm text-[var(--foreground-secondary)] mt-1">
+                            <span className="text-xs md:text-sm text-[var(--foreground-secondary)] mt-1">
                                 {formatCurrency(userPositionValue)}
                             </span>
                         </div>
                     ) : (
-                        <span className="text-sm text-[var(--foreground-muted)]">-</span>
+                        <span className="text-xs md:text-sm text-[var(--foreground-muted)]">-</span>
                     )}
                 </div>
                 
-                {/* APY and TVL */}
-                <div className="text-right min-w-[120px]">
+                {/* APY and TVL - Stacked on mobile, side by side with Position */}
+                <div className="text-right md:text-right w-auto md:min-w-[120px] flex-shrink-0">
                     {loading ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[var(--primary)] mx-auto"></div>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[var(--primary)]"></div>
                     ) : vaultData ? (
-                        <div className="flex flex-col items-end">
-                            <span className="text-base font-semibold text-[var(--primary)]">
+                        <div className="flex flex-col items-end md:items-end">
+                            <span className="text-sm md:text-base font-semibold text-[var(--primary)]">
                                 {formatPercentage(vaultData.apy)} APY
                             </span>
-                            <span className="text-sm text-foreground-secondary">
+                            <span className="text-xs md:text-sm text-foreground-secondary">
                                 {formatSmartCurrency(vaultData.totalValueLocked)} TVL
                             </span>
                         </div>
                     ) : (
-                        <span className="text-sm text-foreground-muted">No data</span>
+                        <span className="text-xs md:text-sm text-foreground-muted">No data</span>
                     )}
                 </div>
             </div>

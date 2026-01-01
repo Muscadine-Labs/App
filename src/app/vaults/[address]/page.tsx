@@ -135,7 +135,7 @@ export default function VaultPage() {
   return (
     <div 
       ref={containerRef}
-      className="w-full bg-[var(--background)] flex flex-col overflow-hidden p-8" 
+      className="w-full bg-[var(--background)] flex flex-col overflow-hidden p-4 sm:p-6 md:p-8" 
       style={{ height: 'calc(100vh - var(--navbar-height))' }}
     >
       {/* Hero Section */}
@@ -147,7 +147,7 @@ export default function VaultPage() {
       <div className="flex flex-col w-full mx-auto flex-1 min-h-0">
         {/* Tab content */}
         <div className="flex flex-col flex-1 min-h-0">
-          <div ref={tabsRef} className="flex-shrink-0">
+          <div ref={tabsRef} className="flex-shrink-0 -mx-4 sm:-mx-6 md:mx-0">
             <VaultTabs
               activeTab={activeTab}
               onTabChange={setActiveTab}
@@ -156,7 +156,7 @@ export default function VaultPage() {
 
           {/* Tab Content - Scrollable */}
           <div 
-            className="overflow-y-auto pr-2 pl-6 tab-content-scroll"
+            className="overflow-y-auto px-0 sm:px-2 md:px-6 tab-content-scroll"
             style={{ height: tabContentHeight }}
           >
             {activeTab === 'overview' && <VaultOverview vaultData={vaultData} />}

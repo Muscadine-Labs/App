@@ -20,11 +20,13 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
     const router = useRouter();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
     const settingsRef = useRef<HTMLDivElement>(null);
+    const mobileNavRef = useRef<HTMLDivElement>(null);
+    const hamburgerButtonRef = useRef<HTMLButtonElement>(null);
     
     // Settings state with defaults
-    const [version, setVersion] = useState<'V1' | 'V2'>('V1');
     const [mode, setMode] = useState<'Advanced' | 'Simple'>('Advanced');
     const { theme, setTheme } = useTheme();
 
@@ -36,37 +38,51 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
     // Close menu when clicking outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+            const target = event.target as Node;
+            
+            // Check hamburger button first - don't close if clicking it or any child
+            if (hamburgerButtonRef.current && hamburgerButtonRef.current.contains(target)) {
+                return;
+            }
+            
+            if (menuRef.current && !menuRef.current.contains(target)) {
                 setIsMenuOpen(false);
             }
-            if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
+            if (settingsRef.current && !settingsRef.current.contains(target)) {
                 setIsSettingsOpen(false);
+            }
+            // Only handle mobile nav if it's actually open
+            if (isMobileNavOpen) {
+                if (mobileNavRef.current && !mobileNavRef.current.contains(target)) {
+                    setIsMobileNavOpen(false);
+                }
             }
         };
 
-        if (isMenuOpen || isSettingsOpen) {
-            document.addEventListener('mousedown', handleClickOutside);
-        }
+        if (isMenuOpen || isSettingsOpen || isMobileNavOpen) {
+            // Use click event - button's stopPropagation should prevent this from firing when button is clicked
+            document.addEventListener('click', handleClickOutside);
 
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
-    }, [isMenuOpen, isSettingsOpen]);
+            return () => {
+                document.removeEventListener('click', handleClickOutside);
+            };
+        }
+    }, [isMenuOpen, isSettingsOpen, isMobileNavOpen]);
 
     return (
-        <>
+        <div className="fixed top-0 left-0 w-full z-50">
             <div 
                 id="navbar" 
-                className="flex flex-row fixed top-0 left-0 w-full bg-[var(--background-muted)] py-4 transition-all duration-300 border-b border-[var(--border)] h-[var(--navbar-height)] px-4 z-50"
+                className="relative flex flex-row w-full bg-[var(--background-muted)] py-2 sm:py-4 transition-all duration-300 border-b border-[var(--border)] h-[var(--navbar-height)] px-2 sm:px-4"
             >
                 {/* Header with ConnectButton */}
                 <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-2 sm:gap-4 md:gap-6">
                         {/* Logo/Brand with Dropdown */}
-                        <div className="relative flex items-center gap-3" ref={menuRef}>
+                        <div className="relative flex items-center gap-1 sm:gap-3" ref={menuRef}>
                             <button
                                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                                className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+                                className="flex items-center gap-1 sm:gap-3 hover:opacity-80 transition-opacity"
                                 aria-label="Toggle menu"
                             >
                                 <Image
@@ -74,9 +90,9 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                     alt="Muscadine Logo"
                                     width={32}
                                     height={32}
-                                    className="w-8 h-8 rounded-full"
+                                    className="w-6 h-6 sm:w-8 sm:h-8 rounded-full"
                                 />
-                                <div className="text-xl text-[var(--foreground)] font-funnel">
+                                <div className="hidden sm:block text-lg sm:text-xl text-[var(--foreground)] font-funnel">
                                     Muscadine
                                 </div>
                                 {/* Dropdown Arrow */}
@@ -84,7 +100,7 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                     name={isMenuOpen ? "chevron-up" : "chevron-down"}
                                     size="xs" 
                                     color="secondary"
-                                    className="transition-transform duration-200"
+                                    className="hidden sm:block transition-transform duration-200"
                                 />
                             </button>
 
@@ -210,8 +226,8 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                             )}
                         </div>
                         
-                        {/* Navigation Items */}
-                        <nav className="flex items-center gap-2" role="navigation" aria-label="Main navigation">
+                        {/* Navigation Items - Hidden on mobile, shown in hamburger menu */}
+                        <nav className="hidden md:flex items-center gap-2" role="navigation" aria-label="Main navigation">
                             {/* Dashboard Link */}
                             <Button
                                 variant="ghost"
@@ -243,8 +259,8 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                     </div>
 
                     {/* Right side: Settings, Connect Button and Sidebar Toggle */}
-                    <div className="flex items-center gap-3" onClick={(e) => e.stopPropagation()}>
-                        {/* Settings Dropdown */}
+                    <div className="flex items-center gap-1 sm:gap-2 md:gap-3" onClick={(e) => e.stopPropagation()}>
+                        {/* Settings Dropdown - Icon only on mobile */}
                         <div 
                             className="relative flex items-center" 
                             ref={settingsRef}
@@ -252,7 +268,8 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                             onMouseLeave={() => setIsSettingsOpen(false)}
                         >
                             <button
-                                className="flex items-center gap-2 hover:opacity-80 transition-opacity p-2"
+                                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                                className="flex items-center gap-1 sm:gap-2 hover:opacity-80 transition-opacity p-1 sm:p-2"
                                 aria-label="Settings"
                             >
                                 <Icon 
@@ -265,7 +282,7 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                     name={isSettingsOpen ? "chevron-up" : "chevron-down"}
                                     size="xs" 
                                     color="secondary"
-                                    className="transition-transform duration-200"
+                                    className="hidden sm:block transition-transform duration-200"
                                 />
                             </button>
 
@@ -282,45 +299,6 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                         onMouseEnter={() => setIsSettingsOpen(true)}
                                         onMouseLeave={() => setIsSettingsOpen(false)}
                                     >
-                                    {/* Version Section */}
-                                    <div className="px-4 mb-4">
-                                        <div className="flex items-center justify-between">
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setVersion('V2');
-                                                    setIsSettingsOpen(false);
-                                                }}
-                                                className={`flex-1 py-2 px-3 text-sm rounded-lg transition-colors ${
-                                                    version === 'V2'
-                                                        ? 'bg-[var(--primary)] text-white'
-                                                        : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
-                                                }`}
-                                            >
-                                                V2
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setVersion('V1');
-                                                    setIsSettingsOpen(false);
-                                                }}
-                                                className={`flex-1 py-2 px-3 text-sm rounded-lg transition-colors ${
-                                                    version === 'V1'
-                                                        ? 'bg-[var(--primary)] text-white'
-                                                        : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
-                                                }`}
-                                            >
-                                                V1
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Divider */}
-                                    <div className="border-t border-[var(--border)] mb-4"></div>
-
                                     {/* Mode Section */}
                                     <div className="px-4 mb-4">
                                         <div className="flex items-center justify-between">
@@ -419,7 +397,7 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                         {onToggleSidebar && (
                             <button
                                 onClick={onToggleSidebar}
-                                className="w-12 h-8 hover:bg-[var(--surface-hover)] rounded transition-colors flex items-center justify-center group"
+                                className="hidden md:flex w-12 h-8 hover:bg-[var(--surface-hover)] rounded transition-colors items-center justify-center group"
                                 aria-label={isRightSidebarCollapsed ? 'Open sidebar' : 'Close sidebar'}
                             >
                                 <Icon 
@@ -430,9 +408,96 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                 />
                             </button>
                         )}
+                        
+                        {/* Mobile Hamburger Menu Button */}
+                        <button
+                            ref={hamburgerButtonRef}
+                            type="button"
+                            onMouseDown={(e) => {
+                                e.stopPropagation();
+                            }}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setIsMobileNavOpen(!isMobileNavOpen);
+                            }}
+                            style={{ 
+                                pointerEvents: 'auto',
+                                cursor: 'pointer',
+                                position: 'relative',
+                                zIndex: 9999 
+                            }}
+                            className="md:hidden flex items-center justify-center w-8 h-8 hover:bg-[var(--surface-hover)] rounded transition-colors"
+                            aria-label="Toggle mobile menu"
+                            aria-expanded={isMobileNavOpen}
+                        >
+                            <svg
+                                className="w-6 h-6 text-[var(--foreground)]"
+                                fill="none"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                            >
+                                {isMobileNavOpen ? (
+                                    <path d="M6 18L18 6M6 6l12 12" />
+                                ) : (
+                                    <path d="M4 6h16M4 12h16M4 18h16" />
+                                )}
+                            </svg>
+                        </button>
                     </div>
                 </div>
+
+                {/* Mobile Navigation Menu */}
+                {isMobileNavOpen && (
+                    <div 
+                        ref={mobileNavRef}
+                        className="absolute top-full left-0 w-full bg-[var(--surface-elevated)] border-b border-[var(--border)] md:hidden z-30 shadow-lg"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                        }}
+                    >
+                        <div className="flex flex-col py-2">
+                            <button
+                                onClick={() => {
+                                    router.push('/');
+                                    setIsMobileNavOpen(false);
+                                }}
+                                className={`px-4 py-3 text-left hover:bg-[var(--surface-hover)] transition-colors ${pathname === '/' ? 'text-[var(--primary)] bg-[var(--primary-subtle)]' : 'text-[var(--foreground)]'}`}
+                            >
+                                Dashboard
+                            </button>
+                            {navigationItems.map((item) => (
+                                <div key={item.id}>
+                                    {item.id === 'vaults' && (
+                                        <div className="px-4 py-3">
+                                            <VaultsDropdown 
+                                                isActive={isActive(item)} 
+                                                onVaultSelect={() => {
+                                                    setIsMobileNavOpen(false);
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                    {item.id === 'transactions' && (
+                                        <button
+                                            onClick={() => {
+                                                router.push('/transactions');
+                                                setIsMobileNavOpen(false);
+                                            }}
+                                            className={`w-full px-4 py-3 text-left hover:bg-[var(--surface-hover)] transition-colors ${pathname === '/transactions' ? 'text-[var(--primary)] bg-[var(--primary-subtle)]' : 'text-[var(--foreground)]'}`}
+                                        >
+                                            {item.label}
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
-        </>
+        </div>
     );
 }

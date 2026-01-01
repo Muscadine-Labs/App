@@ -77,7 +77,7 @@ export default function WalletOverview() {
     if (!isMounted) {
         // Return a simple loading state during SSR
         return (
-            <div className="flex flex-col items-center justify-center w-full h-full bg-[var(--surface)] rounded-lg px-8 py-4 gap-6">
+            <div className="flex flex-col items-center justify-center w-full h-full bg-[var(--surface)] rounded-lg px-4 sm:px-6 md:px-8 py-4 gap-6">
                 <div className="animate-pulse">
                     <div className="h-8 w-48 bg-[var(--background-elevated)] rounded mb-4"></div>
                     <div className="h-4 w-64 bg-[var(--background-elevated)] rounded"></div>
@@ -88,7 +88,7 @@ export default function WalletOverview() {
 
     if (!isConnected) {
         return (
-            <div className="flex flex-col items-center justify-center w-full h-full bg-[var(--surface)] rounded-lg px-8 py-4 gap-6">
+            <div className="flex flex-col items-center justify-center w-full h-full bg-[var(--surface)] rounded-lg px-4 sm:px-6 md:px-8 py-4 gap-6">
                 <div className="flex flex-col items-center gap-4">
                     
                     <p className="text-[var(--foreground-secondary)] text-center max-w-md">
@@ -127,19 +127,19 @@ export default function WalletOverview() {
     
 
     return (
-        <div className="flex flex-col items-start justify-start w-full h-full bg-[var(--surface)] rounded-lg px-8 py-4 gap-6 overflow-x-auto">
+        <div className="flex flex-col items-start justify-start w-full h-full bg-[var(--surface)] rounded-lg px-4 sm:px-6 md:px-8 py-4 gap-4 md:gap-6 overflow-x-auto">
             <div className="flex items-center gap-2">
-                <h1>
+                <h1 className="text-lg sm:text-xl">
                     Wallet {truncatedAddress && (
-                        <span className="text-sm font-normal text-gray-500 ml-1">
+                        <span className="text-xs sm:text-sm font-normal text-gray-500 ml-1">
                             ({truncatedAddress})
                         </span>
                     )}
                 </h1>
             </div>
-            <div className="flex items-start justify-between w-full gap-6">
-                <div className="flex flex-col items-start">
-                    <h1 className="text-md text-left text-[var(--foreground-secondary)]">
+            <div className="flex flex-col md:flex-row items-start md:justify-between w-full gap-4 md:gap-6">
+                <div className="flex flex-col items-start w-full md:w-auto">
+                    <h1 className="text-sm md:text-md text-left text-[var(--foreground-secondary)]">
                         Total Assets
                     </h1>
                     <div 
@@ -147,7 +147,7 @@ export default function WalletOverview() {
                         {...totalAssetsInteractions.getReferenceProps()}
                         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     >
-                        <h1 className="text-3xl font-bold">
+                        <h1 className="text-2xl md:text-3xl font-bold">
                             {walletLoading ? 'Loading...' : totalUsdValue}
                         </h1>
                         <svg 
@@ -161,8 +161,8 @@ export default function WalletOverview() {
                         </svg>
                     </div>
                 </div>
-                <div className="flex flex-col items-start">
-                    <h1 className="text-md text-left text-[var(--foreground-secondary)]">
+                <div className="flex flex-col items-start w-full md:w-auto">
+                    <h1 className="text-sm md:text-md text-left text-[var(--foreground-secondary)]">
                         Morpho Vaults
                     </h1>
                     <div 
@@ -170,7 +170,7 @@ export default function WalletOverview() {
                         {...morphoVaultsInteractions.getReferenceProps()}
                         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     >
-                        <h1 className="text-3xl font-bold">
+                        <h1 className="text-2xl md:text-3xl font-bold">
                             {walletLoading || morphoHoldings.isLoading ? 'Loading...' : morphoUsdValue}
                         </h1>
                         <svg 
@@ -184,8 +184,8 @@ export default function WalletOverview() {
                         </svg>
                     </div>
                 </div>
-                <div className="flex flex-col items-start">
-                    <h1 className="text-md text-left text-[var(--foreground-secondary)]">
+                <div className="flex flex-col items-start w-full md:w-auto">
+                    <h1 className="text-sm md:text-md text-left text-[var(--foreground-secondary)]">
                         Liquid Assets
                     </h1>
                     <div 
@@ -193,7 +193,7 @@ export default function WalletOverview() {
                         {...liquidAssetsInteractions.getReferenceProps()}
                         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     >
-                        <h1 className="text-3xl font-bold">
+                        <h1 className="text-2xl md:text-3xl font-bold">
                             {walletLoading ? 'Loading...' : liquidUsdValue}
                         </h1>
                         <svg 
