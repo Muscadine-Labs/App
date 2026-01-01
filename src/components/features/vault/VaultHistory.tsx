@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { MorphoVaultData } from '@/types/vault';
-import { formatSmartCurrency, formatAssetAmount, formatDate, formatCurrency } from '@/lib/formatter';
+import { formatAssetAmount, formatDate, formatCurrency } from '@/lib/formatter';
 import { useAccount } from 'wagmi';
 import CopiableAddress from '@/components/common/CopiableAddress';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -74,11 +74,51 @@ export default function VaultHistory({ vaultData }: VaultHistoryProps) {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between flex-shrink-0 mb-6">
-        <div>
-          <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">Transaction History</h2>
-          <p className="text-sm text-[var(--foreground-secondary)]">
-            View all deposits and withdrawals for this vault
-          </p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">Transaction History</h2>
+            <p className="text-sm text-[var(--foreground-secondary)]">
+              View all deposits and withdrawals for this vault
+            </p>
+          </div>
+          {address && userTransactions.length > 0 && (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const csv = [
+                    ['Date', 'Type', 'Amount (USD)', 'Transaction Hash'].join(','),
+                    ...userTransactions.map(tx => [
+                      formatDate(tx.timestamp),
+                      tx.type,
+                      tx.assetsUsd ? formatCurrency(tx.assetsUsd).replace('$', '') : '0',
+                      tx.transactionHash || '',
+                    ].join(',')),
+                  ].join('\n');
+
+                  const blob = new Blob([csv], { type: 'text/csv' });
+                  const url = window.URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `vault-activity-${vaultData.symbol}-${Date.now()}.csv`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  window.URL.revokeObjectURL(url);
+                }}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors bg-[var(--surface-elevated)] text-[var(--foreground-secondary)] hover:text-[var(--foreground)] border border-[var(--border-subtle)]"
+              >
+                Download CSV
+              </button>
+              <a
+                href={`https://debank.com/profile/${address}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors bg-[var(--surface-elevated)] text-[var(--foreground-secondary)] hover:text-[var(--foreground)] border border-[var(--border-subtle)]"
+              >
+                View your Wallet portfolio
+              </a>
+            </div>
+          )}
         </div>
         {address && (
           <button
@@ -132,14 +172,14 @@ export default function VaultHistory({ vaultData }: VaultHistoryProps) {
                       <span className="text-sm font-medium text-[var(--foreground)] capitalize">
                         {tx.type}
                       </span>
-                      {tx.assetsUsd !== undefined && tx.assetsUsd > 0 && (
+                      {tx.assets && (
                         <span className="text-sm text-[var(--foreground)] font-medium">
-                          {formatSmartCurrency(tx.assetsUsd)}
+                          {formatAssetAmount(BigInt(tx.assets), vaultData.assetDecimals || 18, vaultData.symbol)}
                         </span>
                       )}
-                      {tx.assetsUsd === 0 && tx.assets && (
-                        <span className="text-sm text-[var(--foreground-muted)]">
-                          {formatAssetAmount(BigInt(tx.assets), vaultData.assetDecimals || 18, vaultData.symbol)}
+                      {tx.assetsUsd !== undefined && tx.assetsUsd > 0 && (
+                        <span className="text-sm text-[var(--foreground-secondary)]">
+                          ({formatCurrency(tx.assetsUsd)})
                         </span>
                       )}
                     </div>
@@ -176,38 +216,6 @@ export default function VaultHistory({ vaultData }: VaultHistoryProps) {
                 ? "You haven't made any transactions yet"
                 : 'No recent activity'}
             </p>
-          </div>
-        )}
-
-        {/* Export Button */}
-        {address && userTransactions.length > 0 && (
-          <div className="pt-6 mt-6 border-t border-[var(--border-subtle)]">
-            <button
-              onClick={() => {
-                const csv = [
-                  ['Date', 'Type', 'Amount (USD)', 'Transaction Hash'].join(','),
-                  ...userTransactions.map(tx => [
-                    formatDate(tx.timestamp),
-                    tx.type,
-                    tx.assetsUsd ? formatCurrency(tx.assetsUsd).replace('$', '') : '0',
-                    tx.transactionHash || '',
-                  ].join(',')),
-                ].join('\n');
-
-                const blob = new Blob([csv], { type: 'text/csv' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `vault-activity-${vaultData.symbol}-${Date.now()}.csv`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-              }}
-              className="px-4 py-2 text-sm font-medium bg-[var(--surface-elevated)] text-[var(--foreground)] rounded-lg border border-[var(--border-subtle)] hover:bg-[var(--background-elevated)] transition-colors"
-            >
-              Download Transaction History (CSV)
-            </button>
           </div>
         )}
       </div>

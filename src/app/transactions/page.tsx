@@ -279,7 +279,7 @@ export default function TransactionsPage() {
       const decimals = vaultData?.assetDecimals || 18;
       setAmount(formatAssetAmountForMax(maxAmount, derivedAsset?.symbol || '', decimals));
     }
-  }, [getMaxAmount, fromAccount, derivedAsset, tokenBalances]);
+  }, [getMaxAmount, fromAccount, derivedAsset, tokenBalances, getVaultData, setAmount]);
 
   const handleAmountChange = (value: string) => {
     if (value === '') {

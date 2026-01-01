@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { formatSmartCurrency, formatAssetAmount, formatPercentage, formatNumber } from '@/lib/formatter';
+import { formatSmartCurrency, formatAssetAmount, formatPercentage } from '@/lib/formatter';
 import { MorphoVaultData } from '@/types/vault';
 import { useOnClickOutside } from '@/hooks/onClickOutside';
 
@@ -105,7 +105,7 @@ export default function VaultStatGrid({ vaultData }: VaultStatGridProps) {
   );
 
   // Format liquidity
-  const liquidityUsd = formatSmartCurrency(vaultData.currentLiquidity);
+  const liquidityUsd = formatSmartCurrency(vaultData.currentLiquidity || 0, { alwaysTwoDecimals: true });
   const liquidityRaw = formatAssetAmount(
     BigInt(vaultData.totalAssets || '0'),
     vaultData.assetDecimals || 18,

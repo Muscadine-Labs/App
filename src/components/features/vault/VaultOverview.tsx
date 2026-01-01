@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { formatSmartCurrency, formatAssetAmount, formatPercentage, formatNumber, formatCurrency } from '@/lib/formatter';
+import { formatSmartCurrency, formatAssetAmount, formatPercentage, formatNumber } from '@/lib/formatter';
 import { calculateYAxisDomain } from '@/lib/vault-utils';
 import { logger } from '@/lib/logger';
 import { MorphoVaultData } from '@/types/vault';
@@ -36,11 +36,11 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
   const [allHistoryData, setAllHistoryData] = useState<HistoryDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [chartType, setChartType] = useState<'apy' | 'tvl'>('apy');
-  const [valueType, setValueType] = useState<'usd' | 'token'>('usd');
+  const [valueType, setValueType] = useState<'usd' | 'token'>('token');
   const { error: showErrorToast } = useToast();
 
   // Format liquidity
-  const liquidityUsd = formatSmartCurrency(vaultData.currentLiquidity);
+  const liquidityUsd = formatSmartCurrency(vaultData.currentLiquidity || 0, { alwaysTwoDecimals: true });
   const liquidityRaw = formatAssetAmount(
     BigInt(vaultData.totalAssets || '0'),
     vaultData.assetDecimals || 18,
@@ -87,11 +87,23 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
     if (historyData.length === 0 || chartType !== 'apy') return undefined;
     
     const apyValues = historyData.map(d => d.apy).filter(v => v !== null && v !== undefined && !isNaN(v));
-    return calculateYAxisDomain(apyValues, {
+    if (apyValues.length === 0) return undefined;
+    
+    const domain = calculateYAxisDomain(apyValues, {
       bottomPaddingPercent: 0.5,
       topPaddingPercent: 0.2,
       thresholdPercent: 0.01,
     });
+    
+    if (!domain) return undefined;
+    
+    // If max APY is 0.01 (1%) or lower, ensure 0 is included
+    const maxApy = Math.max(...apyValues);
+    if (maxApy <= 0.01) {
+      return [0, domain[1]];
+    }
+    
+    return domain;
   }, [historyData, chartType]);
 
   // Memoize chart data for TVL chart to avoid recalculating on every render
@@ -163,7 +175,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
     };
 
     fetchAllHistory();
-  }, [vaultData.address, vaultData.chainId]);
+  }, [vaultData.address, vaultData.chainId, showErrorToast]);
 
   // Calculate available periods based on data range
   const availablePeriods = useMemo(() => {
@@ -607,7 +619,10 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                         const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
                         return `Date: ${formatTooltipDate(timestamp)}`;
                       }}
-                      formatter={(value: number) => [formatPercentage(value / 100), 'APY']}
+                      formatter={(value: number | undefined) => {
+                        if (value === undefined) return ['', 'APY'];
+                        return [formatPercentage(value / 100), 'APY'];
+                      }}
                     />
                     <Line 
                       type="monotone" 
@@ -654,7 +669,8 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                             const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
                             return `Date: ${formatTooltipDate(timestamp)}`;
                           }}
-                          formatter={(value: number) => {
+                          formatter={(value: number | undefined) => {
+                            if (value === undefined) return ['', 'Total Deposits'];
                             if (valueType === 'usd') {
                               return [formatSmartCurrency(value, { alwaysTwoDecimals: true }), 'Total Deposits'];
                             } else {

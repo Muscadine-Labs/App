@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { MorphoVaultData } from '@/types/vault';
 import { useWallet } from '@/contexts/WalletContext';
-import { formatSmartCurrency, formatAssetAmount, formatPercentage, formatNumber, formatCurrency } from '@/lib/formatter';
-import { calculateYAxisDomain, calculateCurrentAssetsRaw, resolveAssetPriceUsd } from '@/lib/vault-utils';
+import { formatSmartCurrency, formatAssetAmount, formatCurrency, formatPercentage } from '@/lib/formatter';
+import { calculateYAxisDomain } from '@/lib/vault-utils';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/contexts/ToastContext';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -55,7 +55,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
   const [userTransactions, setUserTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTimeFrame, setSelectedTimeFrame] = useState<TimeFrame>('all');
-  const [valueType, setValueType] = useState<'usd' | 'token'>('usd');
+  const [valueType, setValueType] = useState<'usd' | 'token'>('token');
   const [isTimeFrameMenuOpen, setIsTimeFrameMenuOpen] = useState(false);
   const [historicalVaultData, setHistoricalVaultData] = useState<Array<{
     timestamp: number;
@@ -64,8 +64,6 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     sharePriceUsd: number;
     assetPriceUsd?: number;
   }>>([]);
-  const [assetPriceUsd, setAssetPriceUsd] = useState<number>(0);
-  const [assetDecimals, setAssetDecimals] = useState<number>(vaultData.assetDecimals || 18);
 
   // Find the current vault position
   const currentVaultPosition = morphoHoldings.positions.find(
@@ -147,16 +145,9 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
         }
 
         // Update asset price/decimals from activity response when available
-        const decimalsFromActivity = userResponseData.assetDecimals ?? vaultData.assetDecimals ?? 18;
-        setAssetDecimals(decimalsFromActivity);
+        // Asset decimals available but not used in this component
 
-        const resolvedPrice = resolveAssetPriceUsd({
-          quotedPriceUsd: userResponseData.assetPriceUsd,
-          vaultData,
-          assetDecimals: decimalsFromActivity,
-          fallbackSharePriceUsd: currentVaultPosition?.vault.state?.sharePriceUsd,
-        });
-        setAssetPriceUsd(resolvedPrice);
+        // Asset price resolved but not used in this component
         
         if (historyData.history && Array.isArray(historyData.history) && historyData.history.length > 0) {
           // Calculate historical share prices from totalAssetsUsd and totalAssets
@@ -217,7 +208,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     };
 
     fetchActivity();
-  }, [vaultData, address, currentSharePriceUsd, currentTotalSupply, currentVaultPosition?.vault.state?.sharePriceUsd]);
+  }, [vaultData, address, currentSharePriceUsd, currentTotalSupply, currentVaultPosition?.vault.state?.sharePriceUsd, showErrorToast]);
 
   // Calculate share price in asset terms (tokens per share)
   const sharePriceInAsset = useMemo(() => {
@@ -548,7 +539,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                   )}
                 </p>
                 <p className="text-sm text-[var(--foreground-secondary)] mt-1">
-                  {formatSmartCurrency(userVaultValueUsd)}
+                  {formatCurrency(userVaultValueUsd)}
                 </p>
               </>
             )}
@@ -754,11 +745,27 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                         if (valueType === 'usd') {
                           return formatSmartCurrency(value / 1000).replace('K', 'k');
                         } else {
-                          // Format token amount
+                          // Format token amount consistently with "Your Deposits" - at least 2 decimals
+                          const decimals = vaultData.assetDecimals || 18;
                           if (value >= 1000) {
-                            return formatNumber(value / 1000, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'k';
+                            const formatted = formatAssetAmount(
+                              BigInt(Math.floor((value / 1000) * Math.pow(10, decimals))),
+                              decimals,
+                              vaultData.symbol,
+                              { minimumFractionDigits: 2 }
+                            );
+                            // Extract number part (formatAssetAmount returns "number symbol")
+                            const numberPart = formatted.replace(` ${vaultData.symbol}`, '').trim();
+                            return `${numberPart}k`;
                           }
-                          return formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                          const formatted = formatAssetAmount(
+                            BigInt(Math.floor(value * Math.pow(10, decimals))),
+                            decimals,
+                            vaultData.symbol,
+                            { minimumFractionDigits: 2 }
+                          );
+                          // Extract number part
+                          return formatted.replace(` ${vaultData.symbol}`, '').trim();
                         }
                       }}
                       stroke="var(--foreground-secondary)"
@@ -770,15 +777,18 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                         border: '1px solid var(--border-subtle)',
                         borderRadius: '8px',
                       }}
-                      formatter={(value: number) => {
+                      formatter={(value: number | undefined) => {
+                        if (value === undefined) return ['', 'Your Position'];
                         if (valueType === 'usd') {
                           return [formatCurrency(value), 'Your Position'];
                         } else {
+                          // Format token amount consistently with "Your Deposits" - at least 2 decimals
                           return [
                             formatAssetAmount(
                               BigInt(Math.floor(value * Math.pow(10, vaultData.assetDecimals || 18))),
                               vaultData.assetDecimals || 18,
-                              vaultData.symbol
+                              vaultData.symbol,
+                              { minimumFractionDigits: 2 }
                             ),
                             'Your Position'
                           ];

@@ -9,10 +9,10 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@apollo/client": "^4.0.7",
+    "@apollo/client": "^4.0.11",
     "@floating-ui/react": "^0.27.16",
-    "@morpho-org/blue-sdk": "^5.2.0",
-    "@morpho-org/blue-sdk-viem": "^4.1.2",
+    "@morpho-org/blue-sdk": "^5.11.0",
+    "@morpho-org/blue-sdk-viem": "^4.2.0",
     "@morpho-org/blue-sdk-wagmi": "^3.1.2",
     "@morpho-org/bundler-sdk-viem": "^4.1.1",
     "@morpho-org/morpho-ts": "^2.4.3",
@@ -20,47 +20,47 @@
     "@morpho-org/simulation-sdk-wagmi": "^3.1.2",
     "@rainbow-me/rainbowkit": "^2.2.10",
     "@react-three/drei": "^10.7.6",
-    "@react-three/fiber": "^9.4.0",
-    "@tanstack/react-query": "^5.90.3",
+    "@react-three/fiber": "^9.5.0",
+    "@tanstack/react-query": "^5.90.16",
     "@vercel/analytics": "^1.6.1",
     "core-js": "^3.47.0",
     "graphql": "^16.11.0",
     "mutative": "^1.0.8",
     "next": "^16.1.1",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "react-server-dom-parcel": "^19.2.3",
     "react-server-dom-turbopack": "^19.2.3",
     "react-server-dom-webpack": "^19.2.3",
-    "recharts": "^3.5.0",
+    "recharts": "^3.6.0",
     "rxjs": "^7.8.2",
-    "swr": "^2.3.6",
-    "three": "^0.180.0",
-    "valtio": "^2.2.0",
-    "viem": "^2.38.3",
+    "swr": "^2.3.8",
+    "three": "^0.182.0",
+    "valtio": "^2.3.0",
+    "viem": "^2.43.4",
     "wagmi": "^2.18.1"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "autoprefixer": "^10.4.21",
+    "autoprefixer": "^10.4.23",
     "eslint": "^9",
     "eslint-config-next": "15.5.5",
     "postcss": "^8.5.6",
-    "tailwindcss": "^4.1.14",
+    "tailwindcss": "^4.1.18",
     "typescript": "^5"
   },
   "overrides": {
     "@morpho-org/blue-sdk-wagmi": {
-      "react": "19.1.0",
-      "react-dom": "19.1.0"
+      "react": "19.2.3",
+      "react-dom": "19.2.3"
     },
     "@morpho-org/simulation-sdk-wagmi": {
-      "react": "19.1.0",
-      "react-dom": "19.1.0"
+      "react": "19.2.3",
+      "react-dom": "19.2.3"
     }
   }
 }

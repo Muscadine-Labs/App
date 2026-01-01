@@ -38,7 +38,7 @@ const tinos = Tinos({
 
 
 export const metadata: Metadata = {
-  title: 'Muscadine Vault',
+  title: 'Muscadine Earn',
   description: 'Powered by Muscadine Labs',
   icons: {
     icon: '/favicon.png',

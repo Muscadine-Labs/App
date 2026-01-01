@@ -16,7 +16,8 @@ export default function NotFound() {
           Oops! This page got lost in the vault
         </h2>
         <p className="text-[var(--foreground-secondary)] text-base max-w-md mx-auto leading-relaxed">
-          Hey there! It looks like the page you're looking for doesn't exist. If you think this is an error, please contact our support.
+          {/* eslint-disable-next-line react/no-unescaped-entities */}
+          Hey there! It looks like the page you're looking for doesn't exist. If you think this is an error, please contact our support, or go back to the dashboard. 
         </p>
       </div>
       <div className="flex gap-3 flex-col sm:flex-row">

@@ -6,7 +6,6 @@ import { formatSmartCurrency, formatCurrency, formatNumber, formatPercentage } f
 import { useRouter, usePathname } from 'next/navigation';
 import { getVaultRoute } from '../../../lib/vault-utils';
 import { useAccount } from 'wagmi';
-import { useState } from 'react';
 import { Skeleton } from '../../../components/ui/Skeleton';
 
 interface VaultListCardProps {
@@ -168,7 +167,7 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
                                 {formatPercentage(vaultData.apy)} APY
                             </span>
                             <span className="text-xs md:text-sm text-foreground-secondary">
-                                {formatSmartCurrency(vaultData.totalValueLocked)} TVL
+                                {formatSmartCurrency(vaultData.totalValueLocked || 0, { alwaysTwoDecimals: true })} TVL
                             </span>
                         </div>
                     )}

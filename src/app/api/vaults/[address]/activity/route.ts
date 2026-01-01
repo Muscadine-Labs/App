@@ -67,8 +67,9 @@ export async function GET(
     }
 
     const chainId = chainIdParam;
-    const escapedAddress = address.replace(/"/g, '\\"');
-    const escapedUserAddress = userAddress ? userAddress.replace(/"/g, '\\"') : null;
+    // Properly escape for GraphQL: escape backslashes first, then quotes
+    const escapedAddress = address.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const escapedUserAddress = userAddress ? userAddress.replace(/\\/g, '\\\\').replace(/"/g, '\\"') : null;
     const whereClause = [
       `vaultAddress_in: ["${escapedAddress}"]`,
       `type_in: [MetaMorphoDeposit, MetaMorphoWithdraw]`,
