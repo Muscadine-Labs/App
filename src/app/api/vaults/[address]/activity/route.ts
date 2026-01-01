@@ -67,53 +67,97 @@ export async function GET(
     }
 
     const chainId = chainIdParam;
-    const escapedAddress = address.replace(/"/g, '\\"');
-    const escapedUserAddress = userAddress ? userAddress.replace(/"/g, '\\"') : null;
-    const whereClause = [
-      `vaultAddress_in: ["${escapedAddress}"]`,
-      `type_in: [MetaMorphoDeposit, MetaMorphoWithdraw]`,
-      ...(escapedUserAddress ? [`userAddress_in: ["${escapedUserAddress}"]`] : [])
-    ].join(', ');
 
     // Fetch all transactions with pagination if userAddress is provided
     // Otherwise, limit to 100 for performance
     const transactionLimit = userAddress ? 1000 : 100;
     
-    const query = `
-      query VaultActivity {
-        transactions(
-          first: ${transactionLimit}
-          orderBy: Timestamp
-          orderDirection: Desc
-          where: { 
-            ${whereClause}
-          }
-        ) {
-          items {
-            hash
-            timestamp
-            type
-            blockNumber
-            chain {
-              id
-              network
+    // Build where clause conditionally using variables to prevent injection
+    // Use separate queries for with/without userAddress to avoid string interpolation in where clause
+    const query = userAddress
+      ? `
+        query VaultActivity($vaultAddress: String!, $userAddress: String!, $limit: Int!) {
+          transactions(
+            first: $limit
+            orderBy: Timestamp
+            orderDirection: Desc
+            where: { 
+              vaultAddress_in: [$vaultAddress]
+              type_in: [MetaMorphoDeposit, MetaMorphoWithdraw]
+              userAddress_in: [$userAddress]
             }
-            user {
-              address
-            }
-            data {
-              ... on VaultTransactionData {
-                shares
-                assets
-                vault {
-                  address
+          ) {
+            items {
+              hash
+              timestamp
+              type
+              blockNumber
+              chain {
+                id
+                network
+              }
+              user {
+                address
+              }
+              data {
+                ... on VaultTransactionData {
+                  shares
+                  assets
+                  vault {
+                    address
+                  }
                 }
               }
             }
           }
         }
-      }
-    `;
+      `
+      : `
+        query VaultActivity($vaultAddress: String!, $limit: Int!) {
+          transactions(
+            first: $limit
+            orderBy: Timestamp
+            orderDirection: Desc
+            where: { 
+              vaultAddress_in: [$vaultAddress]
+              type_in: [MetaMorphoDeposit, MetaMorphoWithdraw]
+            }
+          ) {
+            items {
+              hash
+              timestamp
+              type
+              blockNumber
+              chain {
+                id
+                network
+              }
+              user {
+                address
+              }
+              data {
+                ... on VaultTransactionData {
+                  shares
+                  assets
+                  vault {
+                    address
+                  }
+                }
+              }
+            }
+          }
+        }
+      `;
+
+    // Build variables object safely - all user input is validated and passed as variables
+    const variables: Record<string, unknown> = {
+      vaultAddress: address, // Already validated as valid Ethereum address
+      limit: transactionLimit,
+    };
+    
+    if (userAddress) {
+      variables.userAddress = userAddress; // Already validated as valid Ethereum address
+    }
 
     let response: Response;
     let responseText: string;
@@ -128,6 +172,7 @@ export async function GET(
         },
         body: JSON.stringify({
           query,
+          variables,
         }),
         next: { 
           revalidate: 60, // 1 minute - activity data changes frequently
