@@ -37,7 +37,10 @@ export function VaultsDropdown({ isActive, onVaultSelect }: VaultsDropdownProps)
 
   const handleToggleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsOpen(!isOpen);
+    // If already open (from hover), keep it open; otherwise open it
+    if (!isOpen) {
+      setIsOpen(true);
+    }
   };
 
   return (

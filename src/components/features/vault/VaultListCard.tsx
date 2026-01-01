@@ -7,6 +7,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { getVaultRoute } from '../../../lib/vault-utils';
 import { useAccount } from 'wagmi';
 import { useState } from 'react';
+import { Skeleton } from '../../../components/ui/Skeleton';
 
 interface VaultListCardProps {
     vault: Vault;
@@ -135,7 +136,12 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
             <div className="flex flex-row md:flex-row items-start md:items-center justify-between md:justify-end gap-4 md:gap-6 w-full md:w-auto md:flex-1">
                 {/* Your Position Column - Token balance on top, USD below */}
                 <div className="text-left md:text-right w-auto md:min-w-[140px]">
-                    {userPosition && userPositionValue > 0 && userVaultBalance ? (
+                    {loading || morphoHoldings.isLoading || (address && !vaultData) ? (
+                        <div className="flex flex-col md:items-end gap-1.5">
+                            <Skeleton width="5rem" height="1rem" />
+                            <Skeleton width="4rem" height="0.875rem" />
+                        </div>
+                    ) : userPosition && userPositionValue > 0 && userVaultBalance ? (
                         <div className="flex flex-col md:items-end">
                             <span className="text-sm md:text-base font-semibold text-[var(--foreground)]">
                                 {userVaultBalance} {vault.symbol}
@@ -151,9 +157,12 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
                 
                 {/* APY and TVL - Stacked on mobile, side by side with Position */}
                 <div className="text-right md:text-right w-auto md:min-w-[120px] flex-shrink-0">
-                    {loading ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-[var(--primary)]"></div>
-                    ) : vaultData ? (
+                    {loading || !vaultData ? (
+                        <div className="flex flex-col items-end md:items-end gap-1.5">
+                            <Skeleton width="4rem" height="1rem" />
+                            <Skeleton width="3rem" height="0.875rem" />
+                        </div>
+                    ) : (
                         <div className="flex flex-col items-end md:items-end">
                             <span className="text-sm md:text-base font-semibold text-[var(--primary)]">
                                 {formatPercentage(vaultData.apy)} APY
@@ -162,8 +171,6 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
                                 {formatSmartCurrency(vaultData.totalValueLocked)} TVL
                             </span>
                         </div>
-                    ) : (
-                        <span className="text-xs md:text-sm text-foreground-muted">No data</span>
                     )}
                 </div>
             </div>

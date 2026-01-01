@@ -6,6 +6,7 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
 import { formatNumber, formatCurrency } from '@/lib/formatter';
 import { resolveAssetPriceUsd } from '@/lib/vault-utils';
+import { Skeleton } from '@/components/ui/Skeleton';
 import {
     useFloating,
     autoUpdate,
@@ -77,10 +78,21 @@ export default function WalletOverview() {
     if (!isMounted) {
         // Return a simple loading state during SSR
         return (
-            <div className="flex flex-col items-center justify-center w-full h-full bg-[var(--surface)] rounded-lg px-4 sm:px-6 md:px-8 py-4 gap-6">
-                <div className="animate-pulse">
-                    <div className="h-8 w-48 bg-[var(--background-elevated)] rounded mb-4"></div>
-                    <div className="h-4 w-64 bg-[var(--background-elevated)] rounded"></div>
+            <div className="flex flex-col items-start justify-start w-full h-full bg-[var(--surface)] rounded-lg px-4 sm:px-6 md:px-8 py-4 gap-4 md:gap-6">
+                <Skeleton width="8rem" height="1.5rem" />
+                <div className="flex flex-col md:flex-row items-start md:justify-between w-full gap-4 md:gap-6">
+                    <div className="flex flex-col items-start w-full md:w-auto gap-2">
+                        <Skeleton width="5rem" height="1rem" />
+                        <Skeleton width="8rem" height="2rem" />
+                    </div>
+                    <div className="flex flex-col items-start w-full md:w-auto gap-2">
+                        <Skeleton width="6rem" height="1rem" />
+                        <Skeleton width="8rem" height="2rem" />
+                    </div>
+                    <div className="flex flex-col items-start w-full md:w-auto gap-2">
+                        <Skeleton width="6rem" height="1rem" />
+                        <Skeleton width="8rem" height="2rem" />
+                    </div>
                 </div>
             </div>
         );
@@ -147,9 +159,13 @@ export default function WalletOverview() {
                         {...totalAssetsInteractions.getReferenceProps()}
                         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     >
-                        <h1 className="text-2xl md:text-3xl font-bold">
-                            {walletLoading ? 'Loading...' : totalUsdValue}
-                        </h1>
+                        {walletLoading ? (
+                            <Skeleton width="8rem" height="2rem" />
+                        ) : (
+                            <h1 className="text-2xl md:text-3xl font-bold">
+                                {totalUsdValue}
+                            </h1>
+                        )}
                         <svg 
                             width="16" 
                             height="16" 
@@ -170,9 +186,13 @@ export default function WalletOverview() {
                         {...morphoVaultsInteractions.getReferenceProps()}
                         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     >
-                        <h1 className="text-2xl md:text-3xl font-bold">
-                            {walletLoading || morphoHoldings.isLoading ? 'Loading...' : morphoUsdValue}
-                        </h1>
+                        {walletLoading || morphoHoldings.isLoading ? (
+                            <Skeleton width="8rem" height="2rem" />
+                        ) : (
+                            <h1 className="text-2xl md:text-3xl font-bold">
+                                {morphoUsdValue}
+                            </h1>
+                        )}
                         <svg 
                             width="16" 
                             height="16" 
@@ -193,9 +213,13 @@ export default function WalletOverview() {
                         {...liquidAssetsInteractions.getReferenceProps()}
                         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     >
-                        <h1 className="text-2xl md:text-3xl font-bold">
-                            {walletLoading ? 'Loading...' : liquidUsdValue}
-                        </h1>
+                        {walletLoading ? (
+                            <Skeleton width="8rem" height="2rem" />
+                        ) : (
+                            <h1 className="text-2xl md:text-3xl font-bold">
+                                {liquidUsdValue}
+                            </h1>
+                        )}
                         <svg 
                             width="16" 
                             height="16" 
@@ -309,9 +333,14 @@ export default function WalletOverview() {
                     >
                     <div className="flex flex-col gap-3">
                         {morphoHoldings.isLoading ? (
-                            <div className="text-sm text-[var(--foreground-secondary)]">
-                                Loading vaults...
-                            </div>
+                            <>
+                                {Array.from({ length: 3 }).map((_, index) => (
+                                    <div key={index} className="flex justify-between items-center gap-4">
+                                        <Skeleton width="8rem" height="1rem" />
+                                        <Skeleton width="5rem" height="1rem" />
+                                    </div>
+                                ))}
+                            </>
                         ) : sortedVaultPositions.length > 0 ? (
                             sortedVaultPositions.map((position) => (
                                 <div key={position.address} className="flex justify-between items-center gap-4">

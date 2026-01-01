@@ -11,6 +11,7 @@ import { logger } from '@/lib/logger';
 import { useToast } from '@/contexts/ToastContext';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Button } from '@/components/ui';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 // Constants
 const WEI_PER_ETHER = 1e18;
@@ -599,8 +600,45 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
       {isConnected && address && (
         <div>
           {loading ? (
-            <div className="bg-[var(--surface-elevated)] rounded-lg p-6 text-center">
-              <p className="text-sm text-[var(--foreground-muted)]">Loading chart data...</p>
+            <div className="bg-[var(--surface-elevated)] rounded-lg p-2 sm:p-4">
+              {/* Controls Row Skeleton */}
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Skeleton width="3rem" height="2rem" />
+                  <Skeleton width="3rem" height="2rem" />
+                  <Skeleton width="3rem" height="2rem" />
+                </div>
+                <div className="flex items-center gap-2 bg-[var(--surface)] rounded-lg p-1">
+                  <Skeleton width="3rem" height="2rem" />
+                  <Skeleton width="4rem" height="2rem" />
+                </div>
+              </div>
+              {/* Chart Skeleton */}
+              <div className="h-80 p-4">
+                <div className="h-full flex flex-col justify-between">
+                  {/* Y-axis labels area */}
+                  <div className="flex justify-between mb-2">
+                    <Skeleton width="3rem" height="0.75rem" />
+                    <Skeleton width="3rem" height="0.75rem" />
+                  </div>
+                  {/* Chart area with wave pattern */}
+                  <div className="flex-1 flex items-end justify-between gap-1 px-2">
+                    {[45, 52, 38, 60, 48, 55, 42, 58, 50, 47, 53, 40, 57, 45, 50, 48, 55, 42, 58, 45].map((heightPercent, index) => (
+                      <Skeleton
+                        key={index}
+                        width="100%"
+                        height={`${heightPercent}%`}
+                        className="rounded-t"
+                      />
+                    ))}
+                  </div>
+                  {/* X-axis labels area */}
+                  <div className="flex justify-between mt-2">
+                    <Skeleton width="4rem" height="0.75rem" />
+                    <Skeleton width="4rem" height="0.75rem" />
+                  </div>
+                </div>
+              </div>
             </div>
           ) : userDepositHistory.length > 0 ? (
             <div className="bg-[var(--surface-elevated)] rounded-lg p-2 sm:p-4">

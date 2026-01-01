@@ -7,6 +7,7 @@ import { logger } from '@/lib/logger';
 import { MorphoVaultData } from '@/types/vault';
 import { useToast } from '@/contexts/ToastContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 interface VaultOverviewProps {
   vaultData: MorphoVaultData;
@@ -551,8 +552,30 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
 
         {/* Chart */}
         {loading ? (
-          <div className="bg-[var(--surface-elevated)] rounded-lg border border-[var(--border-subtle)] h-64 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--primary)]"></div>
+          <div className="bg-[var(--surface-elevated)] rounded-lg border border-[var(--border-subtle)] h-64 p-4">
+            <div className="h-full flex flex-col justify-between">
+              {/* Y-axis labels area */}
+              <div className="flex justify-between mb-2">
+                <Skeleton width="3rem" height="0.75rem" />
+                <Skeleton width="3rem" height="0.75rem" />
+              </div>
+              {/* Chart area with wave pattern */}
+              <div className="flex-1 flex items-end justify-between gap-1 px-2">
+                {[45, 52, 38, 60, 48, 55, 42, 58, 50, 47, 53, 40, 57, 45, 50, 48, 55, 42, 58, 45].map((heightPercent, index) => (
+                  <Skeleton
+                    key={index}
+                    width="100%"
+                    height={`${heightPercent}%`}
+                    className="rounded-t"
+                  />
+                ))}
+              </div>
+              {/* X-axis labels area */}
+              <div className="flex justify-between mt-2">
+                <Skeleton width="4rem" height="0.75rem" />
+                <Skeleton width="4rem" height="0.75rem" />
+              </div>
+            </div>
           </div>
         ) : historyData.length > 0 ? (
           <div className="bg-[var(--surface-elevated)] rounded-lg border border-[var(--border-subtle)] p-4">

@@ -22,6 +22,9 @@ export {
 } from './Icon';
 export type { IconProps, IconName } from './Icon';
 
+export { Skeleton, SkeletonText, SkeletonCircle, SkeletonRect } from './Skeleton';
+export type { SkeletonProps } from './Skeleton';
+
 export { TransactionModal } from './TransactionModal';
 
 export { Toast } from './Toast';

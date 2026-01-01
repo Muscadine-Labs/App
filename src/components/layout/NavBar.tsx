@@ -258,8 +258,10 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                         </nav>
                     </div>
 
-                    {/* Right side: Settings, Connect Button and Sidebar Toggle */}
+                    {/* Right side: Connect Button, Settings and Sidebar Toggle */}
                     <div className="flex items-center gap-1 sm:gap-2 md:gap-3" onClick={(e) => e.stopPropagation()}>
+                        <ConnectButton />
+
                         {/* Settings Dropdown - Icon only on mobile */}
                         <div 
                             className="relative flex items-center" 
@@ -268,7 +270,12 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                             onMouseLeave={() => setIsSettingsOpen(false)}
                         >
                             <button
-                                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                                onClick={() => {
+                                    // If already open (from hover), keep it open; otherwise toggle
+                                    if (!isSettingsOpen) {
+                                        setIsSettingsOpen(true);
+                                    }
+                                }}
                                 className="flex items-center gap-1 sm:gap-2 hover:opacity-80 transition-opacity p-1 sm:p-2"
                                 aria-label="Settings"
                             >
@@ -392,8 +399,6 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                 </>
                             )}
                         </div>
-
-                        <ConnectButton />
                         {onToggleSidebar && (
                             <button
                                 onClick={onToggleSidebar}
