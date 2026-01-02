@@ -9,6 +9,7 @@ import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
 import { TransactionProgressBar } from './TransactionProgressBar';
 import CopiableAddress from '@/components/common/CopiableAddress';
+import { useToast } from '@/contexts/ToastContext';
 
 interface TransactionConfirmationProps {
   fromAccount: Account;
@@ -44,6 +45,7 @@ export function TransactionConfirmation({
   const { address } = useAccount();
   const router = useRouter();
   const { reset } = useTransactionState();
+  const { error: showErrorToast, showToast } = useToast();
 
   const handleDone = () => {
     if (isSuccess) {

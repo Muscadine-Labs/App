@@ -514,6 +514,8 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     return ticks.length > 0 ? ticks : undefined;
   }, [selectedTimeFrame, filteredChartData]);
   
+  // Format APY
+  const apyPercent = formatPercentage(vaultData.apy);
 
   const handleDeposit = () => {
     router.push(`/transactions?vault=${vaultData.address}&action=deposit`);
@@ -523,8 +525,6 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     router.push(`/transactions?vault=${vaultData.address}&action=withdraw`);
   };
 
-  // Format APY
-  const apyPercent = formatPercentage(vaultData.apy);
 
   return (
     <div className="space-y-6">
@@ -752,7 +752,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                       domain={yAxisDomain}
                       tickFormatter={(value) => {
                         if (valueType === 'usd') {
-                          return formatSmartCurrency(value / 1000).replace('K', 'k');
+                          return '$' + formatNumber(value / 1000, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'k';
                         } else {
                           // Format token amount
                           if (value >= 1000) {
@@ -770,7 +770,8 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                         border: '1px solid var(--border-subtle)',
                         borderRadius: '8px',
                       }}
-                      formatter={(value: number) => {
+                      formatter={(value) => {
+                        if (value === undefined || typeof value !== 'number') return ['', 'Your Position'];
                         if (valueType === 'usd') {
                           return [formatCurrency(value), 'Your Position'];
                         } else {

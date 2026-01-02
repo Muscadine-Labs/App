@@ -607,7 +607,10 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                         const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
                         return `Date: ${formatTooltipDate(timestamp)}`;
                       }}
-                      formatter={(value: number) => [formatPercentage(value / 100), 'APY']}
+                      formatter={(value) => {
+                        if (value === undefined || typeof value !== 'number') return ['', 'APY'];
+                        return [formatPercentage(value / 100), 'APY'];
+                      }}
                     />
                     <Line 
                       type="monotone" 
@@ -631,7 +634,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                           domain={tvlYAxisDomain}
                           tickFormatter={(value) => {
                             if (valueType === 'usd') {
-                              return formatSmartCurrency(value / 1000).replace(/K/g, 'k');
+                              return '$' + formatNumber(value / 1000, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'k';
                             } else {
                               // Format token amount: use k format if >= 1000, otherwise show full value
                               if (value >= 1000) {
@@ -654,7 +657,8 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                             const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
                             return `Date: ${formatTooltipDate(timestamp)}`;
                           }}
-                          formatter={(value: number) => {
+                          formatter={(value) => {
+                            if (value === undefined || typeof value !== 'number') return ['', 'Total Deposits'];
                             if (valueType === 'usd') {
                               return [formatSmartCurrency(value, { alwaysTwoDecimals: true }), 'Total Deposits'];
                             } else {
