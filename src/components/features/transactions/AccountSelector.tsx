@@ -10,6 +10,7 @@ import { formatUnits } from 'viem';
 import { formatAssetBalance, truncateAddress } from '@/lib/formatter';
 import { useOnClickOutside } from '@/hooks/onClickOutside';
 import { useAccount } from 'wagmi';
+import { Icon } from '@/components/ui/Icon';
 
 interface AccountSelectorProps {
   label: string;
@@ -106,17 +107,30 @@ export function AccountSelector({
     });
 
   // Filter accounts based on compatibility
-  // Wallet is always available (will be handled by parent to unselect from other slot)
-  // Vaults are excluded if they're already selected in the other field
+  // Prevent vault-to-vault transactions: if excludeAccount is a vault, only show wallet
+  // If excludeAccount is a wallet, show all vaults and wallet
   const availableAccounts = [...walletAccounts, ...vaultAccounts].filter((account) => {
-    // Exclude vault accounts that are already selected in the other field
-    if (excludeAccount && account.type === 'vault' && excludeAccount.type === 'vault') {
+    if (!excludeAccount) {
+      return true;
+    }
+    
+    // Exclude the same account if it's already selected in the other field
+    if (account.type === 'wallet' && excludeAccount.type === 'wallet') {
+      return false;
+    }
+    if (account.type === 'vault' && excludeAccount.type === 'vault') {
       const accountVault = account as VaultAccount;
       const excludeVault = excludeAccount as VaultAccount;
       if (accountVault.address.toLowerCase() === excludeVault.address.toLowerCase()) {
         return false;
       }
     }
+    
+    // If the other account is a vault, only allow wallet (prevent vault-to-vault)
+    if (excludeAccount.type === 'vault') {
+      return account.type === 'wallet';
+    }
+    
     // Wallet is always available (parent will handle unselecting from other slot)
     return true;
   });
@@ -202,13 +216,13 @@ export function AccountSelector({
     }
   };
 
-  const getAccountLogo = (account: Account): string => {
+  const getAccountLogo = (account: Account): string | null => {
     if (account.type === 'wallet') {
-      // Use asset symbol logo if available, otherwise default to ETH
+      // Use asset symbol logo if available, otherwise return null for blank circle
       if (assetSymbol) {
         return getVaultLogo(assetSymbol);
       }
-      return '/eth-logo.svg'; // Default wallet logo
+      return null; // Return null to show blank circle
     } else {
       return getVaultLogo(account.symbol);
     }
@@ -227,14 +241,18 @@ export function AccountSelector({
         <div className="flex items-center gap-3 flex-1 min-w-0">
           {selectedAccount ? (
             <>
-              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center overflow-hidden flex-shrink-0">
-                <Image
-                  src={getAccountLogo(selectedAccount)}
-                  alt={getAccountDisplayName(selectedAccount)}
-                  width={32}
-                  height={32}
-                  className="w-full h-full object-contain"
-                />
+              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center overflow-hidden flex-shrink-0 border border-[var(--border-subtle)]">
+                {getAccountLogo(selectedAccount) ? (
+                  <Image
+                    src={getAccountLogo(selectedAccount)!}
+                    alt={getAccountDisplayName(selectedAccount)}
+                    width={32}
+                    height={32}
+                    className="w-full h-full object-contain"
+                  />
+                ) : (
+                  <Icon name="wallet" size="md" color="secondary" className="w-5 h-5" />
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-medium text-[var(--foreground)] truncate">
@@ -286,14 +304,18 @@ export function AccountSelector({
                     isSelected ? 'bg-[var(--background)]' : ''
                   } ${index > 0 ? 'border-t border-[var(--border-subtle)]' : ''}`}
                 >
-                  <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center overflow-hidden flex-shrink-0">
-                    <Image
-                      src={getAccountLogo(account)}
-                      alt={getAccountDisplayName(account)}
-                      width={32}
-                      height={32}
-                      className="w-full h-full object-contain"
-                    />
+                  <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center overflow-hidden flex-shrink-0 border border-[var(--border-subtle)]">
+                    {getAccountLogo(account) ? (
+                      <Image
+                        src={getAccountLogo(account)!}
+                        alt={getAccountDisplayName(account)}
+                        width={32}
+                        height={32}
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <Icon name="wallet" size="md" color="secondary" className="w-5 h-5" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0 text-left">
                     <div className="text-sm font-medium text-[var(--foreground)] truncate">

@@ -9,6 +9,7 @@ import { isCancellationError, formatTransactionError } from '@/lib/transactionUt
 import { TransactionConfirmation } from './TransactionConfirmation';
 import { TransactionStatus as TransactionStatusComponent } from './TransactionStatus';
 import { useToast } from '@/contexts/ToastContext';
+import { useWallet } from '@/contexts/WalletContext';
 
 interface TransactionFlowProps {
   onSuccess?: () => void;
@@ -27,7 +28,7 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
     setStatus,
   } = useTransactionState();
   const { success, error: showErrorToast } = useToast();
-
+  const { refreshBalances } = useWallet();
 
   const [currentTxHash, setCurrentTxHash] = useState<string | null>(null);
   const [prerequisiteReceipts, setPrerequisiteReceipts] = useState<Map<number, boolean>>(new Map());
@@ -104,6 +105,8 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
     if (receipt && status === 'confirming' && hashToUse) {
       success('Transaction confirmed!', 3000);
       setStatus('success', undefined, hashToUse);
+      // Refresh wallet balances immediately after transaction confirmation
+      refreshBalances();
       // Don't auto-close - let user see the confirmation page with details
     } else if (receiptError && status === 'confirming' && hashToUse) {
       if (isCancellationError(receiptError)) {
@@ -118,7 +121,7 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
         setStatus('error', errorMessage);
       }
     }
-  }, [receipt, receiptError, status, txHash, currentTxHash, setStatus, onSuccess, success, showErrorToast]);
+  }, [receipt, receiptError, status, txHash, currentTxHash, setStatus, onSuccess, success, showErrorToast, refreshBalances]);
 
   const handleConfirm = async () => {
     if (!fromAccount || !toAccount || !amount || !transactionType) return;

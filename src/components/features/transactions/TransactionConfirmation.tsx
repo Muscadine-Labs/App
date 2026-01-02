@@ -9,6 +9,7 @@ import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
 import { TransactionProgressBar } from './TransactionProgressBar';
 import CopiableAddress from '@/components/common/CopiableAddress';
+import { useToast } from '@/contexts/ToastContext';
 
 interface TransactionConfirmationProps {
   fromAccount: Account;
@@ -44,6 +45,7 @@ export function TransactionConfirmation({
   const { address } = useAccount();
   const router = useRouter();
   const { reset } = useTransactionState();
+  const { success, error: showErrorToast, showToast } = useToast();
 
   const handleDone = () => {
     if (isSuccess) {
@@ -86,6 +88,23 @@ export function TransactionConfirmation({
     });
   };
 
+  // Format vault name - remove "Muscadine " prefix on mobile
+  const formatVaultName = (name: string) => {
+    return name.replace(/^Muscadine /, '');
+  };
+
+  // Copy address to clipboard
+  const handleCopyAddress = async (addressToCopy: string, name: string) => {
+    if (!addressToCopy) return;
+    try {
+      await navigator.clipboard.writeText(addressToCopy);
+      showToast(`${name} address copied to clipboard`, 'neutral', 2000);
+    } catch (err) {
+      console.error('Failed to copy address:', err);
+      showErrorToast('Failed to copy to clipboard', 5000);
+    }
+  };
+
   if (isSuccess) {
     // Success state - Payment confirmation style
     return (
@@ -102,7 +121,22 @@ export function TransactionConfirmation({
               <div className="min-w-0">
                 <p className="text-sm text-[var(--foreground-secondary)] mb-1">Transaction hash</p>
                 <div className="break-all text-left">
-                  <CopiableAddress address={txHash} showFullAddress={true} className="text-sm font-medium break-all text-left" />
+                  <button
+                    onClick={async () => {
+                      if (!txHash) return;
+                      try {
+                        await navigator.clipboard.writeText(txHash);
+                        showToast('Copied! View on', 'neutral', 3000, `https://basescan.org/tx/${txHash}`, 'Basescan');
+                      } catch (err) {
+                        console.error('Failed to copy transaction hash:', err);
+                        showErrorToast('Failed to copy to clipboard', 5000);
+                      }
+                    }}
+                    className="text-sm font-medium text-[var(--foreground)] hover:text-[var(--primary)] transition-colors break-all text-left cursor-pointer"
+                    title="Click to copy"
+                  >
+                    {txHash}
+                  </button>
                 </div>
               </div>
             )}
@@ -117,41 +151,53 @@ export function TransactionConfirmation({
             <div className="min-w-0">
               <p className="text-sm text-[var(--foreground-secondary)] mb-1">From</p>
               {fromAccount.type === 'wallet' ? (
-                <>
-                  <p className="text-sm font-medium text-[var(--foreground)] mb-1">Wallet</p>
-                  {address && (
-                    <div className="break-all text-left">
-                      <CopiableAddress address={address} showFullAddress={true} className="text-sm font-medium break-all text-left" />
-                    </div>
-                  )}
-                </>
+                <button
+                  onClick={() => address && handleCopyAddress(address, 'Wallet')}
+                  className="text-left cursor-pointer hover:text-[var(--primary)] transition-colors duration-200"
+                  title={`Click to copy: ${address}`}
+                >
+                  <p className="text-sm font-medium text-[var(--foreground)]">
+                    <span className="md:hidden">Wallet ...{address?.slice(-4)}</span>
+                    <span className="hidden md:inline">Wallet</span>
+                  </p>
+                </button>
               ) : (
-                <>
-                  <p className="text-sm font-medium text-[var(--foreground)] mb-1">{(fromAccount as VaultAccount).name}</p>
-                  <div className="break-all text-left">
-                    <CopiableAddress address={(fromAccount as VaultAccount).address} showFullAddress={true} className="text-sm font-medium break-all text-left" />
-                  </div>
-                </>
+                <button
+                  onClick={() => handleCopyAddress((fromAccount as VaultAccount).address, (fromAccount as VaultAccount).name)}
+                  className="text-left cursor-pointer hover:text-[var(--primary)] transition-colors duration-200"
+                  title={`Click to copy: ${(fromAccount as VaultAccount).address}`}
+                >
+                  <p className="text-sm font-medium text-[var(--foreground)]">
+                    <span className="md:hidden">{formatVaultName((fromAccount as VaultAccount).name)}</span>
+                    <span className="hidden md:inline">{(fromAccount as VaultAccount).name}</span>
+                  </p>
+                </button>
               )}
             </div>
             <div className="min-w-0">
               <p className="text-sm text-[var(--foreground-secondary)] mb-1">To</p>
               {toAccount.type === 'wallet' ? (
-                <>
-                  <p className="text-sm font-medium text-[var(--foreground)] mb-1">Wallet</p>
-                  {address && (
-                    <div className="break-all text-left">
-                      <CopiableAddress address={address} showFullAddress={true} className="text-sm font-medium break-all text-left" />
-                    </div>
-                  )}
-                </>
+                <button
+                  onClick={() => address && handleCopyAddress(address, 'Wallet')}
+                  className="text-left cursor-pointer hover:text-[var(--primary)] transition-colors duration-200"
+                  title={`Click to copy: ${address}`}
+                >
+                  <p className="text-sm font-medium text-[var(--foreground)]">
+                    <span className="md:hidden">Wallet ...{address?.slice(-4)}</span>
+                    <span className="hidden md:inline">Wallet</span>
+                  </p>
+                </button>
               ) : (
-                <>
-                  <p className="text-sm font-medium text-[var(--foreground)] mb-1">{(toAccount as VaultAccount).name}</p>
-                  <div className="break-all text-left">
-                    <CopiableAddress address={(toAccount as VaultAccount).address} showFullAddress={true} className="text-sm font-medium break-all text-left" />
-                  </div>
-                </>
+                <button
+                  onClick={() => handleCopyAddress((toAccount as VaultAccount).address, (toAccount as VaultAccount).name)}
+                  className="text-left cursor-pointer hover:text-[var(--primary)] transition-colors duration-200"
+                  title={`Click to copy: ${(toAccount as VaultAccount).address}`}
+                >
+                  <p className="text-sm font-medium text-[var(--foreground)]">
+                    <span className="md:hidden">{formatVaultName((toAccount as VaultAccount).name)}</span>
+                    <span className="hidden md:inline">{(toAccount as VaultAccount).name}</span>
+                  </p>
+                </button>
               )}
             </div>
             <div className="pt-2 border-t border-[var(--border-subtle)]">
@@ -161,27 +207,25 @@ export function TransactionConfirmation({
           </div>
         </div>
 
-        {/* View on Explorer Button */}
-        {txHash && (
-          <Button
-            onClick={() => window.open(`https://basescan.org/tx/${txHash}`, '_blank')}
-            variant="primary"
-            size="lg"
-            fullWidth
-            className="mb-6"
-          >
-            View on Explorer
-          </Button>
-        )}
+        {/* New Transaction Button */}
+        <Button
+          onClick={handleDone}
+          variant="primary"
+          size="lg"
+          fullWidth
+          className="mb-4"
+        >
+          New Transaction
+        </Button>
 
-        {/* Done Button */}
+        {/* Back to Dashboard Button */}
         <Button
           onClick={handleDone}
           variant="secondary"
           size="lg"
           fullWidth
         >
-          Done
+          Back to Dashboard
         </Button>
       </div>
     );
@@ -189,28 +233,28 @@ export function TransactionConfirmation({
 
   // Preview/Confirm state - Original design
   return (
-    <div className="bg-[var(--surface)] rounded-lg border border-[var(--border-subtle)] p-6 space-y-6">
+    <div className="bg-[var(--surface)] rounded-lg border border-[var(--border-subtle)] p-4 md:p-6 space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-xl font-semibold text-[var(--foreground)]">Confirm Transaction</h3>
-          <p className="text-sm text-[var(--foreground-secondary)] mt-1">
+      <div className="flex items-start md:items-center justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-lg md:text-xl font-semibold text-[var(--foreground)]">Confirm Transaction</h3>
+          <p className="text-xs md:text-sm text-[var(--foreground-secondary)] mt-0.5 md:mt-1">
             Review the details before confirming
           </p>
         </div>
-        <div className="px-3 py-1.5 bg-[var(--primary-subtle)] rounded-lg">
-          <span className="text-sm font-medium text-[var(--primary)]">
+        <div className="px-2 py-1 md:px-3 md:py-1.5 bg-[var(--primary-subtle)] rounded-lg shrink-0">
+          <span className="text-xs md:text-sm font-medium text-[var(--primary)]">
             {getTransactionTypeLabel()}
           </span>
         </div>
       </div>
 
       {/* Transaction Details Card */}
-      <div className="bg-[var(--surface-elevated)] rounded-lg p-5 space-y-4">
+      <div className="bg-[var(--surface-elevated)] rounded-lg p-3 md:p-5 space-y-3 md:space-y-4">
         {/* From Account */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-[var(--border-subtle)]">
+        <div className="flex items-center justify-between gap-2 md:gap-4">
+          <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-[var(--border-subtle)] shrink-0">
               <Image 
                 src={getVaultLogo(assetSymbol)} 
                 alt={fromAccount.type === 'wallet' ? 'Wallet' : (fromAccount as VaultAccount).name}
@@ -220,24 +264,41 @@ export function TransactionConfirmation({
               />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">From</p>
-              <p className="text-base font-semibold text-[var(--foreground)] truncate">
-                {fromAccount.type === 'wallet' 
-                  ? (address ? `Wallet ${truncateAddress(address)}` : 'Wallet')
-                  : (fromAccount as VaultAccount).name}
-              </p>
+              <p className="text-[10px] md:text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">From</p>
+              {fromAccount.type === 'wallet' ? (
+                <button
+                  onClick={() => address && handleCopyAddress(address, 'Wallet')}
+                  className="text-left cursor-pointer hover:text-[var(--primary)] transition-colors duration-200"
+                  title={`Click to copy: ${address}`}
+                >
+                  <p className="text-sm md:text-base font-semibold text-[var(--foreground)]">
+                    Wallet ...{address?.slice(-4)}
+                  </p>
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleCopyAddress((fromAccount as VaultAccount).address, (fromAccount as VaultAccount).name)}
+                  className="text-left cursor-pointer hover:text-[var(--primary)] transition-colors duration-200 truncate w-full"
+                  title={`Click to copy: ${(fromAccount as VaultAccount).address}`}
+                >
+                  <p className="text-sm md:text-base font-semibold text-[var(--foreground)] truncate">
+                    <span className="md:hidden">{formatVaultName((fromAccount as VaultAccount).name)}</span>
+                    <span className="hidden md:inline">{(fromAccount as VaultAccount).name}</span>
+                  </p>
+                </button>
+              )}
             </div>
           </div>
-          <div className="text-right ml-4">
-            <p className="text-lg font-semibold text-[var(--danger)]">
+          <div className="text-right shrink-0">
+            <p className="text-base md:text-lg font-semibold text-[var(--danger)]">
               -{formattedAmount}
             </p>
           </div>
         </div>
 
         {/* Arrow */}
-        <div className="flex justify-center py-2">
-          <div className="w-10 h-10 rounded-full bg-[var(--background)] flex items-center justify-center border-2 border-[var(--border-subtle)]">
+        <div className="flex justify-center py-1 md:py-2">
+          <div className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-[var(--background)] flex items-center justify-center border-2 border-[var(--border-subtle)]">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
@@ -246,7 +307,7 @@ export function TransactionConfirmation({
               strokeWidth="2.5"
               strokeLinecap="round"
               strokeLinejoin="round"
-              className="w-5 h-5 text-[var(--foreground-secondary)]"
+              className="w-4 h-4 md:w-5 md:h-5 text-[var(--foreground-secondary)]"
             >
               <line x1="12" y1="5" x2="12" y2="19" />
               <polyline points="19 12 12 19 5 12" />
@@ -255,9 +316,9 @@ export function TransactionConfirmation({
         </div>
 
         {/* To Account */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 flex-1">
-            <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-[var(--border-subtle)]">
+        <div className="flex items-center justify-between gap-2 md:gap-4">
+          <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-[var(--border-subtle)] shrink-0">
               <Image 
                 src={getVaultLogo(assetSymbol)} 
                 alt={toAccount.type === 'wallet' ? 'Wallet' : (toAccount as VaultAccount).name}
@@ -267,21 +328,33 @@ export function TransactionConfirmation({
               />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">To</p>
-              <p className="text-base font-semibold text-[var(--foreground)] truncate">
-                {toAccount.type === 'wallet' 
-                  ? (address ? `Wallet ${truncateAddress(address)}` : 'Wallet')
-                  : (toAccount as VaultAccount).name}
-              </p>
-              {toAccount.type === 'vault' && (
-                <p className="text-xs text-[var(--foreground-muted)] mt-0.5">
-                  {truncateAddress((toAccount as VaultAccount).address as `0x${string}`)}
-                </p>
+              <p className="text-[10px] md:text-xs text-[var(--foreground-secondary)] uppercase tracking-wide">To</p>
+              {toAccount.type === 'wallet' ? (
+                <button
+                  onClick={() => address && handleCopyAddress(address, 'Wallet')}
+                  className="text-left cursor-pointer hover:text-[var(--primary)] transition-colors duration-200"
+                  title={`Click to copy: ${address}`}
+                >
+                  <p className="text-sm md:text-base font-semibold text-[var(--foreground)]">
+                    Wallet ...{address?.slice(-4)}
+                  </p>
+                </button>
+              ) : (
+                <button
+                  onClick={() => handleCopyAddress((toAccount as VaultAccount).address, (toAccount as VaultAccount).name)}
+                  className="text-left cursor-pointer hover:text-[var(--primary)] transition-colors duration-200 truncate w-full"
+                  title={`Click to copy: ${(toAccount as VaultAccount).address}`}
+                >
+                  <p className="text-sm md:text-base font-semibold text-[var(--foreground)] truncate">
+                    <span className="md:hidden">{formatVaultName((toAccount as VaultAccount).name)}</span>
+                    <span className="hidden md:inline">{(toAccount as VaultAccount).name}</span>
+                  </p>
+                </button>
               )}
             </div>
           </div>
-          <div className="text-right ml-4">
-            <p className="text-lg font-semibold text-[var(--success)]">
+          <div className="text-right shrink-0">
+            <p className="text-base md:text-lg font-semibold text-[var(--success)]">
               +{formattedAmount}
             </p>
           </div>
@@ -290,21 +363,21 @@ export function TransactionConfirmation({
 
       {/* Note for WETH deposits */}
       {transactionType === 'deposit' && assetSymbol === 'WETH' && fromAccount.type === 'wallet' && (
-        <div className="flex items-start gap-3 p-4 bg-[var(--info-subtle)] rounded-lg border border-[var(--info)]">
-          <div className="w-5 h-5 rounded-full bg-[var(--info)] flex items-center justify-center shrink-0 mt-0.5">
-            <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="flex items-start gap-2 md:gap-3 p-3 md:p-4 bg-[var(--info-subtle)] rounded-lg border border-[var(--info)]">
+          <div className="w-4 h-4 md:w-5 md:h-5 rounded-full bg-[var(--info)] flex items-center justify-center shrink-0 mt-0.5">
+            <svg className="w-2.5 h-2.5 md:w-3 md:h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <p className="text-sm text-[var(--foreground)]">
+          <p className="text-xs md:text-sm text-[var(--foreground)]">
             <span className="font-medium">Note:</span> Depositing ETH will wrap it to WETH. USDC can be used for gas fees on Base.
           </p>
         </div>
       )}
 
       {/* Disclaimer */}
-      <div className="pt-4 border-t border-[var(--border-subtle)]">
-        <p className="text-xs text-[var(--foreground-secondary)] leading-relaxed">
+      <div className="pt-3 md:pt-4 border-t border-[var(--border-subtle)]">
+        <p className="text-[10px] md:text-xs text-[var(--foreground-secondary)] leading-relaxed">
           By confirming this transaction, you agree to the{' '}
           <a
             href="#"
@@ -322,13 +395,13 @@ export function TransactionConfirmation({
 
       {/* Progress Bar - Show at bottom when transaction is in progress */}
       {showProgress && progressSteps.length > 0 && (
-        <div className="pt-4 border-t border-[var(--border-subtle)]">
+        <div className="pt-3 md:pt-4 border-t border-[var(--border-subtle)]">
           <TransactionProgressBar steps={progressSteps} isSuccess={isSuccess} />
         </div>
       )}
 
       {/* Action Buttons */}
-      <div className="flex gap-3 pt-2">
+      <div className="flex gap-2 md:gap-3 pt-2">
         {isSuccess ? (
           <Button
             onClick={onCancel}
@@ -356,7 +429,7 @@ export function TransactionConfirmation({
               size="lg"
               fullWidth
             >
-              {isLoading ? 'Processing...' : 'Confirm Transaction'}
+              {isLoading ? 'Processing...' : 'Confirm'}
             </Button>
           </>
         )}

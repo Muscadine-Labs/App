@@ -12,6 +12,7 @@ import { VAULTS } from '@/lib/vaults';
 import { VaultAccount, WalletAccount } from '@/types/vault';
 import { formatBigIntForInput, formatAvailableBalance, formatAssetAmountForMax, formatCurrency } from '@/lib/formatter';
 import { Button } from '@/components/ui';
+import { Icon } from '@/components/ui/Icon';
 import { formatUnits } from 'viem';
 
 // ERC-4626 ABI for convertToAssets
@@ -319,6 +320,118 @@ export default function TransactionsPage() {
     router.push('/transactions');
   };
 
+  const handleFlipAccounts = () => {
+    if (fromAccount && toAccount) {
+      const temp = fromAccount;
+      setFromAccount(toAccount);
+      setToAccount(temp);
+      // Clear amount when flipping since the available balance changes
+      setAmount('');
+    }
+  };
+
+  // Calculate available accounts for "From" selector
+  const availableFromAccounts = useMemo(() => {
+    const walletAccount: WalletAccount = {
+      type: 'wallet',
+      address: 'wallet',
+      symbol: 'Wallet',
+      balance: BigInt(0),
+    };
+
+    const vaultAccounts: VaultAccount[] = Object.values(VAULTS).map((vault): VaultAccount => {
+      const vaultData = getVaultData(vault.address);
+      const position = morphoHoldings.positions.find(
+        (pos) => pos.vault.address.toLowerCase() === vault.address.toLowerCase()
+      );
+
+      return {
+        type: 'vault' as const,
+        address: vault.address,
+        name: vault.name,
+        symbol: vault.symbol,
+        balance: position ? BigInt(position.shares) : BigInt(0),
+        assetAddress: '',
+        assetDecimals: vaultData?.assetDecimals ?? 18,
+      };
+    });
+
+    return [walletAccount, ...vaultAccounts].filter((account) => {
+      // Exclude the account selected in "To" if it's the same
+      if (toAccount) {
+        if (account.type === 'wallet' && toAccount.type === 'wallet') {
+          return false;
+        }
+        if (account.type === 'vault' && toAccount.type === 'vault') {
+          return (account as VaultAccount).address.toLowerCase() !== (toAccount as VaultAccount).address.toLowerCase();
+        }
+      }
+      return true;
+    });
+  }, [toAccount, morphoHoldings.positions, getVaultData]);
+
+  // Calculate available accounts for "To" selector
+  const availableToAccounts = useMemo(() => {
+    const walletAccount: WalletAccount = {
+      type: 'wallet',
+      address: 'wallet',
+      symbol: 'Wallet',
+      balance: BigInt(0),
+    };
+
+    // If "From" is a vault, only show wallet (prevent vault-to-vault)
+    if (fromAccount && fromAccount.type === 'vault') {
+      return [walletAccount];
+    }
+
+    const vaultAccounts: VaultAccount[] = Object.values(VAULTS)
+      .map((vault): VaultAccount => {
+        const vaultData = getVaultData(vault.address);
+        const position = morphoHoldings.positions.find(
+          (pos) => pos.vault.address.toLowerCase() === vault.address.toLowerCase()
+        );
+
+        return {
+          type: 'vault' as const,
+          address: vault.address,
+          name: vault.name,
+          symbol: vault.symbol,
+          balance: position ? BigInt(position.shares) : BigInt(0),
+          assetAddress: '',
+          assetDecimals: vaultData?.assetDecimals ?? 18,
+        };
+      });
+
+    return [walletAccount, ...vaultAccounts].filter((account) => {
+      if (!fromAccount) {
+        return true;
+      }
+      if (account.type !== fromAccount.type) {
+        return true;
+      }
+      if (account.type === 'wallet') {
+        return false;
+      }
+      const accountVault = account as unknown as VaultAccount;
+      const fromVault = fromAccount as unknown as VaultAccount;
+      return accountVault.address.toLowerCase() !== fromVault.address.toLowerCase();
+    });
+  }, [fromAccount, morphoHoldings.positions, getVaultData]);
+
+  // Auto-select "From" account if there's only one option
+  useEffect(() => {
+    if (!fromAccount && availableFromAccounts.length === 1 && status === 'idle') {
+      setFromAccount(availableFromAccounts[0]);
+    }
+  }, [fromAccount, availableFromAccounts, status, setFromAccount]);
+
+  // Auto-select "To" account if there's only one option
+  useEffect(() => {
+    if (!toAccount && availableToAccounts.length === 1 && status === 'idle') {
+      setToAccount(availableToAccounts[0]);
+    }
+  }, [toAccount, availableToAccounts, status, setToAccount]);
+
   if (!isConnected) {
     return (
       <div className="w-full max-w-2xl mx-auto p-6">
@@ -375,7 +488,7 @@ export default function TransactionsPage() {
           Transfer Assets
         </h1>
         <p className="text-sm text-[var(--foreground-secondary)]">
-          Move assets between your wallet and vaults, or transfer between vaults.
+          Move assets between your wallet and vaults.
         </p>
       </div>
 
@@ -393,11 +506,33 @@ export default function TransactionsPage() {
               if (account?.type === 'wallet' && toAccount?.type === 'wallet') {
                 setToAccount(null);
               }
+              // If vault is selected and "to" is also a vault, unselect "to" (prevent vault-to-vault)
+              if (account?.type === 'vault' && toAccount?.type === 'vault') {
+                setToAccount(null);
+              }
               setFromAccount(account);
             }}
             excludeAccount={toAccount}
             assetSymbol={derivedAsset?.symbol || null}
           />
+
+          {/* Flip Button */}
+          <div className="flex justify-center -my-2">
+            <button
+              type="button"
+              onClick={handleFlipAccounts}
+              disabled={!fromAccount || !toAccount}
+              className="p-2 rounded-lg bg-[var(--background)] border border-[var(--border-subtle)] hover:border-[var(--primary)] hover:bg-[var(--surface-elevated)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-[var(--border-subtle)] disabled:hover:bg-[var(--background)]"
+              aria-label="Flip accounts"
+            >
+              <Icon
+                name="arrow-swap"
+                size="md"
+                color="secondary"
+                className="text-[var(--foreground-secondary)] rotate-90"
+              />
+            </button>
+          </div>
 
           {/* To Account */}
           <AccountSelector
@@ -406,6 +541,10 @@ export default function TransactionsPage() {
             onSelect={(account) => {
               // If wallet is selected and it's already selected in "from", unselect it from "from"
               if (account?.type === 'wallet' && fromAccount?.type === 'wallet') {
+                setFromAccount(null);
+              }
+              // If vault is selected and "from" is also a vault, unselect "from" (prevent vault-to-vault)
+              if (account?.type === 'vault' && fromAccount?.type === 'vault') {
                 setFromAccount(null);
               }
               setToAccount(account);
@@ -490,13 +629,16 @@ export default function TransactionsPage() {
           )}
 
           {/* Validation message */}
-          {fromAccount && toAccount && fromAccount.type === 'wallet' && toAccount.type === 'wallet' && (
+          {(fromAccount && toAccount && fromAccount.type === 'wallet' && toAccount.type === 'wallet') || 
+           (fromAccount && toAccount && fromAccount.type === 'vault' && toAccount.type === 'vault') ? (
             <div className="p-4 bg-[var(--warning-subtle)] rounded-lg border border-[var(--warning)]">
               <p className="text-sm text-[var(--foreground)]">
-                Wallet-to-wallet transactions are not allowed. Please select a vault for one of the accounts.
+                {fromAccount.type === 'wallet' && toAccount.type === 'wallet'
+                  ? 'Wallet-to-wallet transactions are not allowed. Please select a vault for one of the accounts.'
+                  : 'Vault-to-vault transactions are not allowed. Please select a wallet for one of the accounts.'}
               </p>
             </div>
-          )}
+          ) : null}
 
           {/* Start Transaction Button */}
           <Button
@@ -507,7 +649,8 @@ export default function TransactionsPage() {
               !derivedAsset || 
               !amount || 
               parseFloat(amount) <= 0 ||
-              (fromAccount.type === 'wallet' && toAccount.type === 'wallet') // Prevent wallet-to-wallet
+              (fromAccount.type === 'wallet' && toAccount.type === 'wallet') || // Prevent wallet-to-wallet
+              (fromAccount.type === 'vault' && toAccount.type === 'vault') // Prevent vault-to-vault
             }
             variant="primary"
             size="lg"
@@ -528,16 +671,6 @@ export default function TransactionsPage() {
               }, 3000);
             }}
           />
-          {status !== 'signing' && status !== 'approving' && status !== 'confirming' && (
-            <Button
-              onClick={handleReset}
-              variant="secondary"
-              size="lg"
-              fullWidth
-            >
-              {status === 'success' ? 'New Transaction' : 'Start Over'}
-            </Button>
-          )}
         </>
       )}
     </div>

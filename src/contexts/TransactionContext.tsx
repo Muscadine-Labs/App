@@ -48,7 +48,7 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
   });
 
   // Determine transaction type based on from/to accounts
-  // Wallet-to-wallet transactions are not allowed
+  // Wallet-to-wallet and vault-to-vault transactions are not allowed
   const transactionType = useMemo<TransactionType | null>(() => {
     if (!state.fromAccount || !state.toAccount) return null;
 
@@ -57,12 +57,15 @@ export function TransactionProvider({ children }: { children: React.ReactNode })
       return null;
     }
 
+    // Prevent vault-to-vault transactions
+    if (state.fromAccount.type === 'vault' && state.toAccount.type === 'vault') {
+      return null;
+    }
+
     if (state.fromAccount.type === 'wallet' && state.toAccount.type === 'vault') {
       return 'deposit';
     } else if (state.fromAccount.type === 'vault' && state.toAccount.type === 'wallet') {
       return 'withdraw';
-    } else if (state.fromAccount.type === 'vault' && state.toAccount.type === 'vault') {
-      return 'transfer';
     }
 
     return null;

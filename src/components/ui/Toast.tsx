@@ -32,7 +32,7 @@ export function Toast({ toast, onRemove }: ToastProps) {
   };
 
   const getToastStyles = () => {
-    const baseStyles = 'flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg min-w-[200px] max-w-md';
+    const baseStyles = 'flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg min-w-[200px] w-full md:w-auto md:max-w-md backdrop-blur-sm';
     
     switch (toast.type) {
       case 'success':
@@ -43,8 +43,10 @@ export function Toast({ toast, onRemove }: ToastProps) {
         return `${baseStyles} bg-[var(--warning-subtle)] border-[var(--warning)]`;
       case 'info':
         return `${baseStyles} bg-[var(--info-subtle)] border-[var(--info)]`;
+      case 'neutral':
+        return `${baseStyles} bg-[var(--surface)] border-[var(--border-subtle)]`;
       default:
-        return `${baseStyles} bg-[var(--surface-elevated)] border-[var(--border-subtle)]`;
+        return `${baseStyles} bg-[var(--surface)] border-[var(--border-subtle)]`;
     }
   };
 
@@ -58,6 +60,8 @@ export function Toast({ toast, onRemove }: ToastProps) {
         return 'text-[var(--warning)]';
       case 'info':
         return 'text-[var(--info)]';
+      case 'neutral':
+        return 'text-[var(--foreground-secondary)]';
       default:
         return 'text-[var(--foreground)]';
     }
@@ -89,6 +93,12 @@ export function Toast({ toast, onRemove }: ToastProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         );
+      case 'neutral':
+        return (
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+          </svg>
+        );
       default:
         return null;
     }
@@ -106,9 +116,27 @@ export function Toast({ toast, onRemove }: ToastProps) {
       <div className={`flex-shrink-0 ${getIconColor()}`}>
         {getIcon()}
       </div>
-      <p className="flex-1 text-sm font-medium text-[var(--foreground)]">
-        {toast.message}
-      </p>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-[var(--foreground)]">
+          {toast.message}
+          {toast.actionUrl && (
+            <>
+              {' '}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (toast.actionUrl) {
+                    window.open(toast.actionUrl, '_blank');
+                  }
+                }}
+                className="text-[var(--primary)] hover:underline font-medium"
+              >
+                {toast.actionLabel || 'View'}
+              </button>
+            </>
+          )}
+        </p>
+      </div>
       <button
         onClick={handleRemove}
         className="flex-shrink-0 text-[var(--foreground-secondary)] hover:text-[var(--foreground)] transition-colors"

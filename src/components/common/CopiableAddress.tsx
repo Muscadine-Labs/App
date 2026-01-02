@@ -18,12 +18,12 @@ export default function CopiableAddress({
   showFullAddress = false,
   truncateLength = 6 
 }: CopiableAddressProps) {
-  const { success, error: showErrorToast } = useToast();
+  const { showToast, error: showErrorToast } = useToast();
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(address);
-      success('Copied to clipboard', 2000);
+      showToast('Copied to clipboard', 'neutral', 2000);
     } catch {
       showErrorToast('Failed to copy to clipboard', 5000);
     }

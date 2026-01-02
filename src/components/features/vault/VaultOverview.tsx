@@ -619,8 +619,8 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                         const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
                         return `Date: ${formatTooltipDate(timestamp)}`;
                       }}
-                      formatter={(value: number | undefined) => {
-                        if (value === undefined) return ['', 'APY'];
+                      formatter={(value) => {
+                        if (value === undefined || typeof value !== 'number') return ['', 'APY'];
                         return [formatPercentage(value / 100), 'APY'];
                       }}
                     />
@@ -669,8 +669,8 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                             const timestamp = typeof label === 'number' ? label : parseFloat(String(label));
                             return `Date: ${formatTooltipDate(timestamp)}`;
                           }}
-                          formatter={(value: number | undefined) => {
-                            if (value === undefined) return ['', 'Total Deposits'];
+                          formatter={(value) => {
+                            if (value === undefined || typeof value !== 'number') return ['', 'Total Deposits'];
                             if (valueType === 'usd') {
                               return [formatSmartCurrency(value, { alwaysTwoDecimals: true }), 'Total Deposits'];
                             } else {

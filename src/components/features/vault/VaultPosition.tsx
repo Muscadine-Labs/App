@@ -777,8 +777,8 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                         border: '1px solid var(--border-subtle)',
                         borderRadius: '8px',
                       }}
-                      formatter={(value: number | undefined) => {
-                        if (value === undefined) return ['', 'Your Position'];
+                      formatter={(value) => {
+                        if (value === undefined || typeof value !== 'number') return ['', 'Your Position'];
                         if (valueType === 'usd') {
                           return [formatCurrency(value), 'Your Position'];
                         } else {

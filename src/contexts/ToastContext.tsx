@@ -2,20 +2,22 @@
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 
-export type ToastType = 'success' | 'error' | 'info' | 'warning';
+export type ToastType = 'success' | 'error' | 'info' | 'warning' | 'neutral';
 
 export interface Toast {
   id: string;
   message: string;
   type: ToastType;
   duration?: number; // Duration in milliseconds, defaults to 3000
+  actionUrl?: string; // Optional URL for action link
+  actionLabel?: string; // Optional label for action link (defaults to extracted from URL)
 }
 
 interface ToastContextType {
   toasts: Toast[];
-  showToast: (message: string, type?: ToastType, duration?: number) => void;
+  showToast: (message: string, type?: ToastType, duration?: number, actionUrl?: string, actionLabel?: string) => void;
   removeToast: (id: string) => void;
-  success: (message: string, duration?: number) => void;
+  success: (message: string, duration?: number, actionUrl?: string, actionLabel?: string) => void;
   error: (message: string, duration?: number) => void;
   info: (message: string, duration?: number) => void;
   warning: (message: string, duration?: number) => void;
@@ -33,7 +35,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const showToast = useCallback((
     message: string,
     type: ToastType = 'success',
-    duration: number = 3000
+    duration: number = 3000,
+    actionUrl?: string,
+    actionLabel?: string
   ) => {
     const id = `toast-${Date.now()}-${Math.random()}`;
     const newToast: Toast = {
@@ -41,6 +45,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       message,
       type,
       duration,
+      actionUrl,
+      actionLabel,
     };
 
     setToasts(prev => [...prev, newToast]);
@@ -53,8 +59,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }
   }, [removeToast]);
 
-  const success = useCallback((message: string, duration?: number) => {
-    showToast(message, 'success', duration);
+  const success = useCallback((message: string, duration?: number, actionUrl?: string, actionLabel?: string) => {
+    showToast(message, 'success', duration, actionUrl, actionLabel);
   }, [showToast]);
 
   const error = useCallback((message: string, duration?: number) => {

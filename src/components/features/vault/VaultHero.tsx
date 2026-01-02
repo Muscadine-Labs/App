@@ -10,12 +10,12 @@ interface VaultHeroProps {
 }
 
 export default function VaultHero({ vaultData }: VaultHeroProps) {
-  const { success, error: showErrorToast } = useToast();
+  const { showToast, error: showErrorToast } = useToast();
 
   const handleCopyAddress = async () => {
     try {
       await navigator.clipboard.writeText(vaultData.address);
-      success('Copied to clipboard', 2000);
+      showToast('Copied to clipboard', 'neutral', 2000);
     } catch {
       showErrorToast('Failed to copy to clipboard', 5000);
     }
