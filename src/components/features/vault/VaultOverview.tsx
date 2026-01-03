@@ -605,7 +605,10 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                     />
                     <YAxis 
                       domain={apyYAxisDomain}
-                      tickFormatter={(value) => formatPercentage(value / 100)}
+                      tickFormatter={(value) => {
+                        if (value === undefined || typeof value !== 'number') return '';
+                        return formatPercentage(value / 100);
+                      }}
                       stroke="var(--foreground-secondary)"
                       style={{ fontSize: '12px' }}
                     />
@@ -645,8 +648,12 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
                         <YAxis 
                           domain={tvlYAxisDomain}
                           tickFormatter={(value) => {
+                            if (value === undefined || typeof value !== 'number') return '';
                             if (valueType === 'usd') {
-                              return formatSmartCurrency(value / 1000).replace(/K/g, 'k');
+                              if (value < 1000) {
+                                return '$' + formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                              }
+                              return '$' + formatNumber(value / 1000, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'k';
                             } else {
                               // Format token amount: use k format if >= 1000, otherwise show full value
                               if (value >= 1000) {

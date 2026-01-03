@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { MorphoVaultData } from '@/types/vault';
 import { useWallet } from '@/contexts/WalletContext';
-import { formatSmartCurrency, formatAssetAmount, formatCurrency, formatPercentage } from '@/lib/formatter';
+import { formatAssetAmount, formatCurrency, formatNumber } from '@/lib/formatter';
 import { calculateYAxisDomain } from '@/lib/vault-utils';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/contexts/ToastContext';
@@ -514,9 +514,6 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     router.push(`/transactions?vault=${vaultData.address}&action=withdraw`);
   };
 
-  // Format APY
-  const apyPercent = formatPercentage(vaultData.apy);
-
   return (
     <div className="space-y-6">
       {/* Position Value */}
@@ -742,8 +739,12 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                     <YAxis 
                       domain={yAxisDomain}
                       tickFormatter={(value) => {
+                        if (value === undefined || typeof value !== 'number') return '';
                         if (valueType === 'usd') {
-                          return formatSmartCurrency(value / 1000).replace('K', 'k');
+                          if (value < 1000) {
+                            return '$' + formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                          }
+                          return '$' + formatNumber(value / 1000, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + 'k';
                         } else {
                           // Format token amount consistently with "Your Deposits" - at least 2 decimals
                           const decimals = vaultData.assetDecimals || 18;

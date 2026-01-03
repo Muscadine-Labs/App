@@ -3,12 +3,11 @@
 import Image from 'next/image';
 import { Account, VaultAccount, getVaultLogo } from '@/types/vault';
 import { TransactionType, useTransactionState } from '@/contexts/TransactionContext';
-import { truncateAddress, formatAssetBalance } from '@/lib/formatter';
+import { formatAssetBalance } from '@/lib/formatter';
 import { Button } from '@/components/ui';
 import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
 import { TransactionProgressBar } from './TransactionProgressBar';
-import CopiableAddress from '@/components/common/CopiableAddress';
 import { useToast } from '@/contexts/ToastContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
 import { useWallet } from '@/contexts/WalletContext';

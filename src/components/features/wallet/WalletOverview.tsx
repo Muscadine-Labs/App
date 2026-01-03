@@ -1,9 +1,8 @@
 'use client';
 
 import { useAccount } from 'wagmi';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useWallet } from '@/contexts/WalletContext';
-import { useVaultData } from '@/contexts/VaultDataContext';
 import { formatNumber, formatCurrency } from '@/lib/formatter';
 import { Skeleton } from '@/components/ui/Skeleton';
 import {

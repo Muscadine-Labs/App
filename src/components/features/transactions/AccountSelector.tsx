@@ -203,7 +203,7 @@ export function AccountSelector({
   };
 
   // Check if balance is loading
-  const isBalanceLoading = (account: Account, assetSymbol?: string): boolean => {
+  const isBalanceLoading = (account: Account): boolean => {
     if (account.type === 'wallet') {
       // For wallet, check if morphoHoldings is loading (includes token balances)
       return morphoHoldings.isLoading;
@@ -309,7 +309,7 @@ export function AccountSelector({
                   {getAccountDisplayName(selectedAccount)}
                 </div>
                 <div className="text-xs text-[var(--foreground-secondary)]">
-                  {isBalanceLoading(selectedAccount, assetSymbol || undefined) ? (
+                  {isBalanceLoading(selectedAccount) ? (
                     <Skeleton width="4rem" height="0.75rem" />
                   ) : (
                     formatBalance(selectedAccount, assetSymbol || undefined)
@@ -378,7 +378,7 @@ export function AccountSelector({
                     {/* Only show balance for wallet if assetSymbol is set (vault selected), or always show for vaults */}
                     {(account.type !== 'wallet' || assetSymbol) && (
                       <div className="text-xs text-[var(--foreground-secondary)]">
-                        {isBalanceLoading(account, assetSymbol || undefined) ? (
+                        {isBalanceLoading(account) ? (
                           <Skeleton width="4rem" height="0.75rem" />
                         ) : (
                           formatBalance(account, assetSymbol || undefined)
