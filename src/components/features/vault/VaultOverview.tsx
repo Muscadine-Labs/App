@@ -219,8 +219,11 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
         // Silently fail, will fall back to daily data
         logger.warn(
           'Failed to fetch 7d hourly data, falling back to daily',
-          error instanceof Error ? error : new Error(String(error)),
-          { vaultAddress: vaultData.address, chainId: vaultData.chainId }
+          { 
+            vaultAddress: vaultData.address, 
+            chainId: vaultData.chainId,
+            error: error instanceof Error ? error.message : String(error)
+          }
         );
         setHourly7dData([]);
       }
@@ -257,8 +260,11 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
         // Silently fail, will fall back to daily data
         logger.warn(
           'Failed to fetch 30d hourly data, falling back to daily',
-          error instanceof Error ? error : new Error(String(error)),
-          { vaultAddress: vaultData.address, chainId: vaultData.chainId }
+          { 
+            vaultAddress: vaultData.address, 
+            chainId: vaultData.chainId,
+            error: error instanceof Error ? error.message : String(error)
+          }
         );
         setHourly30dData([]);
       }

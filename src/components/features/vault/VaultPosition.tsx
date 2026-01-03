@@ -248,8 +248,12 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
         // Silently fail, will fall back to daily data
         logger.warn(
           'Failed to fetch 7D hourly position data, falling back to daily',
-          error instanceof Error ? error : new Error(String(error)),
-          { vaultAddress: vaultData.address, userAddress: address, chainId: vaultData.chainId }
+          { 
+            vaultAddress: vaultData.address, 
+            userAddress: address, 
+            chainId: vaultData.chainId,
+            error: error instanceof Error ? error.message : String(error)
+          }
         );
         setHourly7dPositionHistory([]);
       }
@@ -288,8 +292,12 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
         // Silently fail, will fall back to daily data
         logger.warn(
           'Failed to fetch 30D hourly position data, falling back to daily',
-          error instanceof Error ? error : new Error(String(error)),
-          { vaultAddress: vaultData.address, userAddress: address, chainId: vaultData.chainId }
+          { 
+            vaultAddress: vaultData.address, 
+            userAddress: address, 
+            chainId: vaultData.chainId,
+            error: error instanceof Error ? error.message : String(error)
+          }
         );
         setHourly30dPositionHistory([]);
       }

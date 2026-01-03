@@ -1,6 +1,6 @@
 import { VAULTS } from "@/lib/vaults";
 import VaultListCard from "./VaultListCard";
-import { Vault } from "../../../types/vault";
+import { Vault, MorphoVaultData } from "../../../types/vault";
 import { useWallet } from "../../../contexts/WalletContext";
 import { useVaultData } from "../../../contexts/VaultDataContext";
 import { useAccount } from "wagmi";
@@ -64,9 +64,10 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
                             : (typeof currentPos.shares === 'number' ? currentPos.shares : 0);
                         const sharesDecimal = sharesRaw / 1e18;
                         
+                        const sharePriceUsd = (vaultData as MorphoVaultData).sharePriceUsd ?? 1;
                         const assetsUsd = typeof currentPos.assetsUsd === 'number' 
                             ? currentPos.assetsUsd 
-                            : (assetsDecimal * (vaultData.sharePriceUsd || 1));
+                            : (assetsDecimal * sharePriceUsd);
                         
                         positionsMap.set(vault.address.toLowerCase(), {
                             assets: assetsDecimal,

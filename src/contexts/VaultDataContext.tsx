@@ -153,9 +153,12 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
           : 'MORPHO'; // Default to MORPHO since most rewards are in MORPHO token
         
         // Share price handling
+        // sharePrice from GraphQL is in raw format (asset decimals), convert to decimal
+        // This is sharePrice in tokens (not USD) - tokens per share
         const rawSharePrice = vaultInfo.state?.sharePrice;
-        const sharePriceUsd = vaultInfo.state?.sharePriceUsd;
-        const formattedSharePrice = sharePriceUsd || (rawSharePrice ? rawSharePrice / 1e18 : 1);
+        const assetDecimals = vaultInfo.asset?.decimals || 18;
+        const sharePriceInTokens = rawSharePrice ? rawSharePrice / Math.pow(10, assetDecimals) : 1;
+        const sharePriceUsd = vaultInfo.state?.sharePriceUsd || 0;
 
         // Build the vault object
         const vault: Vault = {
@@ -165,10 +168,11 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
           chainId: effectiveChainId,
           totalValueLocked: vaultInfo.state?.totalAssetsUsd || 0,
           totalAssets: vaultInfo.state?.totalAssets || '0',
-          assetDecimals: vaultInfo.asset?.decimals || 18,
+          assetDecimals: assetDecimals,
           totalDeposits: vaultInfo.state?.totalAssetsUsd || 0,
           currentLiquidity: vaultInfo.state?.totalAssetsUsd || 0,
-          sharePrice: formattedSharePrice,
+          sharePrice: sharePriceInTokens, // Share price in tokens (not USD) - tokens per share
+          sharePriceUsd: sharePriceUsd, // Share price in USD
           apy: vaultInfo.state?.netApy || 0,
           netApyWithoutRewards: netApyWithoutRewards,
           rewardsApr: totalRewardsApr,
@@ -265,6 +269,7 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
     return {
       ...basic,
       totalValueLocked: basic.totalValueLocked || 0,
+      totalSupply: basic.totalSupply ?? '0',
       apy: basic.apy || 0, // Use the correct netApy value from basic
       netApyWithoutRewards: basic.netApyWithoutRewards || 0,
       rewardsApr: basic.rewardsApr || 0,
@@ -273,6 +278,7 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
       totalDeposits: basic.totalDeposits || 0,
       currentLiquidity: basic.currentLiquidity || 0,
       sharePrice: basic.sharePrice || 1,
+      sharePriceUsd: basic.sharePriceUsd || 0,
       whitelisted: basic.whitelisted ?? false,
       timelockDuration: basic.timelockDuration || 0,
       guardianAddress: basic.guardianAddress || '',

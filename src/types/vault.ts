@@ -9,6 +9,7 @@ export interface Vault {
     // Financial Metrics
     totalValueLocked?: number; // TVL in USD
     totalAssets?: string; // Total assets in native units (wei)
+    totalSupply?: string; // Total supply of vault shares (in wei)
     assetDecimals?: number; // Asset decimals for formatting
     apy?: number; // Annual Percentage Yield (net)
     netApyWithoutRewards?: number; // Net APY without reward incentives
@@ -17,7 +18,8 @@ export interface Vault {
     apyChange?: number; // APY change (positive/negative)
     totalDeposits?: number; // Total deposits in USD
     currentLiquidity?: number; // Available liquidity in USD
-    sharePrice?: number; // Current vault share price
+    sharePrice?: number; // Current vault share price (in tokens, not USD)
+    sharePriceUsd?: number; // Current vault share price in USD
     
     // Security & Risk
     whitelisted?: boolean; // Whether vault is whitelisted by Morpho
@@ -61,6 +63,7 @@ export interface Vault {
 export interface MorphoVaultData extends Vault {
     // All fields are required for Morpho vaults
     totalValueLocked: number;
+    totalSupply: string; // Total supply of vault shares (in wei)
     apy: number;
     netApyWithoutRewards: number;
     rewardsApr: number;
@@ -68,7 +71,8 @@ export interface MorphoVaultData extends Vault {
     apyChange: number;
     totalDeposits: number;
     currentLiquidity: number;
-    sharePrice: number;
+    sharePrice: number; // Share price in tokens (not USD)
+    sharePriceUsd: number; // Share price in USD
     whitelisted: boolean;
     timelockDuration: number;
     guardianAddress: string;
