@@ -11,8 +11,9 @@ import { TransactionStatus as TransactionStatusComponent } from './TransactionSt
 import { useToast } from '@/contexts/ToastContext';
 import { useWallet } from '@/contexts/WalletContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
-import { VAULTS } from '@/lib/vaults';
+
 import { logger } from '@/lib/logger';
+import { useRouter } from 'next/navigation';
 
 interface TransactionFlowProps {
   onSuccess?: () => void;
@@ -31,8 +32,9 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
     setStatus,
   } = useTransactionState();
   const { success, error: showErrorToast } = useToast();
-  const { refreshBalancesWithPolling, morphoHoldings } = useWallet();
+  const { refreshBalancesWithPolling, morphoHoldings, refreshBalances } = useWallet();
   const { fetchVaultData } = useVaultData();
+  const router = useRouter();
 
   const [currentTxHash, setCurrentTxHash] = useState<string | null>(null);
   const [prerequisiteReceipts, setPrerequisiteReceipts] = useState<Map<number, boolean>>(new Map());
@@ -130,14 +132,61 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
       success('Transaction confirmed!', 3000);
       setStatus('success', undefined, hashToUse);
       
-      // Refresh wallet balances with polling after transaction confirmation
+      // Refresh all data immediately after transaction confirmation
+      const refreshData = async () => {
+        try {
+          // Immediate refresh of wallet balances
+          await refreshBalances();
+          
+          // Refresh vault data for vaults specifically involved in the transaction
+          const vaultsInTransaction = new Set<string>();
+          if (fromAccount?.type === 'vault') {
+            vaultsInTransaction.add((fromAccount as VaultAccount).address);
+          }
+          if (toAccount?.type === 'vault') {
+            vaultsInTransaction.add((toAccount as VaultAccount).address);
+          }
+          
+          // Refresh vaults involved in transaction
+          await Promise.allSettled(
+            Array.from(vaultsInTransaction).map(vaultAddress => 
+              fetchVaultData(vaultAddress, 8453, true).catch((err) => {
+                logger.error('Failed to refresh vault data', err, { vaultAddress, txHash: hashToUse });
+              })
+            )
+          );
+          
+          // Also refresh vault data for all vaults the user has positions in
+          const vaultsToRefresh = morphoHoldings.positions.map(pos => pos.vault.address);
+          await Promise.allSettled(
+            vaultsToRefresh.map(vaultAddress => 
+              fetchVaultData(vaultAddress, 8453, true).catch((err) => {
+                logger.error('Failed to refresh vault data', err, { vaultAddress, txHash: hashToUse });
+              })
+            )
+          );
+          
+          // Force Next.js to refresh server-side data
+          router.refresh();
+          
+          logger.info('Data refreshed successfully after transaction', {
+            txHash: hashToUse,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (error) {
+          logger.error('Error refreshing data after transaction', error, { txHash: hashToUse });
+        }
+      };
+      
+      refreshData();
+      
+      // Also use polling to refresh balances (waits for blockchain state to update)
       // This ensures we get the updated balances even if there's a slight delay
       logger.info('Refreshing wallet balances after transaction with polling', {
         txHash: hashToUse,
         timestamp: new Date().toISOString(),
       });
       
-      // Use polling to refresh balances (waits for blockchain state to update)
       refreshBalancesWithPolling({
         maxAttempts: 10, // Try up to 10 times (30 seconds total with 3s intervals)
         intervalMs: 3000, // 3 seconds between attempts
@@ -151,29 +200,6 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
         logger.error('Failed to refresh wallet balances after polling', err, { txHash: hashToUse });
       });
       
-      // Refresh vault data for all vaults the user has positions in (force refresh to bypass cache)
-      const vaultsToRefresh = morphoHoldings.positions.map(pos => pos.vault.address);
-      logger.info('Refreshing vault data after transaction', {
-        txHash: hashToUse,
-        vaultCount: vaultsToRefresh.length,
-        vaultAddresses: vaultsToRefresh,
-        timestamp: new Date().toISOString(),
-      });
-      
-      vaultsToRefresh.forEach(vaultAddress => {
-        fetchVaultData(vaultAddress, 8453, true).then(() => {
-          logger.debug('Vault data refreshed', { vaultAddress, txHash: hashToUse });
-        }).catch((err) => {
-          logger.error('Failed to refresh vault data', err, { vaultAddress, txHash: hashToUse });
-        });
-      });
-      
-      // Also refresh all available vaults to ensure we have fresh data
-      Object.values(VAULTS).forEach(vault => {
-        fetchVaultData(vault.address, vault.chainId, true).catch((err) => {
-          logger.error('Failed to refresh vault data', err, { vaultAddress: vault.address, txHash: hashToUse });
-        });
-      });
       // Don't auto-close - let user see the confirmation page with details
     } else if (receiptError && status === 'confirming' && hashToUse) {
       logger.error('Transaction receipt error', receiptError, {
@@ -194,7 +220,7 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [receipt, receiptError, status, txHash, currentTxHash]);
+  }, [receipt, receiptError, status, txHash, currentTxHash, fromAccount, toAccount, refreshBalances, fetchVaultData, morphoHoldings, router, success, setStatus, showErrorToast]);
 
   const handleConfirm = async () => {
     if (!fromAccount || !toAccount || !amount || !transactionType) return;

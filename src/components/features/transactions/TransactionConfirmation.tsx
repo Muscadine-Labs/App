@@ -9,6 +9,8 @@ import { useAccount } from 'wagmi';
 import { useRouter } from 'next/navigation';
 import { TransactionProgressBar } from './TransactionProgressBar';
 import { useToast } from '@/contexts/ToastContext';
+import { useVaultData } from '@/contexts/VaultDataContext';
+import { useWallet } from '@/contexts/WalletContext';
 
 interface TransactionConfirmationProps {
   fromAccount: Account;
@@ -44,12 +46,37 @@ export function TransactionConfirmation({
   const { address } = useAccount();
   const router = useRouter();
   const { reset } = useTransactionState();
-  const { error: showErrorToast, showToast } = useToast();
+  const { success, error: showErrorToast, showToast } = useToast();
+  const { fetchVaultData } = useVaultData();
+  const { refreshBalances } = useWallet();
 
-  const handleDone = () => {
+  const handleDone = async () => {
     if (isSuccess) {
-      // Reset to idle state (first step) instead of going to dashboard
+      // Refresh all data to ensure fresh values
+      try {
+        // Refresh wallet balances (includes Morpho positions)
+        await refreshBalances();
+        
+        // Refresh vault data for any vaults involved in the transaction (force refresh to bypass cache)
+        if (fromAccount.type === 'vault') {
+          const vaultAddress = (fromAccount as VaultAccount).address;
+          await fetchVaultData(vaultAddress, 8453, true);
+        }
+        if (toAccount.type === 'vault') {
+          const vaultAddress = (toAccount as VaultAccount).address;
+          await fetchVaultData(vaultAddress, 8453, true);
+        }
+        
+        // Force Next.js to refresh server-side data
+        router.refresh();
+      } catch (error) {
+        console.error('Error refreshing data after transaction:', error);
+        // Continue with reset even if refresh fails
+      }
+      
       reset();
+      // Reset state and stay on transactions page to start a new transaction
+      router.push('/transactions');
     } else {
       onCancel();
     }
