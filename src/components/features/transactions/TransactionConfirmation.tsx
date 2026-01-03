@@ -46,7 +46,7 @@ export function TransactionConfirmation({
   const { address } = useAccount();
   const router = useRouter();
   const { reset } = useTransactionState();
-  const { success, error: showErrorToast, showToast } = useToast();
+  const { error: showErrorToast, showToast } = useToast();
   const { fetchVaultData } = useVaultData();
   const { refreshBalances } = useWallet();
 
@@ -409,14 +409,21 @@ export function TransactionConfirmation({
         <p className="text-[10px] md:text-xs text-[var(--foreground-secondary)] leading-relaxed">
           By confirming this transaction, you agree to the{' '}
           <a
-            href="#"
+            href="https://muscadine.io/terms"
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-[var(--primary)] hover:underline"
-            onClick={(e) => {
-              e.preventDefault();
-              // Open terms of use
-            }}
           >
             Terms of Use
+          </a>
+          {', '}
+          <a
+            href="https://muscadine.io/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--primary)] hover:underline"
+          >
+            Privacy Policy
           </a>
           {' '}and the services provisions relating to the Morpho Vault.
         </p>
