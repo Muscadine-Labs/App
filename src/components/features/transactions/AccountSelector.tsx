@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import Image from 'next/image';
 import { Account, WalletAccount, VaultAccount, getVaultLogo } from '@/types/vault';
 import { useWallet } from '@/contexts/WalletContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
+import { usePrices } from '@/contexts/PriceContext';
 import { VAULTS } from '@/lib/vaults';
 import { formatUnits } from 'viem';
 import { formatAssetBalance, truncateAddress } from '@/lib/formatter';
@@ -35,6 +36,7 @@ export function AccountSelector({
   const { address } = useAccount();
   const { tokenBalances, ethBalance, morphoHoldings } = useWallet();
   const { getVaultData, fetchVaultData, isLoading: isVaultDataLoading } = useVaultData();
+  const { btc: btcPrice, eth: ethPrice } = usePrices();
   const hasPreloadedRef = useRef(false);
 
   useOnClickOutside(dropdownRef, () => setIsOpen(false));
@@ -107,34 +109,111 @@ export function AccountSelector({
       };
     });
 
-  // Filter accounts based on compatibility
-  // Prevent vault-to-vault transactions: if excludeAccount is a vault, only show wallet
-  // If excludeAccount is a wallet, show all vaults and wallet
-  const availableAccounts = [...walletAccounts, ...vaultAccounts].filter((account) => {
-    if (!excludeAccount) {
-      return true;
+  // Calculate USD value for sorting accounts
+  const getAccountUsdValue = (account: Account): number => {
+    if (account.type === 'wallet') {
+      // For wallet, calculate USD value based on assetSymbol
+      if (!assetSymbol) {
+        // If no asset symbol, use ETH as default
+        const ethBal = parseFloat(ethBalance || '0');
+        return ethBal * (ethPrice || 0);
+      }
+      
+      if (assetSymbol === 'ETH') {
+        const ethBal = parseFloat(ethBalance || '0');
+        return ethBal * (ethPrice || 0);
+      }
+      
+      if (assetSymbol === 'WETH') {
+        const ethBal = parseFloat(ethBalance || '0');
+        const wethToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'WETH');
+        const wethBal = wethToken ? parseFloat(formatUnits(wethToken.balance, wethToken.decimals)) : 0;
+        return (ethBal + wethBal) * (ethPrice || 0);
+      }
+      
+      if (assetSymbol === 'USDC') {
+        const usdcToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'USDC');
+        if (usdcToken) {
+          return parseFloat(formatUnits(usdcToken.balance, usdcToken.decimals));
+        }
+        return 0;
+      }
+      
+      if (assetSymbol === 'cbBTC' || assetSymbol === 'CBBTC') {
+        const cbbtcToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'CBBTC' || t.symbol.toUpperCase() === 'CBTC');
+        if (cbbtcToken) {
+          const balance = parseFloat(formatUnits(cbbtcToken.balance, cbbtcToken.decimals));
+          return balance * (btcPrice || 0);
+        }
+        return 0;
+      }
+      
+      // For other tokens, try to find and use token balance
+      const token = tokenBalances.find((t) => t.symbol.toUpperCase() === assetSymbol.toUpperCase());
+      if (token) {
+        // Token found but no price available, return 0 (will sort to bottom)
+        return 0;
+      }
+      
+      return 0;
+    } else {
+      // For vault accounts, use position's USD value if available
+      const vaultAccount = account as VaultAccount;
+      const position = morphoHoldings.positions.find(
+        (pos) => pos.vault.address.toLowerCase() === vaultAccount.address.toLowerCase()
+      );
+      
+      if (position) {
+        // Try to get USD value from position
+        const sharesDecimal = parseFloat(position.shares) / 1e18;
+        if (position.vault?.state?.sharePriceUsd && sharesDecimal > 0) {
+          return sharesDecimal * position.vault.state.sharePriceUsd;
+        }
+      }
+      
+      return 0;
     }
-    
-    // Exclude the same account if it's already selected in the other field
-    if (account.type === 'wallet' && excludeAccount.type === 'wallet') {
-      return false;
-    }
-    if (account.type === 'vault' && excludeAccount.type === 'vault') {
-      const accountVault = account as VaultAccount;
-      const excludeVault = excludeAccount as VaultAccount;
-      if (accountVault.address.toLowerCase() === excludeVault.address.toLowerCase()) {
+  };
+
+  // Filter and sort accounts based on compatibility and USD value
+  const availableAccounts = useMemo(() => {
+    // Filter accounts based on compatibility
+    // Prevent vault-to-vault transactions: if excludeAccount is a vault, only show wallet
+    // If excludeAccount is a wallet, show all vaults and wallet
+    const filtered = [...walletAccounts, ...vaultAccounts].filter((account) => {
+      if (!excludeAccount) {
+        return true;
+      }
+      
+      // Exclude the same account if it's already selected in the other field
+      if (account.type === 'wallet' && excludeAccount.type === 'wallet') {
         return false;
       }
-    }
-    
-    // If the other account is a vault, only allow wallet (prevent vault-to-vault)
-    if (excludeAccount.type === 'vault') {
-      return account.type === 'wallet';
-    }
-    
-    // Wallet is always available (parent will handle unselecting from other slot)
-    return true;
-  });
+      if (account.type === 'vault' && excludeAccount.type === 'vault') {
+        const accountVault = account as VaultAccount;
+        const excludeVault = excludeAccount as VaultAccount;
+        if (accountVault.address.toLowerCase() === excludeVault.address.toLowerCase()) {
+          return false;
+        }
+      }
+      
+      // If the other account is a vault, only allow wallet (prevent vault-to-vault)
+      if (excludeAccount.type === 'vault') {
+        return account.type === 'wallet';
+      }
+      
+      // Wallet is always available (parent will handle unselecting from other slot)
+      return true;
+    });
+
+    // Sort accounts by USD value (highest to lowest)
+    return [...filtered].sort((a, b) => {
+      const valueA = getAccountUsdValue(a);
+      const valueB = getAccountUsdValue(b);
+      return valueB - valueA; // Descending order (highest first)
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletAccounts, vaultAccounts, excludeAccount, assetSymbol, ethBalance, ethPrice, btcPrice, tokenBalances, morphoHoldings.positions]);
 
   // Calculate balance value (returns string or number with symbol and decimals)
   const getBalanceValue = (account: Account, assetSymbol?: string): { value: string | number; symbol: string; decimals?: number } | null => {
