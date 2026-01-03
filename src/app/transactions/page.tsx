@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useCallback, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAccount, useReadContract } from 'wagmi';
 import { AccountSelector, TransactionFlow, TransactionProgressBar } from '@/components/features/transactions';
@@ -10,7 +10,7 @@ import { useVaultData } from '@/contexts/VaultDataContext';
 import { usePrices } from '@/contexts/PriceContext';
 import { VAULTS } from '@/lib/vaults';
 import { VaultAccount, WalletAccount } from '@/types/vault';
-import { formatBigIntForInput, formatAvailableBalance, formatAssetAmountForMax, formatCurrency } from '@/lib/formatter';
+import { formatBigIntForInput, formatAvailableBalance, formatAssetAmountForMax, formatCurrency, formatAssetBalance } from '@/lib/formatter';
 import { Button } from '@/components/ui';
 import { Icon } from '@/components/ui/Icon';
 import { formatUnits } from 'viem';
@@ -30,8 +30,8 @@ export default function TransactionsPage() {
   const { isConnected } = useAccount();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { tokenBalances, ethBalance, morphoHoldings } = useWallet();
-  const { getVaultData } = useVaultData();
+  const { tokenBalances, ethBalance, morphoHoldings, refreshBalances } = useWallet();
+  const { getVaultData, fetchVaultData } = useVaultData();
   const { btc: btcPrice, eth: ethPrice } = usePrices();
   const {
     fromAccount,
@@ -45,6 +45,58 @@ export default function TransactionsPage() {
     setStatus,
     reset,
   } = useTransactionState();
+
+  // Refresh wallet and vault data when page opens
+  useEffect(() => {
+    if (isConnected) {
+      // Refresh wallet balances immediately
+      refreshBalances();
+      
+      // Refresh vault data for all vaults that the user has positions in (force refresh to bypass cache)
+      const vaultsToRefresh = morphoHoldings.positions.map(pos => pos.vault.address);
+      vaultsToRefresh.forEach(vaultAddress => {
+        fetchVaultData(vaultAddress, 8453, true); // Force refresh
+      });
+      
+      // Also refresh all available vaults to ensure we have fresh data for selection
+      Object.values(VAULTS).forEach(vault => {
+        fetchVaultData(vault.address, vault.chainId, true); // Force refresh
+      });
+    }
+    // Only run once when component mounts or when connection status changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isConnected]);
+
+  // Track previous status to detect transitions to idle
+  const prevStatusRef = useRef<typeof status>(status);
+  
+  // Refresh balances when status returns to idle (after transaction completion/reset)
+  useEffect(() => {
+    // Only refresh when transitioning TO idle from another state (not on initial mount)
+    const wasIdle = prevStatusRef.current === 'idle';
+    const isNowIdle = status === 'idle';
+    const transitionedToIdle = !wasIdle && isNowIdle;
+    
+    if (isConnected && transitionedToIdle) {
+      // Refresh wallet balances to get updated values
+      refreshBalances();
+      
+      // Refresh vault data for all vaults that the user has positions in (force refresh to bypass cache)
+      const vaultsToRefresh = morphoHoldings.positions.map(pos => pos.vault.address);
+      vaultsToRefresh.forEach(vaultAddress => {
+        fetchVaultData(vaultAddress, 8453, true); // Force refresh
+      });
+      
+      // Also refresh all available vaults to ensure we have fresh data for selection
+      Object.values(VAULTS).forEach(vault => {
+        fetchVaultData(vault.address, vault.chainId, true); // Force refresh
+      });
+    }
+    
+    // Update previous status
+    prevStatusRef.current = status;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, isConnected]);
 
   // Handle URL params for pre-filling vault (when navigating from vault page)
   useEffect(() => {
@@ -145,11 +197,11 @@ export default function TransactionsPage() {
         const wethBal = wethToken ? parseFloat(formatUnits(wethToken.balance, wethToken.decimals)) : 0;
         
         if (wethBal > 0 && ethBal > 0) {
-          return `Available: ${formatAvailableBalance(combinedBal, 'WETH')} (${formatAvailableBalance(wethBal, 'WETH')} WETH + ${formatAvailableBalance(ethBal, 'ETH')} wrappable)`;
+          return `${formatAvailableBalance(combinedBal, 'WETH')} (${formatAssetBalance(wethBal, 'WETH')} + ${formatAssetBalance(ethBal, 'ETH')} wrappable)`;
         } else if (wethBal > 0) {
           return formatAvailableBalance(wethBal, 'WETH');
         } else if (ethBal > 0) {
-          return `Available: ${formatAvailableBalance(ethBal, 'ETH')} (wrappable to WETH)`;
+          return `${formatAvailableBalance(ethBal, 'ETH')} (wrappable to WETH)`;
         }
         return formatAvailableBalance('0', 'WETH');
       }

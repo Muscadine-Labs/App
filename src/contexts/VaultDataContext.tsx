@@ -44,7 +44,7 @@ interface VaultDataState {
 
 interface VaultDataContextType {
   vaultData: VaultDataState;
-  fetchVaultData: (address: string, chainId?: number) => Promise<void>;
+  fetchVaultData: (address: string, chainId?: number, forceRefresh?: boolean) => Promise<void>;
   getVaultData: (address: string) => MorphoVaultData | null;
   getVaultMarketIds: (address: string) => `0x${string}`[]; // Get market uniqueKeys for simulation
   isLoading: (address: string) => boolean;
@@ -88,11 +88,14 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
   }, []);
 
   // NEW: Fetch complete vault data in ONE API call
-  const fetchCompleteVaultData = useCallback(async (address: string, chainId: number = 8453) => {
-    const cacheKey = `vault-complete-${address}-${chainId}`;
+  const fetchCompleteVaultData = useCallback(async (address: string, chainId?: number, forceRefresh?: boolean) => {
+    const effectiveChainId = chainId ?? 8453;
+    const shouldForceRefresh = forceRefresh ?? false;
+    const cacheKey = `vault-complete-${address}-${effectiveChainId}`;
     
-    // Check if we already have fresh data
-    if (vaultData[address] && 
+    // Check if we already have fresh data (unless forcing refresh)
+    if (!shouldForceRefresh && 
+        vaultData[address] && 
         vaultData[address].basic && 
         !isDataStale(vaultData[address].lastFetched)) {
       return;
@@ -114,7 +117,7 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
       }));
 
       try {
-        const response = await fetch(`/api/vaults/${address}/complete?chainId=${chainId}`);
+        const response = await fetch(`/api/vaults/${address}/complete?chainId=${effectiveChainId}`);
         const data = await response.json();
 
         if (!response.ok) {

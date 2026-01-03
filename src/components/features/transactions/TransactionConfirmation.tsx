@@ -49,8 +49,8 @@ export function TransactionConfirmation({
 
   const handleDone = () => {
     if (isSuccess) {
+      // Reset to idle state (first step) instead of going to dashboard
       reset();
-      router.push('/');
     } else {
       onCancel();
     }
@@ -220,7 +220,10 @@ export function TransactionConfirmation({
 
         {/* Back to Dashboard Button */}
         <Button
-          onClick={handleDone}
+          onClick={() => {
+            reset();
+            router.push('/');
+          }}
           variant="secondary"
           size="lg"
           fullWidth

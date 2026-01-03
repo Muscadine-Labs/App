@@ -11,6 +11,7 @@ import { formatAssetBalance, truncateAddress } from '@/lib/formatter';
 import { useOnClickOutside } from '@/hooks/onClickOutside';
 import { useAccount } from 'wagmi';
 import { Icon } from '@/components/ui/Icon';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 interface AccountSelectorProps {
   label: string;
@@ -33,7 +34,7 @@ export function AccountSelector({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const { address } = useAccount();
   const { tokenBalances, ethBalance, morphoHoldings } = useWallet();
-  const { getVaultData, fetchVaultData } = useVaultData();
+  const { getVaultData, fetchVaultData, isLoading: isVaultDataLoading } = useVaultData();
   const hasPreloadedRef = useRef(false);
 
   useOnClickOutside(dropdownRef, () => setIsOpen(false));
@@ -135,25 +136,31 @@ export function AccountSelector({
     return true;
   });
 
-  // Calculate balance value (returns number or null)
-  const getBalanceValue = (account: Account, assetSymbol?: string): { value: number; symbol: string; decimals?: number } | null => {
+  // Calculate balance value (returns string or number with symbol and decimals)
+  const getBalanceValue = (account: Account, assetSymbol?: string): { value: string | number; symbol: string; decimals?: number } | null => {
     if (account.type === 'wallet') {
       if (assetSymbol) {
         if (assetSymbol === 'WETH' || assetSymbol === 'ETH') {
-          const value = parseFloat(ethBalance || '0');
-          return { value, symbol: assetSymbol };
+          // For WETH/ETH, combine native ETH balance with WETH token balance
+          const ethBal = parseFloat(ethBalance || '0');
+          const wethToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'WETH');
+          const wethBal = wethToken ? parseFloat(formatUnits(wethToken.balance, wethToken.decimals)) : 0;
+          const combinedBalance = ethBal + wethBal;
+          // Return as string to preserve precision
+          return { value: combinedBalance.toString(), symbol: assetSymbol, decimals: 18 };
         }
         const token = tokenBalances.find((t) => t.symbol.toUpperCase() === assetSymbol.toUpperCase());
         if (token) {
           const decimals = token.decimals;
+          // Use formatUnits directly to preserve precision
           const balanceString = formatUnits(token.balance, decimals);
-          const value = parseFloat(balanceString);
-          return { value, symbol: assetSymbol, decimals };
+          return { value: balanceString, symbol: assetSymbol, decimals };
         }
         return null;
       }
-      const value = parseFloat(ethBalance || '0');
-      return { value, symbol: 'ETH' };
+      // Use the original string from wagmi to preserve precision for small values
+      const balanceStr = ethBalance || '0';
+      return { value: balanceStr, symbol: 'ETH', decimals: 18 };
     } else {
       const vaultAccount = account as VaultAccount;
       const vaultData = getVaultData(vaultAccount.address);
@@ -195,6 +202,26 @@ export function AccountSelector({
     }
   };
 
+  // Check if balance is loading
+  const isBalanceLoading = (account: Account, assetSymbol?: string): boolean => {
+    if (account.type === 'wallet') {
+      // For wallet, check if morphoHoldings is loading (includes token balances)
+      return morphoHoldings.isLoading;
+    } else {
+      // For vault, check if we have a position and data is loading
+      const vaultAccount = account as VaultAccount;
+      const position = morphoHoldings.positions.find(
+        (pos) => pos.vault.address.toLowerCase() === vaultAccount.address.toLowerCase()
+      );
+      // Only show skeleton if user has a position and data is loading
+      if (position) {
+        return isVaultDataLoading(vaultAccount.address) || morphoHoldings.isLoading;
+      }
+      // If no position, don't show skeleton (will show 0.00)
+      return false;
+    }
+  };
+
   // Format balance using formatter.ts directly
   const formatBalance = (account: Account, assetSymbol?: string): string => {
     const balanceData = getBalanceValue(account, assetSymbol);
@@ -204,6 +231,29 @@ export function AccountSelector({
         : (account as VaultAccount).symbol;
       return formatAssetBalance(0, symbol);
     }
+    
+    // For wallet accounts with WETH/ETH, show separate amounts: "1 ETH, 1 WETH"
+    if (account.type === 'wallet' && (assetSymbol === 'WETH' || assetSymbol === 'ETH')) {
+      const ethBal = parseFloat(ethBalance || '0');
+      const wethToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'WETH');
+      const wethBal = wethToken ? parseFloat(formatUnits(wethToken.balance, wethToken.decimals)) : 0;
+      
+      const parts: string[] = [];
+      if (ethBal > 0) {
+        parts.push(formatAssetBalance(ethBal, 'ETH', 18));
+      }
+      if (wethBal > 0) {
+        parts.push(formatAssetBalance(wethBal, 'WETH', 18));
+      }
+      
+      // If both are zero, show 0 for the selected asset
+      if (parts.length === 0) {
+        return formatAssetBalance(0, assetSymbol || 'ETH', 18);
+      }
+      
+      return parts.join(', ');
+    }
+    
     return formatAssetBalance(balanceData.value, balanceData.symbol, balanceData.decimals);
   };
 
@@ -259,7 +309,11 @@ export function AccountSelector({
                   {getAccountDisplayName(selectedAccount)}
                 </div>
                 <div className="text-xs text-[var(--foreground-secondary)]">
-                  {formatBalance(selectedAccount, assetSymbol || undefined)}
+                  {isBalanceLoading(selectedAccount, assetSymbol || undefined) ? (
+                    <Skeleton width="4rem" height="0.75rem" />
+                  ) : (
+                    formatBalance(selectedAccount, assetSymbol || undefined)
+                  )}
                 </div>
               </div>
             </>
@@ -321,9 +375,16 @@ export function AccountSelector({
                     <div className="text-sm font-medium text-[var(--foreground)] truncate">
                       {getAccountDisplayName(account)}
                     </div>
-                    <div className="text-xs text-[var(--foreground-secondary)]">
-                      {formatBalance(account, assetSymbol || undefined)}
-                    </div>
+                    {/* Only show balance for wallet if assetSymbol is set (vault selected), or always show for vaults */}
+                    {(account.type !== 'wallet' || assetSymbol) && (
+                      <div className="text-xs text-[var(--foreground-secondary)]">
+                        {isBalanceLoading(account, assetSymbol || undefined) ? (
+                          <Skeleton width="4rem" height="0.75rem" />
+                        ) : (
+                          formatBalance(account, assetSymbol || undefined)
+                        )}
+                      </div>
+                    )}
                   </div>
                   {isSelected && (
                     <svg

@@ -352,6 +352,8 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
       } else if (action === 'withdraw' || action === 'withdrawAll') {
         // Use shares parameter for withdrawAll, assets for regular withdraw
         if (useSharesForWithdraw) {
+          // For withdrawAll, we already have userShares from earlier validation
+          // No need to validate again - we know userShares > 0
           inputOperations.push({
             type: 'MetaMorpho_Withdraw',
             address: normalizedVault,
@@ -364,14 +366,20 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
             },
           });
         } else {
-          // Convert assets to shares to avoid SDK's incorrect decimal assumption
-          // The SDK's MetaMorpho_Withdraw with assets parameter assumes 18 decimals,
-          // but some assets (like cbBTC) use 8 decimals. By converting to shares ourselves,
-          // we ensure the correct conversion using the vault's convertToShares function.
+          // For regular withdraw, validate balance before attempting transaction
           if (!publicClient) {
             throw new Error('Public client not available');
           }
           
+          // Get user's actual share balance to validate
+          const userShares = await publicClient.readContract({
+            address: normalizedVault,
+            abi: ERC20_BALANCE_ABI,
+            functionName: 'balanceOf',
+            args: [userAddress],
+          }) as bigint;
+          
+          // Convert requested assets to shares
           let sharesBigInt: bigint;
           try {
             sharesBigInt = await publicClient.readContract({
@@ -382,6 +390,44 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
             });
           } catch {
             throw new Error('Failed to convert assets to shares. Please try again.');
+          }
+          
+          // Validate user has enough shares
+          if (sharesBigInt > userShares) {
+            const effectiveAssetDecimals = vaultData?.assetDecimals ?? 18;
+            const requestedAssetsFormatted = formatUnits(amountBigInt, effectiveAssetDecimals);
+            
+            // Convert user's shares to assets for display
+            let availableAssetsFormatted: string;
+            try {
+              const availableAssets = await publicClient.readContract({
+                address: normalizedVault,
+                abi: [
+                  {
+                    inputs: [{ internalType: 'uint256', name: 'shares', type: 'uint256' }],
+                    name: 'convertToAssets',
+                    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+                    stateMutability: 'view',
+                    type: 'function',
+                  },
+                ],
+                functionName: 'convertToAssets',
+                args: [userShares],
+              }) as bigint;
+              availableAssetsFormatted = formatUnits(availableAssets, effectiveAssetDecimals);
+            } catch {
+              // Fallback: show shares if conversion fails
+              const sharesFormatted = formatUnits(userShares, 18);
+              availableAssetsFormatted = `${sharesFormatted} shares`;
+            }
+            
+            const vaultSymbol = vaultData?.symbol || 'assets';
+            throw new Error(
+              `Insufficient balance for vault withdrawal.\n\n` +
+              `Requested: ${requestedAssetsFormatted} ${vaultSymbol}\n` +
+              `Available: ${availableAssetsFormatted} ${vaultSymbol}\n\n` +
+              `Please reduce the amount or deposit more funds to the vault.`
+            );
           }
           
           inputOperations.push({
@@ -396,8 +442,6 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
             },
           });
         }
-
-        // Optional: Add 'Erc20_Unwrap' here if you want automatic unwrapping on withdraw
       }
 
       // Configure bundling options

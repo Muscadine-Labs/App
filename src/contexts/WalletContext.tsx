@@ -3,8 +3,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAccount } from 'wagmi';
 import { useBalance, useReadContract } from 'wagmi';
-import type { AlchemyTokenBalancesResponse, AlchemyTokenMetadataResponse, AlchemyTokenBalance, MorphoUserVaultPositions, MorphoVaultPosition, GraphQLResponse } from '@/types/api';
+import type { AlchemyTokenBalancesResponse, AlchemyTokenMetadataResponse, AlchemyTokenBalance } from '@/types/api';
 import { formatCurrency } from '@/lib/formatter';
+import { logger } from '@/lib/logger';
+import { VAULTS } from '@/lib/vaults';
 
 interface TokenBalance {
   address: string;
@@ -47,7 +49,9 @@ interface WalletContextType {
   morphoHoldings: MorphoHoldings;
   loading: boolean;
   error: string | null;
-  refreshBalances: () => void;
+  refreshBalances: () => Promise<void>;
+  refreshBalancesWithRetry: (options?: { maxRetries?: number; retryDelay?: number }) => Promise<void>;
+  refreshBalancesWithPolling: (options?: { maxAttempts?: number; intervalMs?: number; onComplete?: () => void }) => Promise<void>;
 }
 
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
@@ -114,13 +118,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, [isConnected, address]);
 
   // Get ETH balance
-  const { data: ethBalance } = useBalance({
+  const { data: ethBalance, refetch: refetchEthBalance } = useBalance({
     address: address as `0x${string}`,
     query: { enabled: !!address }
   });
 
   // Get token balances for major tokens
-  const { data: usdcBalance } = useReadContract({
+  const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract({
     address: TOKEN_ADDRESSES.USDC,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
@@ -128,7 +132,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     query: { enabled: !!address }
   });
 
-  const { data: cbbtcBalance } = useReadContract({
+  const { data: cbbtcBalance, refetch: refetchCbbtcBalance } = useReadContract({
     address: TOKEN_ADDRESSES.cbBTC,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
@@ -136,7 +140,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     query: { enabled: !!address }
   });
 
-  const { data: wethBalance } = useReadContract({
+  const { data: wethBalance, refetch: refetchWethBalance } = useReadContract({
     address: TOKEN_ADDRESSES.WETH,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
@@ -307,8 +311,23 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
   }, [address]);
 
-  // Fetch Morpho vault holdings
-  const fetchMorphoHoldings = useCallback(async () => {
+  // Helper to get asset decimals for a vault (USDC=6, WETH/ETH=18, cbBTC=8)
+  const getVaultAssetDecimals = (vaultAddress: string, vaultSymbol: string): number => {
+    const symbol = vaultSymbol.toUpperCase();
+    // USDC vault uses 6 decimals
+    if (symbol === 'USDC' || symbol === 'MVUSDC' || vaultAddress.toLowerCase() === '0xf7e26Fa48A568b8b0038e104DfD8ABdf0f99074F'.toLowerCase()) {
+      return 6;
+    }
+    // cbBTC vault uses 8 decimals
+    if (symbol === 'CBBTC' || symbol === 'MVCBBTC' || vaultAddress.toLowerCase() === '0xAeCc8113a7bD0CFAF7000EA7A31afFD4691ff3E9'.toLowerCase()) {
+      return 8;
+    }
+    // WETH/ETH uses 18 decimals
+    return 18;
+  };
+
+  // Fetch vault positions using Alchemy API (real-time, no indexing delays)
+  const fetchVaultPositions = useCallback(async (alchemyBalances: TokenBalance[]): Promise<void> => {
     if (!address) {
       setMorphoHoldings(prev => ({ 
         ...prev, 
@@ -319,75 +338,148 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    logger.debug('Fetching vault positions from Alchemy balances', {
+      address,
+      alchemyBalanceCount: alchemyBalances.length,
+      timestamp: new Date().toISOString(),
+    });
+
     setMorphoHoldings(prev => ({ ...prev, isLoading: true, error: null }));
 
     try {
-      const response = await fetch(`https://api.morpho.org/graphql`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          query: `
-            query UserVaultHoldings($userAddress: String!, $chainId: Int!) {
-              userByAddress(address: $userAddress, chainId: $chainId) {
-                vaultPositions {
-                  vault {
-                    address
-                    name
-                    symbol
-                    state {
-                      sharePriceUsd
-                      totalAssetsUsd
-                      totalSupply
-                    }
-                  }
-                  shares
-                  assets
-                }
-              }
-            }
-          `,
-          variables: {
-            userAddress: address,
-            chainId: 8453, // Base
-          },
-        }),
+      // Create a map of vault addresses for quick lookup
+      const vaultAddressMap = new Map<string, typeof VAULTS[keyof typeof VAULTS]>();
+      Object.values(VAULTS).forEach(vault => {
+        vaultAddressMap.set(vault.address.toLowerCase(), vault);
       });
 
-      const data = await response.json() as GraphQLResponse<MorphoUserVaultPositions>;
-      
-      if (data.data?.userByAddress?.vaultPositions) {
-        // Filter out positions with zero shares
-        const positions = data.data.userByAddress.vaultPositions.filter(
-          (pos: MorphoVaultPosition) => parseFloat(pos.shares) > 0
-        );
-        
-        const totalValueUsd = positions.reduce((sum: number, position: MorphoVaultPosition) => {
-          const shares = parseFloat(position.shares) / 1e18;
-          const sharePriceUsd = position.vault.state?.sharePriceUsd || 0;
-          return sum + (shares * sharePriceUsd);
-        }, 0);
+      // Find vault share token balances from Alchemy balances
+      // Vault shares are ERC20 tokens, so they appear in Alchemy token balances
+      const vaultShareBalances = alchemyBalances.filter(token => 
+        vaultAddressMap.has(token.address.toLowerCase())
+      );
 
+      if (vaultShareBalances.length === 0) {
         setMorphoHoldings({
-          totalValueUsd,
-          positions,
+          totalValueUsd: 0,
+          positions: [],
           isLoading: false,
           error: null,
         });
-      } else {
-        setMorphoHoldings(prev => ({ 
-          ...prev, 
-          totalValueUsd: 0, 
-          positions: [], 
-          isLoading: false 
-        }));
+        return;
       }
+
+      // Fetch vault metadata for each vault with a balance
+      const positionPromises = vaultShareBalances.map(async (tokenBalance) => {
+        const vaultInfo = vaultAddressMap.get(tokenBalance.address.toLowerCase())!;
+        const sharesWei = tokenBalance.balance;
+        const sharesDecimal = parseFloat(tokenBalance.formatted);
+
+        // Skip if no shares
+        if (sharesWei === BigInt(0) || sharesDecimal <= 0) {
+          return null;
+        }
+
+        try {
+          // Fetch vault metadata from API to get share price and other info
+          const response = await fetch(`/api/vaults/${vaultInfo.address}/complete?chainId=${vaultInfo.chainId}`);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch vault data: ${response.status}`);
+          }
+
+          const data = await response.json();
+          const vaultData = data.data?.vaultByAddress;
+
+          if (!vaultData) {
+            throw new Error('Invalid vault data response');
+          }
+
+          const sharePriceUsd = vaultData.state?.sharePriceUsd || 0;
+          const totalAssetsUsd = vaultData.state?.totalAssetsUsd || 0;
+          const totalSupply = vaultData.state?.totalSupply || '0';
+          
+          // Calculate assets from shares using share price
+          const assetDecimals = getVaultAssetDecimals(vaultInfo.address, vaultData.asset?.symbol || vaultInfo.symbol);
+          const totalSupplyDecimal = parseFloat(totalSupply) / 1e18;
+          const totalAssetsDecimal = parseFloat(vaultData.state?.totalAssets || '0') / Math.pow(10, assetDecimals);
+          const sharePriceInAsset = totalSupplyDecimal > 0 ? totalAssetsDecimal / totalSupplyDecimal : 0;
+          const assetsDecimal = sharesDecimal * sharePriceInAsset;
+          const assetsWei = BigInt(Math.floor(assetsDecimal * Math.pow(10, assetDecimals)));
+
+          const position: VaultPosition = {
+            vault: {
+              address: vaultInfo.address,
+              name: vaultData.name || vaultInfo.name,
+              symbol: vaultData.asset?.symbol || vaultInfo.symbol,
+              state: {
+                sharePriceUsd,
+                totalAssetsUsd,
+                totalSupply,
+              },
+            },
+            shares: sharesWei.toString(),
+            assets: assetsWei.toString(),
+          };
+          return position;
+        } catch (err) {
+          logger.error('Failed to fetch vault metadata', err instanceof Error ? err : new Error(String(err)), {
+            vaultAddress: vaultInfo.address,
+          });
+          return null;
+        }
+      });
+
+      const positions: VaultPosition[] = (await Promise.all(positionPromises)).filter((pos): pos is VaultPosition => pos !== null);
+
+      // Calculate total USD value
+      const totalValueUsd = positions.reduce((sum, position) => {
+        const shares = parseFloat(position.shares) / 1e18;
+        const sharePriceUsd = position.vault.state.sharePriceUsd || 0;
+        return sum + (shares * sharePriceUsd);
+      }, 0);
+
+      // Log detailed position info for debugging
+      const detailedPositions = positions.map(pos => {
+        const sharesDecimal = parseFloat(pos.shares) / 1e18;
+        const assetDecimals = getVaultAssetDecimals(pos.vault.address, pos.vault.symbol);
+        const assetsDecimal = pos.assets ? parseFloat(pos.assets) / Math.pow(10, assetDecimals) : 0;
+        const sharePriceUsd = pos.vault.state.sharePriceUsd || 0;
+        const usdValue = sharesDecimal * sharePriceUsd;
+        return {
+          vault: pos.vault.address,
+          vaultName: pos.vault.name,
+          vaultSymbol: pos.vault.symbol,
+          shares: pos.shares,
+          sharesDecimal: sharesDecimal.toFixed(6),
+          assets: pos.assets,
+          assetsDecimal: assetsDecimal.toFixed(6),
+          assetDecimals,
+          sharePriceUsd: sharePriceUsd.toFixed(6),
+          usdValue: usdValue.toFixed(2),
+        };
+      });
+
+      logger.info('Vault positions updated from Alchemy', {
+        positionCount: positions.length,
+        totalValueUsd: totalValueUsd.toFixed(2),
+        positions: detailedPositions,
+        timestamp: new Date().toISOString(),
+      });
+
+      setMorphoHoldings({
+        totalValueUsd,
+        positions,
+        isLoading: false,
+        error: null,
+      });
     } catch (err) {
+      logger.error('Failed to fetch vault positions', err instanceof Error ? err : new Error(String(err)), {
+        address,
+      });
       setMorphoHoldings(prev => ({ 
         ...prev, 
         isLoading: false, 
-        error: err instanceof Error ? err.message : 'Failed to fetch holdings' 
+        error: err instanceof Error ? err.message : 'Failed to fetch vault positions' 
       }));
     }
   }, [address]);
@@ -427,7 +519,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
             Object.entries(prices).map(([key, value]) => [key.toLowerCase(), value])
           ),
         });
-        fetchMorphoHoldings();
+        // Fetch vault positions using Alchemy balances (real-time, no indexing delays)
+        await fetchVaultPositions(alchemyBalances);
       };
       
       fetchAllData();
@@ -442,11 +535,22 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       setTokenPrices({});
       setAlchemyTokenBalances([]);
     }
-    // Don't include fetchMorphoHoldings and fetchTokenPrices in deps to prevent infinite loops
+    // Don't include fetchVaultPositions and fetchTokenPrices in deps to prevent infinite loops
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stableIsConnected, stableAddress, fetchAllTokenBalances]);
 
   const refreshBalances = useCallback(async () => {
+    // Refetch all wagmi hooks immediately to get fresh blockchain data
+    // These refetch calls will bypass wagmi's cache and get fresh data from the blockchain
+    const refetchPromises = [];
+    if (address) {
+      if (refetchEthBalance) refetchPromises.push(refetchEthBalance());
+      if (refetchUsdcBalance) refetchPromises.push(refetchUsdcBalance());
+      if (refetchCbbtcBalance) refetchPromises.push(refetchCbbtcBalance());
+      if (refetchWethBalance) refetchPromises.push(refetchWethBalance());
+    }
+    await Promise.all(refetchPromises);
+
     const alchemyBalances = await fetchAllTokenBalances();
     setAlchemyTokenBalances(alchemyBalances);
 
@@ -474,8 +578,157 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         Object.entries(prices).map(([key, value]) => [key.toLowerCase(), value])
       ),
     });
-    fetchMorphoHoldings();
-  }, [fetchTokenPrices, fetchMorphoHoldings, fetchAllTokenBalances]);
+    
+    // Log USDC balance specifically for debugging
+    const usdcBalance = alchemyBalances.find(t => t.symbol.toUpperCase() === 'USDC');
+    logger.debug('Token balances and prices updated', {
+      alchemyBalanceCount: alchemyBalances.length,
+      tokenCount: symbols.size,
+      usdcBalance: usdcBalance ? {
+        symbol: usdcBalance.symbol,
+        balance: usdcBalance.balance.toString(),
+        formatted: usdcBalance.formatted,
+        decimals: usdcBalance.decimals,
+      } : 'not found',
+      allTokens: alchemyBalances.map(t => ({
+        symbol: t.symbol,
+        formatted: t.formatted,
+        balance: t.balance.toString(),
+      })),
+      timestamp: new Date().toISOString(),
+    });
+    
+    // Fetch vault positions using Alchemy balances (real-time, no indexing delays)
+    await fetchVaultPositions(alchemyBalances);
+    
+    logger.info('Balance refresh completed', {
+      timestamp: new Date().toISOString(),
+      note: 'Check detailed logs above for fetched values - state updates asynchronously via React',
+    });
+  }, [fetchTokenPrices, fetchVaultPositions, fetchAllTokenBalances, refetchEthBalance, refetchUsdcBalance, refetchCbbtcBalance, refetchWethBalance, address]);
+
+  // Helper function to sleep/delay
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  // Core refresh logic (extracted for reuse)
+  const performRefresh = useCallback(async (): Promise<void> => {
+    // Refetch all wagmi hooks immediately to get fresh blockchain data
+    const refetchPromises = [];
+    if (address) {
+      if (refetchEthBalance) refetchPromises.push(refetchEthBalance());
+      if (refetchUsdcBalance) refetchPromises.push(refetchUsdcBalance());
+      if (refetchCbbtcBalance) refetchPromises.push(refetchCbbtcBalance());
+      if (refetchWethBalance) refetchPromises.push(refetchWethBalance());
+    }
+    await Promise.all(refetchPromises);
+
+    const alchemyBalances = await fetchAllTokenBalances();
+    setAlchemyTokenBalances(alchemyBalances);
+
+    const symbols = new Set<string>(['ETH', 'USDC']);
+    alchemyBalances.forEach(token => {
+      const symbol = token.symbol.toUpperCase();
+      if (symbol === 'CBBTC' || symbol === 'CBTC') {
+        symbols.add('CBBTC');
+      } else if (symbol === 'WETH') {
+        symbols.add('WETH');
+      } else {
+        symbols.add(symbol);
+      }
+    });
+
+    const prices = await fetchTokenPrices(Array.from(symbols));
+    setTokenPrices({
+      eth: prices.eth || 0,
+      usdc: prices.usdc || 1,
+      cbbtc: prices.cbbtc || prices.btc || 0,
+      weth: prices.weth || prices.eth || 0,
+      usdt: prices.usdt || 1,
+      dai: prices.dai || 1,
+      ...Object.fromEntries(
+        Object.entries(prices).map(([key, value]) => [key.toLowerCase(), value])
+      ),
+    });
+
+    await fetchVaultPositions(alchemyBalances);
+  }, [fetchTokenPrices, fetchVaultPositions, fetchAllTokenBalances, refetchEthBalance, refetchUsdcBalance, refetchCbbtcBalance, refetchWethBalance, address]);
+
+  // Refresh with retry logic (exponential backoff)
+  const refreshBalancesWithRetry = useCallback(async (options?: { maxRetries?: number; retryDelay?: number }) => {
+    const maxRetries = options?.maxRetries ?? 3;
+    const baseRetryDelay = options?.retryDelay ?? 1000; // 1 second base delay
+
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        await performRefresh();
+        if (attempt > 0) {
+          logger.info('Balance refresh succeeded after retry', {
+            attempt: attempt + 1,
+            maxRetries,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        return; // Success
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        if (attempt < maxRetries) {
+          const delay = baseRetryDelay * Math.pow(2, attempt); // Exponential backoff: 1s, 2s, 4s
+          logger.warn('Balance refresh failed, retrying', {
+            attempt: attempt + 1,
+            maxRetries,
+            delayMs: delay,
+            error: lastError.message,
+            timestamp: new Date().toISOString(),
+          });
+          await sleep(delay);
+        } else {
+          logger.error('Balance refresh failed after all retries', lastError, {
+            maxRetries,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+    }
+    throw lastError || new Error('Balance refresh failed');
+  }, [performRefresh]);
+
+  // Refresh with polling (useful for transaction completion)
+  const refreshBalancesWithPolling = useCallback(async (options?: { maxAttempts?: number; intervalMs?: number; onComplete?: () => void }) => {
+    const maxAttempts = options?.maxAttempts ?? 10;
+    const intervalMs = options?.intervalMs ?? 3000; // 3 seconds default
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        await performRefresh();
+        logger.info('Balance refresh completed via polling', {
+          attempt: attempt + 1,
+          maxAttempts,
+          timestamp: new Date().toISOString(),
+        });
+        options?.onComplete?.();
+        return; // Success
+      } catch (error) {
+        const err = error instanceof Error ? error : new Error(String(error));
+        if (attempt < maxAttempts - 1) {
+          logger.debug('Balance refresh polling attempt failed, will retry', {
+            attempt: attempt + 1,
+            maxAttempts,
+            intervalMs,
+            error: err.message,
+            timestamp: new Date().toISOString(),
+          });
+          await sleep(intervalMs);
+        } else {
+          logger.error('Balance refresh polling failed after all attempts', err, {
+            maxAttempts,
+            timestamp: new Date().toISOString(),
+          });
+          throw err;
+        }
+      }
+    }
+  }, [performRefresh]);
 
   // Calculate balances and USD values
   const ethFormatted = ethBalance ? parseFloat(ethBalance.formatted) : 0;
@@ -602,6 +855,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     loading,
     error,
     refreshBalances,
+    refreshBalancesWithRetry,
+    refreshBalancesWithPolling,
   };
 
   return (
