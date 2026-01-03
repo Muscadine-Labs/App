@@ -118,11 +118,19 @@ export default function WalletOverview() {
         .slice(0, 10);
     
     // Calculate and sort Morpho vault positions by USD value, limit to 10
+    // Use assetsUsd directly from GraphQL API when available (most accurate)
     const sortedVaultPositions = morphoHoldings.positions
         .map((position) => {
-            const shares = parseFloat(position.shares) / 1e18;
-            const sharePriceUsd = position.vault.state?.sharePriceUsd || 0;
-            const usdValue = shares * sharePriceUsd;
+            // Use assetsUsd directly from GraphQL API if available (most accurate)
+            // Fallback to shares × sharePriceUsd calculation
+            const usdValue = position.assetsUsd !== undefined && position.assetsUsd > 0
+                ? position.assetsUsd
+                : (() => {
+                    const shares = parseFloat(position.shares) / 1e18;
+                    const sharePriceUsd = position.vault.state?.sharePriceUsd || 0;
+                    return shares * sharePriceUsd;
+                })();
+            
             return {
                 address: position.vault.address,
                 name: position.vault.name,

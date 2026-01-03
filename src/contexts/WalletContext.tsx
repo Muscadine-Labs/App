@@ -30,6 +30,7 @@ interface VaultPosition {
   };
   shares: string;
   assets?: string;
+  assetsUsd?: number; // USD value from GraphQL API (most accurate)
 }
 
 interface MorphoHoldings {
@@ -61,8 +62,6 @@ const TOKEN_ADDRESSES = {
   USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
   cbBTC: '0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22', // Coinbase Wrapped BTC on Base
   WETH: '0x4200000000000000000000000000000000000006', // Wrapped ETH on Base
-  USDT: '0xfde4C96c8593536E31F229EA8f37b2ADa2699bb2', // USDT on Base
-  DAI: '0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb', // DAI on Base
 } as const;
 
 // ERC20 ABI for balanceOf, decimals, and symbol
@@ -123,13 +122,21 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     query: { enabled: !!address }
   });
 
-  // Get token balances for major tokens
+  // Wagmi contract reads - used as fallback only when Alchemy doesn't return token data
+  // Disabled by default to avoid redundant RPC calls (Alchemy is primary source)
+  const [needsWagmiFallback, setNeedsWagmiFallback] = useState<{
+    usdc: boolean;
+    cbbtc: boolean;
+    weth: boolean;
+  }>({ usdc: false, cbbtc: false, weth: false });
+
+  // Get token balances for major tokens (fallback only)
   const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract({
     address: TOKEN_ADDRESSES.USDC,
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: address ? [address as `0x${string}`] : undefined,
-    query: { enabled: !!address }
+    query: { enabled: !!address && needsWagmiFallback.usdc }
   });
 
   const { data: cbbtcBalance, refetch: refetchCbbtcBalance } = useReadContract({
@@ -137,7 +144,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: address ? [address as `0x${string}`] : undefined,
-    query: { enabled: !!address }
+    query: { enabled: !!address && needsWagmiFallback.cbbtc }
   });
 
   const { data: wethBalance, refetch: refetchWethBalance } = useReadContract({
@@ -145,67 +152,29 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     abi: ERC20_ABI,
     functionName: 'balanceOf',
     args: address ? [address as `0x${string}`] : undefined,
-    query: { enabled: !!address }
+    query: { enabled: !!address && needsWagmiFallback.weth }
   });
 
-  // USDT and DAI balances are fetched but not currently used in calculations
-  // Kept for potential future use
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { data: _usdtBalance } = useReadContract({
-    address: TOKEN_ADDRESSES.USDT,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: address ? [address as `0x${string}`] : undefined,
-    query: { enabled: !!address }
-  });
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { data: _daiBalance } = useReadContract({
-    address: TOKEN_ADDRESSES.DAI,
-    abi: ERC20_ABI,
-    functionName: 'balanceOf',
-    args: address ? [address as `0x${string}`] : undefined,
-    query: { enabled: !!address }
-  });
-
-  // Get token decimals
+  // Get token decimals (fallback only - Alchemy provides decimals)
   const { data: usdcDecimals } = useReadContract({
     address: TOKEN_ADDRESSES.USDC,
     abi: ERC20_ABI,
     functionName: 'decimals',
-    query: { enabled: !!address }
+    query: { enabled: !!address && needsWagmiFallback.usdc }
   });
 
   const { data: cbbtcDecimals } = useReadContract({
     address: TOKEN_ADDRESSES.cbBTC,
     abi: ERC20_ABI,
     functionName: 'decimals',
-    query: { enabled: !!address }
+    query: { enabled: !!address && needsWagmiFallback.cbbtc }
   });
 
   const { data: wethDecimals } = useReadContract({
     address: TOKEN_ADDRESSES.WETH,
     abi: ERC20_ABI,
     functionName: 'decimals',
-    query: { enabled: !!address }
-  });
-
-  // USDT and DAI decimals are fetched but not currently used in calculations
-  // Kept for potential future use
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { data: usdtDecimals } = useReadContract({
-    address: TOKEN_ADDRESSES.USDT,
-    abi: ERC20_ABI,
-    functionName: 'decimals',
-    query: { enabled: !!address }
-  });
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { data: daiDecimals } = useReadContract({
-    address: TOKEN_ADDRESSES.DAI,
-    abi: ERC20_ABI,
-    functionName: 'decimals',
-    query: { enabled: !!address }
+    query: { enabled: !!address && needsWagmiFallback.weth }
   });
 
   // Fetch token prices dynamically
@@ -326,7 +295,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return 18;
   };
 
-  // Fetch vault positions using GraphQL API (primary) with Alchemy fallback
+  // Fetch vault positions using Alchemy (primary) with GraphQL API fallback
   const fetchVaultPositions = useCallback(async (alchemyBalances: TokenBalance[]): Promise<void> => {
     if (!address) {
       setMorphoHoldings(prev => ({ 
@@ -338,7 +307,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    logger.debug('Fetching vault positions from GraphQL API', {
+    logger.debug('Fetching vault positions from GraphQL API (Morpho API - primary)', {
       address,
       timestamp: new Date().toISOString(),
     });
@@ -347,8 +316,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
     try {
       const vaults = Object.values(VAULTS);
+      let positions: VaultPosition[] = [];
       
-      // Primary: Fetch positions from GraphQL API (position-history endpoint)
+      // Primary: Fetch positions from GraphQL API (Morpho API) - most accurate source
       const positionPromises = vaults.map(async (vaultInfo) => {
         try {
           // Fetch position from GraphQL API
@@ -368,9 +338,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           
           const currentPos = positionData.currentPosition;
           
-          // Skip if no position
-          if (!currentPos.assets || currentPos.assets === 0 || currentPos.assetsUsd === 0) {
-            return null;
+          // Skip if no position (check assetsUsd first as it's most reliable)
+          if (!currentPos.assetsUsd || currentPos.assetsUsd === 0) {
+            // Also check assets and shares as fallback
+            if ((!currentPos.assets || currentPos.assets === 0) && (!currentPos.shares || currentPos.shares === 0)) {
+              return null;
+            }
           }
           
           // Fetch vault metadata to get vault info
@@ -386,34 +359,40 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
             return null;
           }
           
-          const sharePriceUsd = vaultInfoData.state?.sharePriceUsd || 0;
-          const totalAssetsUsd = vaultInfoData.state?.totalAssetsUsd || 0;
-          const totalSupply = vaultInfoData.state?.totalSupply || '0';
-          
-          // Convert raw values to proper format
-          // API returns assets and shares in raw format (already in wei/smallest unit)
-          // Convert to string for consistency with VaultPosition interface
-          const assetsRaw = typeof currentPos.assets === 'string' 
-            ? currentPos.assets
-            : (typeof currentPos.assets === 'number' ? Math.floor(currentPos.assets).toString() : '0');
-          const sharesRaw = typeof currentPos.shares === 'string' 
-            ? currentPos.shares
-            : (typeof currentPos.shares === 'number' ? Math.floor(currentPos.shares).toString() : '0');
-          
-          const position: VaultPosition = {
-            vault: {
-              address: vaultInfo.address,
-              name: vaultInfoData.name || vaultInfo.name,
-              symbol: vaultInfoData.asset?.symbol || vaultInfo.symbol,
-              state: {
-                sharePriceUsd,
-                totalAssetsUsd,
-                totalSupply,
+            const sharePriceUsd = vaultInfoData.state?.sharePriceUsd || 0;
+            const totalAssetsUsd = vaultInfoData.state?.totalAssetsUsd || 0;
+            const totalSupply = vaultInfoData.state?.totalSupply || '0';
+            
+            // Convert raw values to proper format
+            // API returns assets and shares in raw format (already in wei/smallest unit)
+            // Convert to string for consistency with VaultPosition interface
+            const assetsRaw = typeof currentPos.assets === 'string' 
+              ? currentPos.assets
+              : (typeof currentPos.assets === 'number' ? Math.floor(currentPos.assets).toString() : '0');
+            const sharesRaw = typeof currentPos.shares === 'string' 
+              ? currentPos.shares
+              : (typeof currentPos.shares === 'number' ? Math.floor(currentPos.shares).toString() : '0');
+            
+            // Use assetsUsd directly from API (most accurate)
+            const assetsUsd = typeof currentPos.assetsUsd === 'number' 
+              ? currentPos.assetsUsd 
+              : undefined;
+            
+            const position: VaultPosition = {
+              vault: {
+                address: vaultInfo.address,
+                name: vaultInfoData.name || vaultInfo.name,
+                symbol: vaultInfoData.asset?.symbol || vaultInfo.symbol,
+                state: {
+                  sharePriceUsd,
+                  totalAssetsUsd,
+                  totalSupply,
+                },
               },
-            },
-            shares: sharesRaw,
-            assets: assetsRaw,
-          };
+              shares: sharesRaw,
+              assets: assetsRaw,
+              assetsUsd, // Store assetsUsd from GraphQL API for accurate USD calculations
+            };
           
           return position;
         } catch (err) {
@@ -425,11 +404,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
       });
       
-      let positions: VaultPosition[] = (await Promise.all(positionPromises)).filter((pos): pos is VaultPosition => pos !== null);
+      positions = (await Promise.all(positionPromises)).filter((pos): pos is VaultPosition => pos !== null);
       
-      // Fallback: If no positions found from GraphQL, try Alchemy
+      // Fallback: If no positions found from GraphQL API, try Alchemy balances
       if (positions.length === 0) {
-        logger.debug('No positions from GraphQL, falling back to Alchemy', {
+        logger.debug('No positions from GraphQL API, falling back to Alchemy', {
           address,
           alchemyBalanceCount: alchemyBalances.length,
         });
@@ -474,7 +453,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
               const totalAssetsUsd = vaultData.state?.totalAssetsUsd || 0;
               const totalSupply = vaultData.state?.totalSupply || '0';
               
-              // Calculate assets from shares using share price
+              // Calculate assets from shares using share price (per token or per USD)
               const assetDecimals = getVaultAssetDecimals(vaultInfo.address, vaultData.asset?.symbol || vaultInfo.symbol);
               const totalSupplyDecimal = parseFloat(totalSupply) / 1e18;
               const totalAssetsDecimal = parseFloat(vaultData.state?.totalAssets || '0') / Math.pow(10, assetDecimals);
@@ -498,7 +477,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
               };
               return position;
             } catch (err) {
-              logger.error('Failed to fetch vault metadata', err instanceof Error ? err : new Error(String(err)), {
+              logger.error('Failed to fetch vault metadata from Alchemy fallback', err instanceof Error ? err : new Error(String(err)), {
                 vaultAddress: vaultInfo.address,
               });
               return null;
@@ -510,7 +489,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       }
 
       // Calculate total USD value
+      // Use assetsUsd directly from GraphQL API when available (most accurate)
+      // Fallback to shares × sharePriceUsd calculation if assetsUsd not available
       const totalValueUsd = positions.reduce((sum, position) => {
+        if (position.assetsUsd !== undefined && position.assetsUsd > 0) {
+          // Use assetsUsd directly from GraphQL API (most accurate)
+          return sum + position.assetsUsd;
+        }
+        // Fallback: Calculate from shares × sharePriceUsd
         const shares = parseFloat(position.shares) / 1e18;
         const sharePriceUsd = position.vault.state.sharePriceUsd || 0;
         return sum + (shares * sharePriceUsd);
@@ -522,7 +508,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         const assetDecimals = getVaultAssetDecimals(pos.vault.address, pos.vault.symbol);
         const assetsDecimal = pos.assets ? parseFloat(pos.assets) / Math.pow(10, assetDecimals) : 0;
         const sharePriceUsd = pos.vault.state.sharePriceUsd || 0;
-        const usdValue = sharesDecimal * sharePriceUsd;
+        // Use assetsUsd directly if available, otherwise calculate
+        const usdValue = pos.assetsUsd !== undefined && pos.assetsUsd > 0 
+          ? pos.assetsUsd 
+          : (sharesDecimal * sharePriceUsd);
         return {
           vault: pos.vault.address,
           vaultName: pos.vault.name,
@@ -534,6 +523,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           assetDecimals,
           sharePriceUsd: sharePriceUsd.toFixed(6),
           usdValue: usdValue.toFixed(2),
+          source: pos.assetsUsd !== undefined ? 'GraphQL (assetsUsd)' : 'calculated',
         };
       });
 
@@ -541,7 +531,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         positionCount: positions.length,
         totalValueUsd: totalValueUsd.toFixed(2),
         positions: detailedPositions,
-        source: positions.length > 0 ? 'GraphQL' : 'Alchemy',
+        source: 'GraphQL (Morpho API)',
         timestamp: new Date().toISOString(),
       });
 
@@ -568,9 +558,20 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     if (stableIsConnected && stableAddress) {
       // Only fetch when actually connected with an address
       const fetchAllData = async () => {
-        // Fetch all token balances from Alchemy first
+        // Fetch all token balances from Alchemy first (primary source)
         const alchemyBalances = await fetchAllTokenBalances();
         setAlchemyTokenBalances(alchemyBalances);
+
+        // Check if Alchemy returned key tokens - enable wagmi fallback only if missing
+        const hasUsdc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.USDC.toLowerCase());
+        const hasCbbtc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.cbBTC.toLowerCase());
+        const hasWeth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.WETH.toLowerCase());
+        
+        setNeedsWagmiFallback({
+          usdc: !hasUsdc,
+          cbbtc: !hasCbbtc,
+          weth: !hasWeth,
+        });
 
         // Get unique symbols for price fetching
         const symbols = new Set<string>(['ETH', 'USDC']);
@@ -619,19 +620,34 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   }, [stableIsConnected, stableAddress, fetchAllTokenBalances]);
 
   const refreshBalances = useCallback(async () => {
-    // Refetch all wagmi hooks immediately to get fresh blockchain data
-    // These refetch calls will bypass wagmi's cache and get fresh data from the blockchain
-    const refetchPromises = [];
-    if (address) {
-      if (refetchEthBalance) refetchPromises.push(refetchEthBalance());
-      if (refetchUsdcBalance) refetchPromises.push(refetchUsdcBalance());
-      if (refetchCbbtcBalance) refetchPromises.push(refetchCbbtcBalance());
-      if (refetchWethBalance) refetchPromises.push(refetchWethBalance());
+    // Refetch ETH balance (always needed)
+    if (address && refetchEthBalance) {
+      await refetchEthBalance();
     }
-    await Promise.all(refetchPromises);
 
+    // Fetch all token balances from Alchemy (primary source)
     const alchemyBalances = await fetchAllTokenBalances();
     setAlchemyTokenBalances(alchemyBalances);
+
+    // Check if Alchemy returned key tokens - enable wagmi fallback only if missing
+    const hasUsdc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.USDC.toLowerCase());
+    const hasCbbtc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.cbBTC.toLowerCase());
+    const hasWeth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.WETH.toLowerCase());
+    
+    setNeedsWagmiFallback({
+      usdc: !hasUsdc,
+      cbbtc: !hasCbbtc,
+      weth: !hasWeth,
+    });
+
+    // Only refetch wagmi hooks if fallback is needed
+    const refetchPromises = [];
+    if (address) {
+      if (!hasUsdc && refetchUsdcBalance) refetchPromises.push(refetchUsdcBalance());
+      if (!hasCbbtc && refetchCbbtcBalance) refetchPromises.push(refetchCbbtcBalance());
+      if (!hasWeth && refetchWethBalance) refetchPromises.push(refetchWethBalance());
+    }
+    await Promise.all(refetchPromises);
 
     const symbols = new Set<string>(['ETH', 'USDC']);
     alchemyBalances.forEach(token => {
@@ -691,18 +707,34 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   // Core refresh logic (extracted for reuse)
   const performRefresh = useCallback(async (): Promise<void> => {
-    // Refetch all wagmi hooks immediately to get fresh blockchain data
-    const refetchPromises = [];
-    if (address) {
-      if (refetchEthBalance) refetchPromises.push(refetchEthBalance());
-      if (refetchUsdcBalance) refetchPromises.push(refetchUsdcBalance());
-      if (refetchCbbtcBalance) refetchPromises.push(refetchCbbtcBalance());
-      if (refetchWethBalance) refetchPromises.push(refetchWethBalance());
+    // Refetch ETH balance (always needed)
+    if (address && refetchEthBalance) {
+      await refetchEthBalance();
     }
-    await Promise.all(refetchPromises);
 
+    // Fetch all token balances from Alchemy (primary source)
     const alchemyBalances = await fetchAllTokenBalances();
     setAlchemyTokenBalances(alchemyBalances);
+
+    // Check if Alchemy returned key tokens - enable wagmi fallback only if missing
+    const hasUsdc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.USDC.toLowerCase());
+    const hasCbbtc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.cbBTC.toLowerCase());
+    const hasWeth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.WETH.toLowerCase());
+    
+    setNeedsWagmiFallback({
+      usdc: !hasUsdc,
+      cbbtc: !hasCbbtc,
+      weth: !hasWeth,
+    });
+
+    // Only refetch wagmi hooks if fallback is needed
+    const refetchPromises = [];
+    if (address) {
+      if (!hasUsdc && refetchUsdcBalance) refetchPromises.push(refetchUsdcBalance());
+      if (!hasCbbtc && refetchCbbtcBalance) refetchPromises.push(refetchCbbtcBalance());
+      if (!hasWeth && refetchWethBalance) refetchPromises.push(refetchWethBalance());
+    }
+    await Promise.all(refetchPromises);
 
     const symbols = new Set<string>(['ETH', 'USDC']);
     alchemyBalances.forEach(token => {
@@ -866,7 +898,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
   });
 
-  // Combine all token balances
+  // Combine all token balances - Alchemy is primary, wagmi is fallback only
   const allTokenBalances: TokenBalance[] = [
     // ETH (native)
     {
@@ -877,8 +909,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       formatted: ethBalance?.formatted || '0',
       usdValue: ethUsdValue,
     },
-    // Manually fetched tokens (as fallback if Alchemy doesn't catch them)
-    ...(usdcBalance && usdcBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.symbol.toUpperCase() === 'USDC') ? [{
+    // Alchemy tokens (primary source - includes USDC, cbBTC, WETH if available)
+    ...alchemyBalancesWithPrices,
+    // Wagmi fallback tokens (only if Alchemy didn't return them)
+    ...(usdcBalance && usdcBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.address.toLowerCase() === TOKEN_ADDRESSES.USDC.toLowerCase()) ? [{
       address: TOKEN_ADDRESSES.USDC,
       symbol: 'USDC',
       decimals: usdcDecimalsValue,
@@ -886,7 +920,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       formatted: usdcFormatted.toString(),
       usdValue: usdcUsdValue,
     }] : []),
-    ...(cbbtcBalance && cbbtcBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.symbol.toUpperCase() === 'CBBTC' || t.symbol.toUpperCase() === 'CBTC') ? [{
+    ...(cbbtcBalance && cbbtcBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.address.toLowerCase() === TOKEN_ADDRESSES.cbBTC.toLowerCase()) ? [{
       address: TOKEN_ADDRESSES.cbBTC,
       symbol: 'cbBTC',
       decimals: cbbtcDecimalsValue,
@@ -894,7 +928,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       formatted: cbbtcFormatted.toString(),
       usdValue: cbbtcUsdValue,
     }] : []),
-    ...(wethBalance && wethBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.symbol.toUpperCase() === 'WETH') ? [{
+    ...(wethBalance && wethBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.address.toLowerCase() === TOKEN_ADDRESSES.WETH.toLowerCase()) ? [{
       address: TOKEN_ADDRESSES.WETH,
       symbol: 'WETH',
       decimals: wethDecimalsValue,
@@ -902,8 +936,6 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       formatted: wethFormatted.toString(),
       usdValue: wethUsdValue,
     }] : []),
-    // Alchemy tokens (includes cbBTC and all others)
-    ...alchemyBalancesWithPrices,
   ];
 
   // Remove duplicates and filter to only non-zero balances (for total calculation)

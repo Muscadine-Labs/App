@@ -232,32 +232,39 @@ export default function TransactionsPage() {
     const vaultAccount = fromAccount as VaultAccount;
     const vaultData = getVaultData(vaultAccount.address);
 
-    if (vaultShareBalance && vaultData) {
-      const sharesBigInt = BigInt(vaultShareBalance);
-      
-      if (sharesBigInt === BigInt(0)) {
-        return `Available: 0.00 ${derivedAsset.symbol}`;
+    if (!vaultShareBalance) {
+      if (morphoHoldings.isLoading) {
+        return `Loading...`;
       }
-      
-      // Use convertToAssets for exact amount (no precision loss)
-      if (exactAssetAmount !== undefined) {
-        const assetAmount = parseFloat(formatUnits(exactAssetAmount, vaultData.assetDecimals || 18));
-        return formatAvailableBalance(assetAmount, derivedAsset.symbol, vaultData.assetDecimals || 18);
-      }
-      
-      // Fallback: use share price if convertToAssets not available yet
-      if (vaultData.sharePrice && vaultData.sharePrice > 0) {
-        const sharesDecimal = parseFloat(formatUnits(sharesBigInt, 18));
-        const assetAmount = sharesDecimal * vaultData.sharePrice;
-        return formatAvailableBalance(assetAmount, derivedAsset.symbol, vaultData.assetDecimals || 18);
-      }
-    } else if (morphoHoldings.isLoading) {
+      return `Available: 0.00 ${derivedAsset.symbol}`;
+    }
+
+    const sharesBigInt = BigInt(vaultShareBalance);
+    
+    if (sharesBigInt === BigInt(0)) {
+      return `Available: 0.00 ${derivedAsset.symbol}`;
+    }
+
+    // If vault data is not loaded yet, show loading
+    if (!vaultData) {
       return `Loading...`;
     }
     
+    // Use convertToAssets for exact amount (no precision loss)
+    if (exactAssetAmount !== undefined) {
+      const assetAmount = parseFloat(formatUnits(exactAssetAmount, vaultData.assetDecimals || 18));
+      return formatAvailableBalance(assetAmount, derivedAsset.symbol, vaultData.assetDecimals || 18);
+    }
+    
+    // Fallback: use share price if convertToAssets not available yet
+    if (vaultData.sharePrice && vaultData.sharePrice > 0) {
+      const sharesDecimal = parseFloat(formatUnits(sharesBigInt, 18));
+      const assetAmount = sharesDecimal * vaultData.sharePrice;
+      return formatAvailableBalance(assetAmount, derivedAsset.symbol, vaultData.assetDecimals || 18);
+    }
+    
     return `Available: 0.00 ${derivedAsset.symbol}`;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromAccount, derivedAsset, vaultShareBalance, exactAssetAmount, morphoHoldings.isLoading]);
+  }, [fromAccount, derivedAsset, vaultShareBalance, exactAssetAmount, morphoHoldings.isLoading, getVaultData]);
 
   // Get max amount as a number for validation
   // For vaults: returns exact asset amount from full share balance (no dust)
@@ -302,28 +309,34 @@ export default function TransactionsPage() {
       const vaultAccount = fromAccount as VaultAccount;
       const vaultData = getVaultData(vaultAccount.address);
 
-      if (vaultShareBalance && vaultData) {
-        const sharesBigInt = BigInt(vaultShareBalance);
-        
-        if (sharesBigInt === BigInt(0)) {
-          return 0;
-        }
-        
-        // Use convertToAssets to get exact asset amount (no precision loss, includes all shares)
-        if (exactAssetAmount !== undefined) {
-          return parseFloat(formatUnits(exactAssetAmount, vaultData.assetDecimals || 18));
-        }
-        
-        // Fallback: use share price if convertToAssets not available yet
-        if (vaultData.sharePrice && vaultData.sharePrice > 0) {
-          const sharesDecimal = parseFloat(formatUnits(sharesBigInt, 18));
-          return sharesDecimal * vaultData.sharePrice;
-        }
+      if (!vaultShareBalance) {
+        return 0;
+      }
+
+      const sharesBigInt = BigInt(vaultShareBalance);
+      
+      if (sharesBigInt === BigInt(0)) {
+        return 0;
+      }
+
+      // If vault data is not loaded yet, return null to show loading
+      if (!vaultData) {
+        return null;
+      }
+      
+      // Use convertToAssets to get exact asset amount (no precision loss, includes all shares)
+      if (exactAssetAmount !== undefined) {
+        return parseFloat(formatUnits(exactAssetAmount, vaultData.assetDecimals || 18));
+      }
+      
+      // Fallback: use share price if convertToAssets not available yet
+      if (vaultData.sharePrice && vaultData.sharePrice > 0) {
+        const sharesDecimal = parseFloat(formatUnits(sharesBigInt, 18));
+        return sharesDecimal * vaultData.sharePrice;
       }
     }
     return null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromAccount, derivedAsset, toAccount, ethBalance, tokenBalances, vaultShareBalance, exactAssetAmount, getCombinedEthWethBalance]);
+  }, [fromAccount, derivedAsset, toAccount, ethBalance, tokenBalances, vaultShareBalance, exactAssetAmount, getCombinedEthWethBalance, getVaultData]);
 
   // Calculate max amount for the selected "from" account
   const calculateMaxAmount = useCallback(() => {
@@ -497,6 +510,14 @@ export default function TransactionsPage() {
     });
   }, [fromAccount, morphoHoldings.positions, getVaultData]);
 
+  // Fetch vault data when a vault is selected as "from" account
+  useEffect(() => {
+    if (fromAccount?.type === 'vault' && isConnected) {
+      const vaultAccount = fromAccount as VaultAccount;
+      fetchVaultData(vaultAccount.address, vaultAccount.assetDecimals ? 8453 : 8453, true);
+    }
+  }, [fromAccount, isConnected, fetchVaultData]);
+
   // Auto-select "From" account if there's only one option
   useEffect(() => {
     if (!fromAccount && availableFromAccounts.length === 1 && status === 'idle') {
@@ -561,9 +582,9 @@ export default function TransactionsPage() {
   };
 
   return (
-    <div className="w-full max-w-2xl mx-auto p-6 space-y-6">
+    <div className="w-full max-w-2xl mx-auto p-4 md:p-6 space-y-4 md:space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-[var(--foreground)] mb-2">
+        <h1 className="text-xl md:text-2xl font-semibold text-[var(--foreground)] mb-2">
           Transfer Assets
         </h1>
         <p className="text-sm text-[var(--foreground-secondary)]">
@@ -575,7 +596,7 @@ export default function TransactionsPage() {
       <TransactionProgressBar steps={getProgressSteps()} isSuccess={status === 'success'} />
 
       {status === 'idle' && (
-        <div className="bg-[var(--surface)] rounded-lg border border-[var(--border-subtle)] p-6 space-y-6">
+        <div className="bg-[var(--surface)] rounded-lg border border-[var(--border-subtle)] p-4 md:p-6 space-y-4 md:space-y-6">
           {/* From Account */}
           <AccountSelector
             label="From"

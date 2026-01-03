@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useWaitForTransactionReceipt } from 'wagmi';
+import { useState, useEffect, useMemo } from 'react';
+import { useWaitForTransactionReceipt, useReadContract } from 'wagmi';
+import { formatUnits } from 'viem';
 import { VaultAccount } from '@/types/vault';
 import { useTransactionState } from '@/contexts/TransactionContext';
 import { useVaultTransactions, TransactionProgressStep } from '@/hooks/useVaultTransactions';
@@ -14,6 +15,17 @@ import { useVaultData } from '@/contexts/VaultDataContext';
 
 import { logger } from '@/lib/logger';
 import { useRouter } from 'next/navigation';
+
+// ERC-4626 ABI for convertToAssets
+const ERC4626_ABI = [
+  {
+    inputs: [{ internalType: 'uint256', name: 'shares', type: 'uint256' }],
+    name: 'convertToAssets',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
 
 interface TransactionFlowProps {
   onSuccess?: () => void;
@@ -51,6 +63,54 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
 
   const shouldEnableSimulation = (status === 'preview' || status === 'signing' || status === 'approving' || status === 'confirming') && !!vaultAddress;
   const { executeVaultAction, isLoading } = useVaultTransactions(vaultAddress, shouldEnableSimulation);
+  const { getVaultData } = useVaultData();
+
+  // Get vault position for withdrawals to check if MAX was used
+  const vaultPosition = useMemo(() => {
+    if (fromAccount?.type !== 'vault' || transactionType !== 'withdraw') return null;
+    return morphoHoldings.positions.find(
+      (pos) => pos.vault.address.toLowerCase() === (fromAccount as VaultAccount).address.toLowerCase()
+    ) || null;
+  }, [fromAccount, morphoHoldings.positions, transactionType]);
+
+  const vaultShareBalance = vaultPosition?.shares || null;
+
+  // Use convertToAssets to get exact asset amount from shares for max withdrawal check
+  const { data: exactAssetAmount } = useReadContract({
+    address: (transactionType === 'withdraw' && vaultShareBalance && fromAccount?.type === 'vault' 
+      ? (fromAccount as VaultAccount).address 
+      : undefined) as `0x${string}`,
+    abi: ERC4626_ABI,
+    functionName: 'convertToAssets',
+    args: vaultShareBalance && fromAccount?.type === 'vault'
+      ? [BigInt(vaultShareBalance)]
+      : undefined,
+    query: {
+      enabled: transactionType === 'withdraw' && fromAccount?.type === 'vault' && !!vaultShareBalance && BigInt(vaultShareBalance) > BigInt(0),
+    },
+  });
+
+  // Check if withdrawal amount matches max (within small tolerance for rounding)
+  const shouldUseWithdrawAll = useMemo(() => {
+    if (transactionType !== 'withdraw' || !fromAccount || fromAccount.type !== 'vault' || !amount || !exactAssetAmount) {
+      return false;
+    }
+
+    const vaultAccount = fromAccount as VaultAccount;
+    const vaultData = getVaultData(vaultAccount.address);
+    if (!vaultData) return false;
+
+    const maxAssetAmount = parseFloat(formatUnits(exactAssetAmount, vaultData.assetDecimals || 18));
+    const enteredAmount = parseFloat(amount);
+
+    if (isNaN(enteredAmount) || isNaN(maxAssetAmount) || maxAssetAmount === 0) {
+      return false;
+    }
+
+    // Check if entered amount is within 0.1% of max (to account for rounding)
+    const tolerance = maxAssetAmount * 0.001;
+    return Math.abs(enteredAmount - maxAssetAmount) <= tolerance;
+  }, [transactionType, fromAccount, amount, exactAssetAmount, getVaultData]);
 
   // Reset transaction hash and step when status changes
   useEffect(() => {
@@ -301,7 +361,12 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
         txHash = await executeVaultAction('deposit', vaultAddress, amount, onProgress, undefined, assetToUse.decimals);
       } else if (transactionType === 'withdraw') {
         const vaultAddress = (fromAccount as VaultAccount).address;
-        txHash = await executeVaultAction('withdraw', vaultAddress, amount, onProgress, undefined, assetToUse.decimals);
+        // Use withdrawAll (redeem) if amount matches max, otherwise use regular withdraw
+        if (shouldUseWithdrawAll) {
+          txHash = await executeVaultAction('withdrawAll', vaultAddress, undefined, onProgress, undefined, assetToUse.decimals);
+        } else {
+          txHash = await executeVaultAction('withdraw', vaultAddress, amount, onProgress, undefined, assetToUse.decimals);
+        }
       } else if (transactionType === 'transfer') {
         // For transfer, withdraw from source vault and deposit to destination vault in single bundle
         const sourceVaultAddress = (fromAccount as VaultAccount).address;
@@ -397,7 +462,7 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
         <TransactionConfirmation
           fromAccount={fromAccount}
           toAccount={toAccount}
-          amount={amount || ''}
+          amount={amount?.trim() || ''}
           assetSymbol={assetSymbol}
           assetDecimals={derivedAsset?.decimals}
           transactionType={transactionType}
