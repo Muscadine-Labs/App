@@ -87,7 +87,7 @@ export async function GET(
     // Determine interval based on period
     const intervalMap: Record<string, string> = {
       '7d': 'HOUR',
-      '30d': 'DAY',
+      '30d': 'HOUR', // Use hourly for 30d to get better granularity
       '90d': 'DAY',
       '1y': 'DAY',
       'all': 'DAY',
@@ -98,6 +98,11 @@ export async function GET(
     const query = `
       query VaultPositionHistory($userAddress: String!, $vaultAddress: String!, $chainId: Int!, $options: TimeseriesOptions) {
         vaultPosition(userAddress: $userAddress, vaultAddress: $vaultAddress, chainId: $chainId) {
+          state {
+            assets
+            assetsUsd
+            shares
+          }
           historicalState {
             assets(options: $options) {
               x
@@ -163,9 +168,27 @@ export async function GET(
 
     const vaultPosition = data.data?.vaultPosition;
     
-    if (!vaultPosition || !vaultPosition.historicalState) {
+    if (!vaultPosition) {
       return NextResponse.json({
         history: [],
+        currentPosition: null,
+        period,
+        cached: false,
+        timestamp: Date.now(),
+      });
+    }
+    
+    // Extract current position from state (if available)
+    const currentPosition = vaultPosition.state ? {
+      assets: vaultPosition.state.assets || 0,
+      assetsUsd: vaultPosition.state.assetsUsd || 0,
+      shares: vaultPosition.state.shares || 0,
+    } : null;
+    
+    if (!vaultPosition.historicalState) {
+      return NextResponse.json({
+        history: [],
+        currentPosition,
         period,
         cached: false,
         timestamp: Date.now(),
@@ -258,6 +281,7 @@ export async function GET(
 
     return NextResponse.json({
       history,
+      currentPosition,
       period,
       cached: false,
       timestamp: Date.now(),

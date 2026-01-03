@@ -53,30 +53,77 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     assetsUsd: number;
     shares: number;
   }>>([]);
+  const [hourly7dPositionHistory, setHourly7dPositionHistory] = useState<Array<{
+    timestamp: number;
+    assets: number;
+    assetsUsd: number;
+    shares: number;
+  }>>([]);
+  const [hourly30dPositionHistory, setHourly30dPositionHistory] = useState<Array<{
+    timestamp: number;
+    assets: number;
+    assetsUsd: number;
+    shares: number;
+  }>>([]);
+  const [apiCurrentPosition, setApiCurrentPosition] = useState<{
+    assets: number;
+    assetsUsd: number;
+    shares: number;
+  } | null>(null);
 
-  // Find the current vault position
+  // Find the current vault position from Alchemy (fallback source)
   const currentVaultPosition = morphoHoldings.positions.find(
     pos => pos.vault.address.toLowerCase() === vaultData.address.toLowerCase()
   );
+  
+  // Use GraphQL API current position as primary source, Alchemy as fallback
+  const effectiveCurrentPosition = apiCurrentPosition ? {
+    vault: {
+      address: vaultData.address,
+      name: vaultData.name,
+      symbol: vaultData.symbol,
+      state: {
+        sharePriceUsd: vaultData.sharePriceUsd || 0,
+        totalAssetsUsd: vaultData.totalValueLocked || 0,
+        totalSupply: vaultData.totalSupply || '0',
+      },
+    },
+    shares: (apiCurrentPosition.shares * 1e18).toString(),
+    assets: (apiCurrentPosition.assets * Math.pow(10, vaultData.assetDecimals || 18)).toString(),
+  } : currentVaultPosition;
 
   const userVaultValueUsd = useMemo(() => {
-    if (!currentVaultPosition) return 0;
-    return (parseFloat(currentVaultPosition.shares) / WEI_PER_ETHER) * currentVaultPosition.vault.state.sharePriceUsd;
-  }, [currentVaultPosition]);
+    // Primary: Use GraphQL API current position USD value (most accurate)
+    if (apiCurrentPosition && apiCurrentPosition.assetsUsd > 0) {
+      return apiCurrentPosition.assetsUsd;
+    }
+    
+    // Fallback: Use Alchemy position if available
+    if (!effectiveCurrentPosition) {
+      return 0;
+    }
+    return (parseFloat(effectiveCurrentPosition.shares) / WEI_PER_ETHER) * effectiveCurrentPosition.vault.state.sharePriceUsd;
+  }, [effectiveCurrentPosition, apiCurrentPosition]);
 
   // Calculate asset amount from shares
   const userVaultAssetAmount = useMemo(() => {
-    if (!currentVaultPosition || !vaultData.totalAssets || !vaultData.totalValueLocked) {
+    // Primary: Use GraphQL API current position (most accurate)
+    if (apiCurrentPosition && apiCurrentPosition.assets > 0) {
+      return apiCurrentPosition.assets;
+    }
+    
+    // Fallback: Use Alchemy position if available
+    if (!effectiveCurrentPosition || !vaultData.totalAssets || !vaultData.totalValueLocked) {
       return 0;
     }
     
-    const sharesDecimal = parseFloat(currentVaultPosition.shares) / WEI_PER_ETHER;
-    const totalSupplyDecimal = parseFloat(currentVaultPosition.vault.state.totalSupply) / WEI_PER_ETHER;
+    const sharesDecimal = parseFloat(effectiveCurrentPosition.shares) / WEI_PER_ETHER;
+    const totalSupplyDecimal = parseFloat(effectiveCurrentPosition.vault.state.totalSupply) / WEI_PER_ETHER;
     const totalAssetsDecimal = parseFloat(vaultData.totalAssets) / Math.pow(10, vaultData.assetDecimals || 18);
     const sharePriceInAsset = totalSupplyDecimal > 0 ? totalAssetsDecimal / totalSupplyDecimal : 0;
     
     return sharesDecimal * sharePriceInAsset;
-  }, [currentVaultPosition, vaultData.totalAssets, vaultData.totalValueLocked, vaultData.assetDecimals]);
+  }, [effectiveCurrentPosition, apiCurrentPosition, vaultData.totalAssets, vaultData.totalValueLocked, vaultData.assetDecimals]);
 
   useEffect(() => {
     const fetchPositionHistory = async () => {
@@ -112,6 +159,49 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
         } else {
           setUserPositionHistory([]);
         }
+        
+        // Set current position from API if available
+        if (data && typeof data === 'object' && data.currentPosition) {
+          // Convert raw values to decimal
+          const currentPos = data.currentPosition;
+          // USDC uses 6 decimals, but check vaultData first
+          const assetDecimals = vaultData.assetDecimals || (vaultData.symbol === 'USDC' ? 6 : 18);
+          
+          // Assets are in raw format (wei/smallest unit)
+          const assetsRaw = typeof currentPos.assets === 'string' 
+            ? parseFloat(currentPos.assets) 
+            : (typeof currentPos.assets === 'number' ? currentPos.assets : 0);
+          const assetsDecimal = assetsRaw / Math.pow(10, assetDecimals);
+          
+          // Shares are in raw format (18 decimals/wei)
+          const sharesRaw = typeof currentPos.shares === 'string' 
+            ? parseFloat(currentPos.shares) 
+            : (typeof currentPos.shares === 'number' ? currentPos.shares : 0);
+          const sharesDecimal = sharesRaw / 1e18;
+          
+          // assetsUsd should already be in decimal format
+          const assetsUsd = typeof currentPos.assetsUsd === 'number' 
+            ? currentPos.assetsUsd 
+            : (assetsDecimal * (vaultData.sharePriceUsd || 1));
+          
+          logger.debug('Setting API current position', {
+            assetsRaw,
+            assetsDecimal,
+            sharesRaw,
+            sharesDecimal,
+            assetsUsd,
+            assetDecimals,
+            vaultSymbol: vaultData.symbol,
+          });
+          
+          setApiCurrentPosition({
+            assets: assetsDecimal,
+            assetsUsd,
+            shares: sharesDecimal,
+          });
+        } else {
+          setApiCurrentPosition(null);
+        }
       } catch (error) {
         logger.error(
           'Failed to fetch vault position history',
@@ -128,18 +218,106 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     fetchPositionHistory();
   }, [vaultData, address, showErrorToast]);
 
+  // Fetch hourly data for 7D period
+  useEffect(() => {
+    const fetch7dHourlyPosition = async () => {
+      if (!address) {
+        setHourly7dPositionHistory([]);
+        return;
+      }
+
+      try {
+        // Fetch 7D data with hourly intervals
+        const response = await fetch(
+          `/api/vaults/${vaultData.address}/position-history?chainId=${vaultData.chainId}&userAddress=${address}&period=7d`
+        );
+        
+        if (!response.ok) {
+          return; // Silently fail, will fall back to daily data
+        }
+        
+        const data = await response.json().catch(() => ({}));
+        
+        // Set position history - use empty array if error or invalid response
+        if (data && typeof data === 'object' && Array.isArray(data.history)) {
+          setHourly7dPositionHistory(data.history);
+        } else {
+          setHourly7dPositionHistory([]);
+        }
+      } catch (error) {
+        // Silently fail, will fall back to daily data
+        logger.warn(
+          'Failed to fetch 7D hourly position data, falling back to daily',
+          error instanceof Error ? error : new Error(String(error)),
+          { vaultAddress: vaultData.address, userAddress: address, chainId: vaultData.chainId }
+        );
+        setHourly7dPositionHistory([]);
+      }
+    };
+
+    fetch7dHourlyPosition();
+  }, [vaultData.address, vaultData.chainId, address]);
+
+  // Fetch hourly data for 30D period
+  useEffect(() => {
+    const fetch30dHourlyPosition = async () => {
+      if (!address) {
+        setHourly30dPositionHistory([]);
+        return;
+      }
+
+      try {
+        // Fetch 30D data with hourly intervals
+        const response = await fetch(
+          `/api/vaults/${vaultData.address}/position-history?chainId=${vaultData.chainId}&userAddress=${address}&period=30d`
+        );
+        
+        if (!response.ok) {
+          return; // Silently fail, will fall back to daily data
+        }
+        
+        const data = await response.json().catch(() => ({}));
+        
+        // Set position history - use empty array if error or invalid response
+        if (data && typeof data === 'object' && Array.isArray(data.history)) {
+          setHourly30dPositionHistory(data.history);
+        } else {
+          setHourly30dPositionHistory([]);
+        }
+      } catch (error) {
+        // Silently fail, will fall back to daily data
+        logger.warn(
+          'Failed to fetch 30D hourly position data, falling back to daily',
+          error instanceof Error ? error : new Error(String(error)),
+          { vaultAddress: vaultData.address, userAddress: address, chainId: vaultData.chainId }
+        );
+        setHourly30dPositionHistory([]);
+      }
+    };
+
+    fetch30dHourlyPosition();
+  }, [vaultData.address, vaultData.chainId, address]);
+
   // Use GraphQL position history data directly - no calculation needed
   const userDepositHistory = useMemo(() => {
-    if (userPositionHistory.length === 0) return [];
+    // Use hourly data for 7D and 30D periods, otherwise use daily data
+    let sourceData = userPositionHistory;
+    if (selectedTimeFrame === '7D' && hourly7dPositionHistory.length > 0) {
+      sourceData = hourly7dPositionHistory;
+    } else if (selectedTimeFrame === '30D' && hourly30dPositionHistory.length > 0) {
+      sourceData = hourly30dPositionHistory;
+    }
+    
+    if (sourceData.length === 0) return [];
 
     // Map GraphQL position history to chart data format
-    return userPositionHistory.map((point) => ({
+    return sourceData.map((point) => ({
       timestamp: point.timestamp,
       date: formatDate(point.timestamp),
       valueUsd: Math.max(0, point.assetsUsd),
       valueToken: Math.max(0, point.assets),
     }));
-  }, [userPositionHistory]);
+  }, [userPositionHistory, hourly7dPositionHistory, hourly30dPositionHistory, selectedTimeFrame]);
 
   // Calculate available time frames based on data range
   const availableTimeFrames = useMemo(() => {
@@ -291,7 +469,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
             <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">Your Deposits</h2>
             {!isConnected ? (
               <p className="text-sm text-[var(--foreground-muted)]">Connect wallet</p>
-            ) : !currentVaultPosition ? (
+            ) : !apiCurrentPosition && !effectiveCurrentPosition ? (
               <p className="text-sm text-[var(--foreground-muted)]">No holdings</p>
             ) : (
               <>

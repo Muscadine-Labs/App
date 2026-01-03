@@ -76,7 +76,7 @@ export async function GET(
     // Determine interval based on period
     const intervalMap: Record<string, string> = {
       '7d': 'HOUR',
-      '30d': 'DAY',
+      '30d': 'HOUR', // Use hourly for 30d to get better granularity
       '90d': 'DAY',
       '1y': 'DAY',
       'all': 'DAY', // Use DAY interval for all data

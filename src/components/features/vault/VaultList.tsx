@@ -2,7 +2,9 @@ import { VAULTS } from "@/lib/vaults";
 import VaultListCard from "./VaultListCard";
 import { Vault } from "../../../types/vault";
 import { useWallet } from "../../../contexts/WalletContext";
-import { useMemo } from "react";
+import { useVaultData } from "../../../contexts/VaultDataContext";
+import { useAccount } from "wagmi";
+import { useMemo, useState, useEffect } from "react";
 
 interface VaultListProps {
     onVaultSelect?: (vault: Vault | null) => void;
@@ -11,8 +13,80 @@ interface VaultListProps {
 
 export default function VaultList({ onVaultSelect, selectedVaultAddress }: VaultListProps = {} as VaultListProps) {
     const { morphoHoldings } = useWallet();
+    const { getVaultData } = useVaultData();
+    const { address } = useAccount();
     
-    // Sort vaults by user position (highest to lowest)
+    // Store API positions for all vaults (GraphQL primary source)
+    const [apiPositions, setApiPositions] = useState<Map<string, {
+        assets: number;
+        assetsUsd: number;
+        shares: number;
+    }>>(new Map());
+    
+    // Fetch API positions for all vaults
+    useEffect(() => {
+        if (!address) {
+            setApiPositions(new Map());
+            return;
+        }
+        
+        const fetchAllPositions = async () => {
+            const positionsMap = new Map<string, {
+                assets: number;
+                assetsUsd: number;
+                shares: number;
+            }>();
+            
+            const vaults = Object.values(VAULTS);
+            const positionPromises = vaults.map(async (vault) => {
+                try {
+                    const vaultData = getVaultData(vault.address);
+                    if (!vaultData) return;
+                    
+                    const response = await fetch(
+                        `/api/vaults/${vault.address}/position-history?chainId=${vault.chainId}&userAddress=${address}&period=all`
+                    );
+                    
+                    const data = await response.json().catch(() => ({}));
+                    
+                    if (data && typeof data === 'object' && data.currentPosition) {
+                        const currentPos = data.currentPosition;
+                        const assetDecimals = vaultData.assetDecimals || (vault.symbol === 'USDC' ? 6 : 18);
+                        
+                        // Convert raw values to decimal
+                        const assetsRaw = typeof currentPos.assets === 'string' 
+                            ? parseFloat(currentPos.assets) 
+                            : (typeof currentPos.assets === 'number' ? currentPos.assets : 0);
+                        const assetsDecimal = assetsRaw / Math.pow(10, assetDecimals);
+                        
+                        const sharesRaw = typeof currentPos.shares === 'string' 
+                            ? parseFloat(currentPos.shares) 
+                            : (typeof currentPos.shares === 'number' ? currentPos.shares : 0);
+                        const sharesDecimal = sharesRaw / 1e18;
+                        
+                        const assetsUsd = typeof currentPos.assetsUsd === 'number' 
+                            ? currentPos.assetsUsd 
+                            : (assetsDecimal * (vaultData.sharePriceUsd || 1));
+                        
+                        positionsMap.set(vault.address.toLowerCase(), {
+                            assets: assetsDecimal,
+                            assetsUsd,
+                            shares: sharesDecimal,
+                        });
+                    }
+                } catch (error) {
+                    // Silently fail for individual vaults
+                }
+            });
+            
+            await Promise.all(positionPromises);
+            setApiPositions(positionsMap);
+        };
+        
+        fetchAllPositions();
+    }, [address, getVaultData]);
+    
+    // Sort vaults by user position (highest to lowest) - use GraphQL API as primary source
     const sortedVaults = useMemo(() => {
         const vaults: Vault[] = Object.values(VAULTS).map((vault) => ({
             address: vault.address,
@@ -23,24 +97,43 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
 
         // Calculate position value for each vault and sort
         return vaults.sort((a, b) => {
-            const positionA = morphoHoldings.positions.find(
-                pos => pos.vault.address.toLowerCase() === a.address.toLowerCase()
-            );
-            const positionB = morphoHoldings.positions.find(
-                pos => pos.vault.address.toLowerCase() === b.address.toLowerCase()
-            );
-
-            const valueA = positionA 
-                ? (parseFloat(positionA.shares) / 1e18) * positionA.vault.state.sharePriceUsd 
-                : 0;
-            const valueB = positionB 
-                ? (parseFloat(positionB.shares) / 1e18) * positionB.vault.state.sharePriceUsd 
-                : 0;
+            // Primary: Use GraphQL API position value
+            const apiPositionA = apiPositions.get(a.address.toLowerCase());
+            const apiPositionB = apiPositions.get(b.address.toLowerCase());
+            
+            let valueA = 0;
+            let valueB = 0;
+            
+            // Primary: Use API position USD value
+            if (apiPositionA && apiPositionA.assetsUsd > 0) {
+                valueA = apiPositionA.assetsUsd;
+            } else {
+                // Fallback: Use Alchemy position
+                const positionA = morphoHoldings.positions.find(
+                    pos => pos.vault.address.toLowerCase() === a.address.toLowerCase()
+                );
+                valueA = positionA 
+                    ? (parseFloat(positionA.shares) / 1e18) * positionA.vault.state.sharePriceUsd 
+                    : 0;
+            }
+            
+            // Primary: Use API position USD value
+            if (apiPositionB && apiPositionB.assetsUsd > 0) {
+                valueB = apiPositionB.assetsUsd;
+            } else {
+                // Fallback: Use Alchemy position
+                const positionB = morphoHoldings.positions.find(
+                    pos => pos.vault.address.toLowerCase() === b.address.toLowerCase()
+                );
+                valueB = positionB 
+                    ? (parseFloat(positionB.shares) / 1e18) * positionB.vault.state.sharePriceUsd 
+                    : 0;
+            }
 
             // Sort descending (highest to lowest)
             return valueB - valueA;
         });
-    }, [morphoHoldings.positions]);
+    }, [morphoHoldings.positions, apiPositions]);
 
     // Legacy support: if onVaultSelect is provided, use it
     // Otherwise, VaultListCard will handle navigation directly

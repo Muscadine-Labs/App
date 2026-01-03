@@ -7,6 +7,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { getVaultRoute } from '../../../lib/vault-utils';
 import { useAccount } from 'wagmi';
 import { Skeleton } from '../../../components/ui/Skeleton';
+import { useState, useEffect, useMemo } from 'react';
 
 interface VaultListCardProps {
     vault: Vault;
@@ -23,18 +24,36 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
     const vaultData = getVaultData(vault.address);
     const loading = isLoading(vault.address);
     
+    // State for API current position (fallback when Alchemy doesn't work)
+    const [apiCurrentPosition, setApiCurrentPosition] = useState<{
+        assets: number;
+        assetsUsd: number;
+        shares: number;
+    } | null>(null);
+    
     // Check if this vault is active based on the current route
     const vaultRoute = getVaultRoute(vault.address);
     const isActive = pathname === vaultRoute || isSelected;
 
-    // Find user's position in this vault
+    // Find user's position in this vault from Alchemy (fallback source)
     const userPosition = morphoHoldings.positions.find(
         pos => pos.vault.address.toLowerCase() === vault.address.toLowerCase()
     );
 
-    // Calculate user's position value (convert shares from raw units to human-readable)
-    const userPositionValue = userPosition ? 
-        (parseFloat(userPosition.shares) / 1e18) * userPosition.vault.state.sharePriceUsd : 0;
+    // Calculate user's position value - use GraphQL API as primary source
+    const userPositionValue = useMemo(() => {
+        // Primary: Use GraphQL API current position USD value (most accurate)
+        if (apiCurrentPosition && apiCurrentPosition.assetsUsd > 0) {
+            return apiCurrentPosition.assetsUsd;
+        }
+        
+        // Fallback: Use Alchemy position if available
+        if (userPosition) {
+            return (parseFloat(userPosition.shares) / 1e18) * userPosition.vault.state.sharePriceUsd;
+        }
+        
+        return 0;
+    }, [userPosition, apiCurrentPosition]);
 
 
     const handleClick = () => {
@@ -47,8 +66,86 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
         }
     };
 
-    // Get user's vault balance from GraphQL (user's asset balance in this vault)
+    // Fetch API current position as fallback
+    useEffect(() => {
+        const fetchApiPosition = async () => {
+            if (!address || !vaultData) {
+                setApiCurrentPosition(null);
+                return;
+            }
+
+            try {
+                const response = await fetch(
+                    `/api/vaults/${vault.address}/position-history?chainId=${vault.chainId}&userAddress=${address}&period=all`
+                );
+                
+                const data = await response.json().catch(() => ({}));
+                
+                if (data && typeof data === 'object' && data.currentPosition) {
+                    const currentPos = data.currentPosition;
+                    const assetDecimals = vaultData.assetDecimals || (vault.symbol === 'USDC' ? 6 : 18);
+                    
+                    // Convert raw values to decimal
+                    const assetsRaw = typeof currentPos.assets === 'string' 
+                        ? parseFloat(currentPos.assets) 
+                        : (typeof currentPos.assets === 'number' ? currentPos.assets : 0);
+                    const assetsDecimal = assetsRaw / Math.pow(10, assetDecimals);
+                    
+                    const sharesRaw = typeof currentPos.shares === 'string' 
+                        ? parseFloat(currentPos.shares) 
+                        : (typeof currentPos.shares === 'number' ? currentPos.shares : 0);
+                    const sharesDecimal = sharesRaw / 1e18;
+                    
+                    const assetsUsd = typeof currentPos.assetsUsd === 'number' 
+                        ? currentPos.assetsUsd 
+                        : (assetsDecimal * (vaultData.sharePriceUsd || 1));
+                    
+                    setApiCurrentPosition({
+                        assets: assetsDecimal,
+                        assetsUsd,
+                        shares: sharesDecimal,
+                    });
+                } else {
+                    setApiCurrentPosition(null);
+                }
+            } catch (error) {
+                // Silently fail - will fall back to Alchemy position
+                setApiCurrentPosition(null);
+            }
+        };
+
+        fetchApiPosition();
+    }, [address, vault.address, vault.chainId, vaultData]);
+
+    // Get user's vault balance - use GraphQL API as primary source
     const getUserVaultBalance = () => {
+        // Primary: Use GraphQL API current position (most accurate)
+        if (apiCurrentPosition && apiCurrentPosition.assets > 0) {
+            const rawValue = apiCurrentPosition.assets;
+            if (isNaN(rawValue) || rawValue === 0) return null;
+            
+            // Count digits before decimal point
+            const integerPart = Math.floor(Math.abs(rawValue));
+            const digitCount = integerPart === 0 ? 0 : integerPart.toString().length;
+            
+            let decimalPlaces: number;
+            if (digitCount >= 3) {
+                decimalPlaces = 2;
+            } else if (digitCount === 2) {
+                decimalPlaces = 3;
+            } else if (digitCount === 1) {
+                decimalPlaces = 4;
+            } else {
+                decimalPlaces = 5;
+            }
+            
+            return formatNumber(rawValue, {
+                minimumFractionDigits: decimalPlaces,
+                maximumFractionDigits: decimalPlaces
+            });
+        }
+        
+        // Fallback: Use Alchemy position if available
         if (!userPosition || !vaultData) return null;
         
         let rawValue: number;
@@ -140,7 +237,7 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
                             <Skeleton width="5rem" height="1rem" />
                             <Skeleton width="4rem" height="0.875rem" />
                         </div>
-                    ) : userPosition && userPositionValue > 0 && userVaultBalance ? (
+                    ) : (apiCurrentPosition || userPosition) && userPositionValue > 0 && userVaultBalance ? (
                         <div className="flex flex-col md:items-end">
                             <span className="text-sm md:text-base font-semibold text-[var(--foreground)]">
                                 {userVaultBalance} {vault.symbol}
