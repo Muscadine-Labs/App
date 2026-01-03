@@ -151,7 +151,7 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
           address: vaultInfo.address,
           name: vaultInfo.name || `Vault ${address.slice(0, 6)}...${address.slice(-4)}`,
           symbol: vaultInfo.asset?.symbol || 'UNKNOWN',
-          chainId: chainId,
+          chainId: effectiveChainId,
           totalValueLocked: vaultInfo.state?.totalAssetsUsd || 0,
           totalAssets: vaultInfo.state?.totalAssets || '0',
           assetDecimals: vaultInfo.asset?.decimals || 18,
