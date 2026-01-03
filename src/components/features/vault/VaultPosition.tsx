@@ -77,20 +77,25 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
   );
   
   // Use GraphQL API current position as primary source, Alchemy as fallback
-  const effectiveCurrentPosition = apiCurrentPosition ? {
-    vault: {
-      address: vaultData.address,
-      name: vaultData.name,
-      symbol: vaultData.symbol,
-      state: {
-        sharePriceUsd: vaultData.sharePriceUsd || 0,
-        totalAssetsUsd: vaultData.totalValueLocked || 0,
-        totalSupply: vaultData.totalSupply || '0',
-      },
-    },
-    shares: (apiCurrentPosition.shares * 1e18).toString(),
-    assets: (apiCurrentPosition.assets * Math.pow(10, vaultData.assetDecimals || 18)).toString(),
-  } : currentVaultPosition;
+  const effectiveCurrentPosition = useMemo(() => {
+    if (apiCurrentPosition) {
+      return {
+        vault: {
+          address: vaultData.address,
+          name: vaultData.name,
+          symbol: vaultData.symbol,
+          state: {
+            sharePriceUsd: vaultData.sharePriceUsd || 0,
+            totalAssetsUsd: vaultData.totalValueLocked || 0,
+            totalSupply: vaultData.totalSupply || '0',
+          },
+        },
+        shares: (apiCurrentPosition.shares * 1e18).toString(),
+        assets: (apiCurrentPosition.assets * Math.pow(10, vaultData.assetDecimals || 18)).toString(),
+      };
+    }
+    return currentVaultPosition;
+  }, [apiCurrentPosition, vaultData.address, vaultData.name, vaultData.symbol, vaultData.sharePriceUsd, vaultData.totalValueLocked, vaultData.totalSupply, vaultData.assetDecimals, currentVaultPosition]);
 
   const userVaultValueUsd = useMemo(() => {
     // Primary: Use GraphQL API current position USD value (most accurate)

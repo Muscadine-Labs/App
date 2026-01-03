@@ -150,14 +150,3 @@ export interface MorphoUserVaultPositions {
   };
 }
 
-// Merkl Rewards Types
-export interface MerklClaim {
-  user: string;
-  tokens: string[];
-  amounts: string[];
-  proofs: string[][];
-}
-
-export interface MerklClaimData {
-  claim: MerklClaim;
-}

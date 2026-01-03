@@ -75,7 +75,7 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
                             shares: sharesDecimal,
                         });
                     }
-                } catch (error) {
+                } catch {
                     // Silently fail for individual vaults
                 }
             });

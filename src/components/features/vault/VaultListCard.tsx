@@ -108,14 +108,14 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
                 } else {
                     setApiCurrentPosition(null);
                 }
-            } catch (error) {
+            } catch {
                 // Silently fail - will fall back to Alchemy position
                 setApiCurrentPosition(null);
             }
         };
 
         fetchApiPosition();
-    }, [address, vault.address, vault.chainId, vaultData]);
+    }, [address, vault.address, vault.chainId, vault.symbol, vaultData]);
 
     // Get user's vault balance - use GraphQL API as primary source
     const getUserVaultBalance = () => {
