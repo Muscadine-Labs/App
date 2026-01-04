@@ -49,7 +49,6 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
   const router = useRouter();
 
   const [currentTxHash, setCurrentTxHash] = useState<string | null>(null);
-  const [prerequisiteReceipts, setPrerequisiteReceipts] = useState<Map<number, boolean>>(new Map());
   const [stepsInfo, setStepsInfo] = useState<Array<{ stepIndex: number; label: string; type: 'signing' | 'approving' | 'confirming'; txHash?: string }>>([]);
   const [totalSteps, setTotalSteps] = useState<number>(0);
 
@@ -116,7 +115,6 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
   useEffect(() => {
     if (status === 'idle' || status === 'preview') {
       setCurrentTxHash(null);
-      setPrerequisiteReceipts(new Map());
       setStepsInfo([]);
       setTotalSteps(0);
     }
@@ -131,39 +129,10 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
     },
   });
 
-  // Wait for prerequisite transaction receipts
-  const currentPrerequisiteStep = stepsInfo.find(step => 
-    (step.type === 'signing' || step.type === 'approving') && 
-    step.txHash && 
-    !prerequisiteReceipts.get(step.stepIndex)
-  );
-  
-  const { data: prerequisiteReceipt, error: prerequisiteReceiptError } = useWaitForTransactionReceipt({
-    hash: currentPrerequisiteStep?.txHash as `0x${string}`,
-    query: {
-      enabled: !!currentPrerequisiteStep?.txHash && 
-              (status === 'approving' || status === 'signing'),
-    },
-  });
-
-  // Handle prerequisite transaction receipts
-  useEffect(() => {
-    if (prerequisiteReceipt && currentPrerequisiteStep) {
-      setPrerequisiteReceipts(prev => new Map(prev).set(currentPrerequisiteStep.stepIndex, true));
-    } else if (prerequisiteReceiptError && currentPrerequisiteStep) {
-      if (isCancellationError(prerequisiteReceiptError)) {
-        setStatus('preview');
-        setCurrentTxHash(null);
-        setPrerequisiteReceipts(new Map());
-        setStepsInfo([]);
-        setTotalSteps(0);
-      } else {
-        const errorMessage = formatTransactionError(prerequisiteReceiptError);
-        showErrorToast(errorMessage, 5000);
-        setStatus('error', errorMessage);
-      }
-    }
-  }, [prerequisiteReceipt, prerequisiteReceiptError, currentPrerequisiteStep, setStatus, showErrorToast]);
+  // Note: We don't need to wait for prerequisite transaction receipts here because
+  // executeVaultAction already waits for them internally using publicClient.waitForTransactionReceipt.
+  // The onProgress callback will update the status appropriately as steps complete.
+  // This avoids race conditions and duplicate waiting logic.
 
   // Handle transaction receipt
   useEffect(() => {
@@ -270,7 +239,6 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
       if (isCancellationError(receiptError)) {
         setStatus('preview');
         setCurrentTxHash(null);
-        setPrerequisiteReceipts(new Map());
         setStepsInfo([]);
         setTotalSteps(0);
       } else {
@@ -279,6 +247,8 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
         setStatus('error', errorMessage);
       }
     }
+    // Note: refreshBalancesWithPolling is intentionally excluded from deps to avoid unnecessary re-runs
+    // morphoHoldings is included but its reference changes frequently - the effect handles this correctly
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receipt, receiptError, status, txHash, currentTxHash, fromAccount, toAccount, refreshBalances, fetchVaultData, morphoHoldings, router, success, setStatus, showErrorToast]);
 
@@ -300,7 +270,8 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
     }
 
     try {
-      setStatus('confirming');
+      // Don't set status here - let onProgress callback set it based on actual step
+      // This ensures we start with the correct status (signing/approving) for pre-authorization
       
       logger.info('Transaction execution started', {
         transactionType,
@@ -327,7 +298,8 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
             stepIndex: step.stepIndex,
             label: step.stepLabel || (step.type === 'signing' ? 'Pre authorize' : step.type === 'approving' ? 'Pre authorize' : 'Confirm'),
             type: step.type,
-            txHash: step.type === 'confirming' ? step.txHash : (step.type === 'approving' ? step.txHash : undefined)
+            // Capture txHash for both approving and confirming steps
+            txHash: step.type === 'confirming' ? step.txHash : (step.type === 'approving' && 'txHash' in step ? step.txHash : undefined)
           };
           
           if (existingIndex >= 0) {
@@ -342,6 +314,7 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
           return newSteps;
         });
         
+        // Update status based on step type - this ensures proper state transitions
         if (step.type === 'signing') {
           setStatus('signing');
         } else if (step.type === 'approving') {
@@ -384,7 +357,6 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
       if (isCancellationError(err)) {
         setStatus('preview');
         setCurrentTxHash(null);
-        setPrerequisiteReceipts(new Map());
         setStepsInfo([]);
         setTotalSteps(0);
         return;
@@ -412,15 +384,30 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
   }
 
   // Calculate steps for wallet progress bar (shown in confirmation modal)
+  // Since executeVaultAction waits for prerequisite receipts internally, we determine
+  // step completion based on status progression rather than individual receipt tracking
   const walletSteps = (isSigning || isApproving || isConfirming || isSuccess) ? (() => {
     const effectiveTotalSteps = totalSteps > 0 ? totalSteps : (stepsInfo.length > 0 ? Math.max(...stepsInfo.map(s => s.stepIndex)) + 1 : 0);
     
     if (effectiveTotalSteps > 0) {
       return Array.from({ length: effectiveTotalSteps }, (_, i) => {
         const stepInfo = stepsInfo.find(s => s.stepIndex === i);
-        const isCompleted = stepInfo 
-          ? (stepInfo.type === 'confirming' ? !!receipt : !!prerequisiteReceipts.get(i))
-          : false;
+        
+        // Determine if step is completed:
+        // - Confirming steps: completed if we have a receipt
+        // - Signing/approving steps: completed if status has progressed past them
+        //   (i.e., if we're in confirming/success, all previous steps are done)
+        let isCompleted = false;
+        if (stepInfo) {
+          if (stepInfo.type === 'confirming') {
+            isCompleted = !!receipt || isSuccess;
+          } else if (stepInfo.type === 'signing' || stepInfo.type === 'approving') {
+            // If we're in confirming or success, all prerequisite steps are completed
+            // (executeVaultAction waits for them internally before proceeding)
+            isCompleted = isConfirming || isSuccess;
+          }
+        }
+        
         const isActive = stepInfo 
           ? ((stepInfo.type === 'signing' && isSigning) ||
              (stepInfo.type === 'approving' && isApproving) ||
@@ -476,7 +463,6 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
               // If transaction is in progress, reset to preview
               setStatus('preview');
               setCurrentTxHash(null);
-              setPrerequisiteReceipts(new Map());
               setStepsInfo([]);
               setTotalSteps(0);
             } else if (isSuccess) {

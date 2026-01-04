@@ -276,7 +276,7 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                         setIsSettingsOpen(true);
                                     }
                                 }}
-                                className="flex items-center gap-1 sm:gap-2 hover:opacity-80 transition-opacity p-1 sm:p-2"
+                                className="flex items-center gap-1 sm:gap-2 hover:opacity-80 transition-opacity p-1 sm:p-2 cursor-pointer"
                                 aria-label="Settings"
                             >
                                 <Icon 
