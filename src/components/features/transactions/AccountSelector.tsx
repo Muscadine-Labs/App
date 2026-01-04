@@ -251,7 +251,7 @@ export function AccountSelector({
         return null;
       }
 
-      // First priority: Use position.assets if available (from GraphQL)
+      // First priority: Use position.assets if available (from RPC via WalletContext)
       if (position.assets) {
         const value = parseFloat(position.assets) / Math.pow(10, vaultData.assetDecimals || 18);
         return { value, symbol: vaultAccount.symbol, decimals: vaultData.assetDecimals };

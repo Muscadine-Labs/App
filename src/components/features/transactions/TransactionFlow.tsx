@@ -75,7 +75,7 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
 
   const vaultShareBalance = vaultPosition?.shares || null;
 
-  // Use convertToAssets to get exact asset amount from shares for max withdrawal check
+  // Use convertToAssets via RPC to get exact asset amount from shares for max withdrawal check
   const { data: exactAssetAmount } = useReadContract({
     address: (transactionType === 'withdraw' && vaultShareBalance && fromAccount?.type === 'vault' 
       ? (fromAccount as VaultAccount).address 

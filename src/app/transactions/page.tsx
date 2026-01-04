@@ -6,7 +6,6 @@ import { useAccount, useReadContract } from 'wagmi';
 import { AccountSelector, TransactionFlow, TransactionProgressBar } from '@/components/features/transactions';
 import { useTransactionState } from '@/contexts/TransactionContext';
 import { useWallet } from '@/contexts/WalletContext';
-import { useVaultData } from '@/contexts/VaultDataContext';
 import { usePrices } from '@/contexts/PriceContext';
 import { VAULTS } from '@/lib/vaults';
 import { VaultAccount, WalletAccount } from '@/types/vault';
@@ -14,6 +13,20 @@ import { formatBigIntForInput, formatAvailableBalance, formatAssetAmountForMax, 
 import { Button } from '@/components/ui';
 import { Icon } from '@/components/ui/Icon';
 import { formatUnits } from 'viem';
+
+// Helper function to get asset decimals from vault symbol (no API needed)
+const getAssetDecimals = (symbol: string): number => {
+  if (symbol === 'USDC') {
+    return 6;
+  }
+  if (symbol === 'cbBTC' || symbol === 'BTC' || symbol === 'CBBTC') {
+    return 8;
+  }
+  if (symbol === 'WETH' || symbol === 'ETH') {
+    return 18;
+  }
+  return 18; // Default to 18 for other tokens
+};
 
 // ERC-4626 ABI for convertToAssets
 const ERC4626_ABI = [
@@ -31,7 +44,6 @@ export default function TransactionsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { tokenBalances, ethBalance, morphoHoldings, refreshBalances } = useWallet();
-  const { getVaultData, fetchVaultData } = useVaultData();
   const { btc: btcPrice, eth: ethPrice } = usePrices();
   const {
     fromAccount,
@@ -46,22 +58,11 @@ export default function TransactionsPage() {
     reset,
   } = useTransactionState();
 
-  // Refresh wallet and vault data when page opens
+  // Refresh wallet balances when page opens
   useEffect(() => {
     if (isConnected) {
-      // Refresh wallet balances immediately
+      // Refresh wallet balances immediately (includes vault positions via RPC)
       refreshBalances();
-      
-      // Refresh vault data for all vaults that the user has positions in (force refresh to bypass cache)
-      const vaultsToRefresh = morphoHoldings.positions.map(pos => pos.vault.address);
-      vaultsToRefresh.forEach(vaultAddress => {
-        fetchVaultData(vaultAddress, 8453, true); // Force refresh
-      });
-      
-      // Also refresh all available vaults to ensure we have fresh data for selection
-      Object.values(VAULTS).forEach(vault => {
-        fetchVaultData(vault.address, vault.chainId, true); // Force refresh
-      });
     }
     // Only run once when component mounts or when connection status changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -78,19 +79,8 @@ export default function TransactionsPage() {
     const transitionedToIdle = !wasIdle && isNowIdle;
     
     if (isConnected && transitionedToIdle) {
-      // Refresh wallet balances to get updated values
+      // Refresh wallet balances to get updated values (includes vault positions via RPC)
       refreshBalances();
-      
-      // Refresh vault data for all vaults that the user has positions in (force refresh to bypass cache)
-      const vaultsToRefresh = morphoHoldings.positions.map(pos => pos.vault.address);
-      vaultsToRefresh.forEach(vaultAddress => {
-        fetchVaultData(vaultAddress, 8453, true); // Force refresh
-      });
-      
-      // Also refresh all available vaults to ensure we have fresh data for selection
-      Object.values(VAULTS).forEach(vault => {
-        fetchVaultData(vault.address, vault.chainId, true); // Force refresh
-      });
     }
     
     // Update previous status
@@ -106,7 +96,6 @@ export default function TransactionsPage() {
     if (vaultAddress && action) {
       const vault = Object.values(VAULTS).find((v) => v.address.toLowerCase() === vaultAddress.toLowerCase());
       if (vault) {
-        const vaultData = getVaultData(vault.address);
         const position = morphoHoldings.positions.find(
           (pos) => pos.vault.address.toLowerCase() === vault.address.toLowerCase()
         );
@@ -118,7 +107,7 @@ export default function TransactionsPage() {
           symbol: vault.symbol,
           balance: position ? BigInt(position.shares) : BigInt(0),
           assetAddress: '', // Will be fetched during transaction
-          assetDecimals: vaultData?.assetDecimals ?? 18,
+          assetDecimals: getAssetDecimals(vault.symbol),
         };
 
         if (action === 'deposit') {
@@ -158,11 +147,11 @@ export default function TransactionsPage() {
     ) || null;
   }, [fromAccount, morphoHoldings.positions]);
 
-  // Use shares from vaultPosition (already fetched from GraphQL in WalletContext)
+  // Use shares from vaultPosition (already fetched via RPC in WalletContext using balanceOf)
   // This avoids redundant API calls - the position data is already up-to-date
   const vaultShareBalance = vaultPosition?.shares || null;
 
-  // Use convertToAssets to get exact asset amount from shares (no precision loss)
+  // Use convertToAssets via RPC to get exact asset amount from shares (no precision loss)
   const { data: exactAssetAmount } = useReadContract({
     address: (fromAccount?.type === 'vault' && vaultShareBalance ? (fromAccount as VaultAccount).address : undefined) as `0x${string}`,
     abi: ERC4626_ABI,
@@ -230,7 +219,7 @@ export default function TransactionsPage() {
     if (!fromAccount || fromAccount.type !== 'vault' || !derivedAsset) return '';
     
     const vaultAccount = fromAccount as VaultAccount;
-    const vaultData = getVaultData(vaultAccount.address);
+    const assetDecimals = getAssetDecimals(vaultAccount.symbol);
 
     if (!vaultShareBalance) {
       if (morphoHoldings.isLoading) {
@@ -244,27 +233,16 @@ export default function TransactionsPage() {
     if (sharesBigInt === BigInt(0)) {
       return `Available: 0.00 ${derivedAsset.symbol}`;
     }
-
-    // If vault data is not loaded yet, show loading
-    if (!vaultData) {
-      return `Loading...`;
-    }
     
     // Use convertToAssets for exact amount (no precision loss)
     if (exactAssetAmount !== undefined) {
-      const assetAmount = parseFloat(formatUnits(exactAssetAmount, vaultData.assetDecimals || 18));
-      return formatAvailableBalance(assetAmount, derivedAsset.symbol, vaultData.assetDecimals || 18);
+      const assetAmount = parseFloat(formatUnits(exactAssetAmount, assetDecimals));
+      return formatAvailableBalance(assetAmount, derivedAsset.symbol, assetDecimals);
     }
     
-    // Fallback: use share price if convertToAssets not available yet
-    if (vaultData.sharePrice && vaultData.sharePrice > 0) {
-      const sharesDecimal = parseFloat(formatUnits(sharesBigInt, 18));
-      const assetAmount = sharesDecimal * vaultData.sharePrice;
-      return formatAvailableBalance(assetAmount, derivedAsset.symbol, vaultData.assetDecimals || 18);
-    }
-    
-    return `Available: 0.00 ${derivedAsset.symbol}`;
-  }, [fromAccount, derivedAsset, vaultShareBalance, exactAssetAmount, morphoHoldings.isLoading, getVaultData]);
+    // Show loading if convertToAssets not available yet
+    return `Loading...`;
+  }, [fromAccount, derivedAsset, vaultShareBalance, exactAssetAmount, morphoHoldings.isLoading]);
 
   // Get max amount as a number for validation
   // For vaults: returns exact asset amount from full share balance (no dust)
@@ -307,7 +285,7 @@ export default function TransactionsPage() {
     } else {
       // For vault withdrawals: use convertToAssets to get exact asset amount from full share balance
       const vaultAccount = fromAccount as VaultAccount;
-      const vaultData = getVaultData(vaultAccount.address);
+      const assetDecimals = getAssetDecimals(vaultAccount.symbol);
 
       if (!vaultShareBalance) {
         return 0;
@@ -318,25 +296,17 @@ export default function TransactionsPage() {
       if (sharesBigInt === BigInt(0)) {
         return 0;
       }
-
-      // If vault data is not loaded yet, return null to show loading
-      if (!vaultData) {
-        return null;
-      }
       
       // Use convertToAssets to get exact asset amount (no precision loss, includes all shares)
       if (exactAssetAmount !== undefined) {
-        return parseFloat(formatUnits(exactAssetAmount, vaultData.assetDecimals || 18));
+        return parseFloat(formatUnits(exactAssetAmount, assetDecimals));
       }
       
-      // Fallback: use share price if convertToAssets not available yet
-      if (vaultData.sharePrice && vaultData.sharePrice > 0) {
-        const sharesDecimal = parseFloat(formatUnits(sharesBigInt, 18));
-        return sharesDecimal * vaultData.sharePrice;
-      }
+      // Return null to show loading if convertToAssets not available yet
+      return null;
     }
     return null;
-  }, [fromAccount, derivedAsset, toAccount, ethBalance, tokenBalances, vaultShareBalance, exactAssetAmount, getCombinedEthWethBalance, getVaultData]);
+  }, [fromAccount, derivedAsset, toAccount, ethBalance, tokenBalances, vaultShareBalance, exactAssetAmount, getCombinedEthWethBalance]);
 
   // Calculate max amount for the selected "from" account
   const calculateMaxAmount = useCallback(() => {
@@ -368,11 +338,10 @@ export default function TransactionsPage() {
     } else {
       // For vault withdrawals: use exact asset amount from convertToAssets
       const vaultAccount = fromAccount as VaultAccount;
-      const vaultData = getVaultData(vaultAccount.address);
-      const decimals = vaultData?.assetDecimals || 18;
+      const decimals = getAssetDecimals(vaultAccount.symbol);
       setAmount(formatAssetAmountForMax(maxAmount, derivedAsset?.symbol || '', decimals));
     }
-  }, [getMaxAmount, fromAccount, derivedAsset, tokenBalances, getVaultData, setAmount]);
+  }, [getMaxAmount, fromAccount, derivedAsset, tokenBalances, setAmount]);
 
   const handleAmountChange = (value: string) => {
     if (value === '') {
@@ -432,7 +401,6 @@ export default function TransactionsPage() {
     };
 
     const vaultAccounts: VaultAccount[] = Object.values(VAULTS).map((vault): VaultAccount => {
-      const vaultData = getVaultData(vault.address);
       const position = morphoHoldings.positions.find(
         (pos) => pos.vault.address.toLowerCase() === vault.address.toLowerCase()
       );
@@ -444,7 +412,7 @@ export default function TransactionsPage() {
         symbol: vault.symbol,
         balance: position ? BigInt(position.shares) : BigInt(0),
         assetAddress: '',
-        assetDecimals: vaultData?.assetDecimals ?? 18,
+        assetDecimals: getAssetDecimals(vault.symbol),
       };
     });
 
@@ -460,7 +428,7 @@ export default function TransactionsPage() {
       }
       return true;
     });
-  }, [toAccount, morphoHoldings.positions, getVaultData]);
+  }, [toAccount, morphoHoldings.positions]);
 
   // Calculate available accounts for "To" selector
   const availableToAccounts = useMemo(() => {
@@ -478,7 +446,6 @@ export default function TransactionsPage() {
 
     const vaultAccounts: VaultAccount[] = Object.values(VAULTS)
       .map((vault): VaultAccount => {
-        const vaultData = getVaultData(vault.address);
         const position = morphoHoldings.positions.find(
           (pos) => pos.vault.address.toLowerCase() === vault.address.toLowerCase()
         );
@@ -490,7 +457,7 @@ export default function TransactionsPage() {
           symbol: vault.symbol,
           balance: position ? BigInt(position.shares) : BigInt(0),
           assetAddress: '',
-          assetDecimals: vaultData?.assetDecimals ?? 18,
+          assetDecimals: getAssetDecimals(vault.symbol),
         };
       });
 
@@ -508,15 +475,7 @@ export default function TransactionsPage() {
       const fromVault = fromAccount as unknown as VaultAccount;
       return accountVault.address.toLowerCase() !== fromVault.address.toLowerCase();
     });
-  }, [fromAccount, morphoHoldings.positions, getVaultData]);
-
-  // Fetch vault data when a vault is selected as "from" account
-  useEffect(() => {
-    if (fromAccount?.type === 'vault' && isConnected) {
-      const vaultAccount = fromAccount as VaultAccount;
-      fetchVaultData(vaultAccount.address, vaultAccount.assetDecimals ? 8453 : 8453, true);
-    }
-  }, [fromAccount, isConnected, fetchVaultData]);
+  }, [fromAccount, morphoHoldings.positions]);
 
   // Auto-select "From" account if there's only one option
   useEffect(() => {

@@ -128,6 +128,9 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
       }));
 
       try {
+        // NOTE: APY and vault metrics use Graph API (via /api/vaults/[address]/complete)
+        // This provides APY, netApy, rewards, and other vault state data
+        // Balance calculations use RPC (balanceOf + convertToAssets) - see WalletContext
         const response = await fetch(`/api/vaults/${address}/complete?chainId=${effectiveChainId}`);
         const data = await response.json();
 
@@ -141,6 +144,7 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
         const curatorAddress = vaultInfo.state?.curator;
         const curatorName = vaultInfo.metadata?.curators?.[0]?.name;
         
+        // APY data from Graph API
         const currentNetApy = vaultInfo.state?.netApy || 0;
         const netApyWithoutRewards = vaultInfo.state?.netApyWithoutRewards || 0;
         

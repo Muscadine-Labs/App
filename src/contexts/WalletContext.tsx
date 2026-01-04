@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, usePublicClient } from 'wagmi';
 import { useBalance, useReadContract } from 'wagmi';
 import type { AlchemyTokenBalancesResponse, AlchemyTokenMetadataResponse, AlchemyTokenBalance } from '@/types/api';
 import { formatCurrency } from '@/lib/formatter';
@@ -91,6 +91,7 @@ const ERC20_ABI = [
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
   const { address, isConnected } = useAccount();
+  const publicClient = usePublicClient();
   const [tokenPrices, setTokenPrices] = useState<Record<string, number>>({});
   const [alchemyTokenBalances, setAlchemyTokenBalances] = useState<TokenBalance[]>([]);
   const [morphoHoldings, setMorphoHoldings] = useState<MorphoHoldings>({
@@ -295,9 +296,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     return 18;
   };
 
-  // Fetch vault positions using GraphQL API first (accurate) then Alchemy as fallback
-  const fetchVaultPositions = useCallback(async (alchemyBalances: TokenBalance[]): Promise<void> => {
-    if (!address) {
+  // Fetch vault positions using RPC calls (balanceOf + convertToAssets)
+  const fetchVaultPositions = useCallback(async (): Promise<void> => {
+    if (!address || !publicClient) {
       setMorphoHoldings(prev => ({ 
         ...prev, 
         totalValueUsd: 0, 
@@ -312,40 +313,57 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     try {
       const vaults = Object.values(VAULTS);
       
-      // Step 1: Fetch GraphQL API first (primary source, most accurate)
-      logger.debug('Fetching vault positions from GraphQL API (primary source)', {
+      logger.debug('Fetching vault positions from RPC (balanceOf + convertToAssets)', {
         address,
         timestamp: new Date().toISOString(),
       });
 
-      const graphqlPositionPromises = vaults.map(async (vaultInfo) => {
+      // ERC20 ABI for balanceOf
+      const ERC20_BALANCE_ABI = [
+        {
+          name: 'balanceOf',
+          type: 'function',
+          stateMutability: 'view',
+          inputs: [{ name: 'account', type: 'address' }],
+          outputs: [{ name: '', type: 'uint256' }],
+        },
+      ] as const;
+
+      // ERC4626 ABI for convertToAssets
+      const ERC4626_ABI = [
+        {
+          inputs: [{ internalType: 'uint256', name: 'shares', type: 'uint256' }],
+          name: 'convertToAssets',
+          outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+          stateMutability: 'view',
+          type: 'function',
+        },
+      ] as const;
+
+      const rpcPositionPromises = vaults.map(async (vaultInfo) => {
         try {
-          // Fetch position from GraphQL API
-          const positionResponse = await fetch(
-            `/api/vaults/${vaultInfo.address}/position-history?chainId=${vaultInfo.chainId}&userAddress=${address}&period=all`
-          );
-          
-          if (!positionResponse.ok) {
+          // Step 1: Get shares using balanceOf
+          const sharesRaw = await publicClient.readContract({
+            address: vaultInfo.address as `0x${string}`,
+            abi: ERC20_BALANCE_ABI,
+            functionName: 'balanceOf',
+            args: [address as `0x${string}`],
+          }) as bigint;
+
+          // Skip if no shares
+          if (!sharesRaw || sharesRaw === BigInt(0)) {
             return null;
           }
-          
-          const positionData = await positionResponse.json();
-          
-          if (!positionData?.currentPosition) {
-            return null;
-          }
-          
-          const currentPos = positionData.currentPosition;
-          
-          // Skip if no position (check assetsUsd first as it's most reliable)
-          if (!currentPos.assetsUsd || currentPos.assetsUsd === 0) {
-            // Also check assets and shares as fallback
-            if ((!currentPos.assets || currentPos.assets === 0) && (!currentPos.shares || currentPos.shares === 0)) {
-              return null;
-            }
-          }
-          
-          // Fetch vault metadata to get vault info
+
+          // Step 2: Convert shares to assets using convertToAssets
+          const assetsRaw = await publicClient.readContract({
+            address: vaultInfo.address as `0x${string}`,
+            abi: ERC4626_ABI,
+            functionName: 'convertToAssets',
+            args: [sharesRaw],
+          }) as bigint;
+
+          // Step 3: Fetch vault metadata to get vault info (for sharePriceUsd, etc.)
           const vaultResponse = await fetch(`/api/vaults/${vaultInfo.address}/complete?chainId=${vaultInfo.chainId}`);
           if (!vaultResponse.ok) {
             return null;
@@ -357,45 +375,67 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           if (!vaultInfoData) {
             return null;
           }
-            
-            const sharePriceUsd = vaultInfoData.state?.sharePriceUsd || 0;
-            const totalAssetsUsd = vaultInfoData.state?.totalAssetsUsd || 0;
-            const totalSupply = vaultInfoData.state?.totalSupply || '0';
-            
-            // Convert raw values to proper format
-            // API returns assets and shares in raw format (already in wei/smallest unit)
-            // Convert to string for consistency with VaultPosition interface
-            const assetsRaw = typeof currentPos.assets === 'string' 
-              ? currentPos.assets
-              : (typeof currentPos.assets === 'number' ? Math.floor(currentPos.assets).toString() : '0');
-            const sharesRaw = typeof currentPos.shares === 'string' 
-              ? currentPos.shares
-              : (typeof currentPos.shares === 'number' ? Math.floor(currentPos.shares).toString() : '0');
-            
-            // Use assetsUsd directly from API (most accurate)
-            const assetsUsd = typeof currentPos.assetsUsd === 'number' 
-              ? currentPos.assetsUsd 
-              : undefined;
-            
-            const position: VaultPosition = {
-              vault: {
-                address: vaultInfo.address,
-                name: vaultInfoData.name || vaultInfo.name,
-                symbol: vaultInfoData.asset?.symbol || vaultInfo.symbol,
-                state: {
-                  sharePriceUsd,
-                  totalAssetsUsd,
-                  totalSupply,
-                },
-              },
-              shares: sharesRaw,
-              assets: assetsRaw,
-              assetsUsd, // Store assetsUsd from GraphQL API for accurate USD calculations
+
+          const sharePriceUsd = vaultInfoData.state?.sharePriceUsd || 0;
+          const totalAssetsUsd = vaultInfoData.state?.totalAssetsUsd || 0;
+          const totalSupply = vaultInfoData.state?.totalSupply || '0';
+          
+          // Step 4: Calculate USD value using asset price (like liquid assets)
+          const assetSymbol = vaultInfoData.asset?.symbol || vaultInfo.symbol;
+          const assetDecimals = getVaultAssetDecimals(vaultInfo.address, assetSymbol);
+          const assetsDecimal = Number(assetsRaw) / Math.pow(10, assetDecimals);
+          
+          // Get asset price from prices API (same as liquid assets)
+          let assetPrice = 0;
+          if (assetSymbol.toUpperCase() === 'USDC' || assetSymbol.toUpperCase() === 'USDT' || assetSymbol.toUpperCase() === 'DAI') {
+            assetPrice = 1; // Stablecoins are $1
+          } else {
+            // Map symbols to price API symbols
+            const priceSymbolMap: Record<string, string> = {
+              'WETH': 'ETH',
+              'cbBTC': 'BTC',
+              'CBBTC': 'BTC',
+              'CBTC': 'BTC',
             };
+            const priceSymbol = priceSymbolMap[assetSymbol.toUpperCase()] || assetSymbol;
+            
+            try {
+              const priceResponse = await fetch(`/api/prices?symbols=${priceSymbol}`);
+              if (priceResponse.ok) {
+                const priceData = await priceResponse.json();
+                const priceKey = priceSymbol.toLowerCase();
+                assetPrice = priceData[priceKey] || 0;
+              }
+            } catch {
+              // If price fetch fails, use sharePriceUsd as fallback
+              const sharesDecimal = Number(sharesRaw) / 1e18;
+              if (sharesDecimal > 0 && sharePriceUsd > 0) {
+                assetPrice = sharePriceUsd / (assetsDecimal / sharesDecimal);
+              }
+            }
+          }
+          
+          const assetsUsd = assetsDecimal * assetPrice;
+
+          const position: VaultPosition = {
+            vault: {
+              address: vaultInfo.address,
+              name: vaultInfoData.name || vaultInfo.name,
+              symbol: assetSymbol,
+              state: {
+                sharePriceUsd,
+                totalAssetsUsd,
+                totalSupply,
+              },
+            },
+            shares: sharesRaw.toString(),
+            assets: assetsRaw.toString(),
+            assetsUsd, // Calculate USD value from asset amount * price (like liquid assets)
+          };
           
           return position;
         } catch (err) {
-          logger.warn('Failed to fetch vault position from GraphQL API', {
+          logger.warn('Failed to fetch vault position from RPC', {
             vaultAddress: vaultInfo.address,
             error: err instanceof Error ? err.message : String(err),
           });
@@ -403,183 +443,33 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         }
       });
       
-      // Fetch GraphQL positions first (primary source, awaited)
-      const graphqlPositions = await Promise.all(graphqlPositionPromises);
-      const positions = graphqlPositions.filter((pos): pos is VaultPosition => pos !== null);
+      // Fetch all positions from RPC
+      const rpcPositions = await Promise.all(rpcPositionPromises);
+      const positions = rpcPositions.filter((pos): pos is VaultPosition => pos !== null);
       
-      // Update state immediately with GraphQL data (primary source)
-      if (positions.length > 0) {
-        // Calculate total USD value using assetsUsd when available (most accurate)
-        const totalValueUsd = positions.reduce((sum, position) => {
-          if (position.assetsUsd !== undefined && position.assetsUsd > 0) {
-            return sum + position.assetsUsd;
-          }
-          const shares = parseFloat(position.shares) / 1e18;
-          const sharePriceUsd = position.vault.state.sharePriceUsd || 0;
-          return sum + (shares * sharePriceUsd);
-        }, 0);
+      // Calculate total USD value using assetsUsd (calculated from asset amount * price)
+      const totalValueUsd = positions.reduce((sum, position) => {
+        if (position.assetsUsd !== undefined && position.assetsUsd > 0) {
+          return sum + position.assetsUsd;
+        }
+        // Fallback: use shares * sharePriceUsd if assetsUsd not available
+        const shares = parseFloat(position.shares) / 1e18;
+        const sharePriceUsd = position.vault.state.sharePriceUsd || 0;
+        return sum + (shares * sharePriceUsd);
+      }, 0);
 
-        setMorphoHoldings({
-          totalValueUsd,
-          positions,
-          isLoading: false,
-          error: null,
-        });
+      setMorphoHoldings({
+        totalValueUsd,
+        positions,
+        isLoading: false,
+        error: null,
+      });
 
-        logger.info('Vault positions fetched from GraphQL API', {
-          positionCount: positions.length,
-          totalValueUsd: totalValueUsd.toFixed(2),
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        // No GraphQL positions found, set empty state
-        setMorphoHoldings({
-          totalValueUsd: 0,
-          positions: [],
-          isLoading: false,
-          error: null,
-        });
-      }
-
-      // Step 2: Use Alchemy as fallback/enhancement in background (only if GraphQL missed any positions)
-      logger.debug('Enhancing vault positions with Alchemy (fallback)', {
-        address,
-        alchemyBalanceCount: alchemyBalances.length,
+      logger.info('Vault positions fetched from RPC', {
+        positionCount: positions.length,
+        totalValueUsd: totalValueUsd.toFixed(2),
         timestamp: new Date().toISOString(),
       });
-
-      // Create a map of vault addresses for quick lookup
-      const vaultAddressMap = new Map<string, typeof VAULTS[keyof typeof VAULTS]>();
-      Object.values(VAULTS).forEach(vault => {
-        vaultAddressMap.set(vault.address.toLowerCase(), vault);
-      });
-
-      // Find vault share token balances from Alchemy balances
-      const vaultShareBalances = alchemyBalances.filter(token => 
-        vaultAddressMap.has(token.address.toLowerCase())
-      );
-
-      if (vaultShareBalances.length > 0) {
-        const alchemyPositionPromises = vaultShareBalances.map(async (tokenBalance) => {
-          const vaultInfo = vaultAddressMap.get(tokenBalance.address.toLowerCase())!;
-          const sharesWei = tokenBalance.balance;
-          const sharesDecimal = parseFloat(tokenBalance.formatted);
-
-          // Skip if no shares
-          if (sharesWei === BigInt(0) || sharesDecimal <= 0) {
-            return null;
-          }
-
-          // Skip if we already have this position from GraphQL
-          const existingPosition = positions.find(pos => 
-            pos.vault.address.toLowerCase() === vaultInfo.address.toLowerCase()
-          );
-          if (existingPosition) {
-            return null; // GraphQL already has this position
-          }
-
-          try {
-            // Fetch vault metadata from API to get share price and other info
-            const response = await fetch(`/api/vaults/${vaultInfo.address}/complete?chainId=${vaultInfo.chainId}`);
-            if (!response.ok) {
-              throw new Error(`Failed to fetch vault data: ${response.status}`);
-            }
-
-            const data = await response.json();
-            const vaultData = data.data?.vaultByAddress;
-
-            if (!vaultData) {
-              throw new Error('Invalid vault data response');
-            }
-
-            const sharePriceUsd = vaultData.state?.sharePriceUsd || 0;
-            const totalAssetsUsd = vaultData.state?.totalAssetsUsd || 0;
-            const totalSupply = vaultData.state?.totalSupply || '0';
-            
-            // Calculate assets from shares using share price
-            const assetDecimals = getVaultAssetDecimals(vaultInfo.address, vaultData.asset?.symbol || vaultInfo.symbol);
-            const totalSupplyDecimal = parseFloat(totalSupply) / 1e18;
-            const totalAssetsDecimal = parseFloat(vaultData.state?.totalAssets || '0') / Math.pow(10, assetDecimals);
-            const sharePriceInAsset = totalSupplyDecimal > 0 ? totalAssetsDecimal / totalSupplyDecimal : 0;
-            const assetsDecimal = sharesDecimal * sharePriceInAsset;
-            const assetsWei = BigInt(Math.floor(assetsDecimal * Math.pow(10, assetDecimals)));
-
-            const position: VaultPosition = {
-              vault: {
-                address: vaultInfo.address,
-                name: vaultData.name || vaultInfo.name,
-                symbol: vaultData.asset?.symbol || vaultInfo.symbol,
-                state: {
-                  sharePriceUsd,
-                  totalAssetsUsd,
-                  totalSupply,
-                },
-              },
-              shares: sharesWei.toString(),
-              assets: assetsWei.toString(),
-            };
-            return position;
-          } catch (err) {
-            logger.warn('Failed to fetch vault position from Alchemy (fallback)', {
-              vaultAddress: vaultInfo.address,
-              error: err instanceof Error ? err.message : String(err),
-            });
-            return null;
-          }
-        });
-
-        // Fetch Alchemy positions in background and merge with GraphQL positions
-        Promise.all(alchemyPositionPromises).then(alchemyPositions => {
-          const newAlchemyPositions = alchemyPositions.filter((pos): pos is VaultPosition => pos !== null);
-          
-          if (newAlchemyPositions.length > 0) {
-            // Merge Alchemy positions with existing GraphQL positions
-            const positionMap = new Map<string, VaultPosition>();
-            
-            // Start with existing GraphQL positions (primary)
-            positions.forEach(pos => {
-              positionMap.set(pos.vault.address.toLowerCase(), pos);
-            });
-            
-            // Add Alchemy positions only if they don't already exist (fallback)
-            newAlchemyPositions.forEach(alchemyPos => {
-              if (!positionMap.has(alchemyPos.vault.address.toLowerCase())) {
-                positionMap.set(alchemyPos.vault.address.toLowerCase(), alchemyPos);
-              }
-            });
-            
-            const mergedPositions = Array.from(positionMap.values());
-            
-            // Calculate total USD value using assetsUsd when available (most accurate)
-            const totalValueUsd = mergedPositions.reduce((sum, position) => {
-              if (position.assetsUsd !== undefined && position.assetsUsd > 0) {
-                return sum + position.assetsUsd;
-              }
-              const shares = parseFloat(position.shares) / 1e18;
-              const sharePriceUsd = position.vault.state.sharePriceUsd || 0;
-              return sum + (shares * sharePriceUsd);
-            }, 0);
-
-            setMorphoHoldings({
-              totalValueUsd,
-              positions: mergedPositions,
-              isLoading: false,
-              error: null,
-            });
-
-            logger.info('Vault positions enhanced with Alchemy fallback data', {
-              positionCount: mergedPositions.length,
-              alchemyFallbackCount: newAlchemyPositions.length,
-              totalValueUsd: totalValueUsd.toFixed(2),
-              timestamp: new Date().toISOString(),
-            });
-          }
-        }).catch(err => {
-          logger.warn('Failed to enhance vault positions with Alchemy data (non-critical)', {
-            error: err instanceof Error ? err.message : String(err),
-          });
-        });
-      }
     } catch (err) {
       logger.error('Failed to fetch vault positions', err instanceof Error ? err : new Error(String(err)), {
         address,
@@ -590,7 +480,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         error: err instanceof Error ? err.message : 'Failed to fetch vault positions' 
       }));
     }
-  }, [address]);
+  }, [address, publicClient]);
 
   // Stable wallet state management - only clear data on actual disconnect
   useEffect(() => {
@@ -638,8 +528,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
             Object.entries(prices).map(([key, value]) => [key.toLowerCase(), value])
           ),
         });
-        // Fetch vault positions using GraphQL first (accurate) then Alchemy as fallback
-        await fetchVaultPositions(alchemyBalances);
+        // Fetch vault positions using RPC (balanceOf + convertToAssets)
+        await fetchVaultPositions();
       };
       
       fetchAllData();
@@ -732,8 +622,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       timestamp: new Date().toISOString(),
     });
     
-    // Fetch vault positions using GraphQL first (accurate) then Alchemy as fallback
-    await fetchVaultPositions(alchemyBalances);
+    // Fetch vault positions using RPC (balanceOf + convertToAssets)
+    await fetchVaultPositions();
     
     logger.info('Balance refresh completed', {
       timestamp: new Date().toISOString(),
@@ -800,7 +690,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       ),
     });
 
-    await fetchVaultPositions(alchemyBalances);
+    await fetchVaultPositions();
   }, [fetchTokenPrices, fetchVaultPositions, fetchAllTokenBalances, refetchEthBalance, refetchUsdcBalance, refetchCbbtcBalance, refetchWethBalance, address]);
 
   // Refresh with retry logic (exponential backoff)

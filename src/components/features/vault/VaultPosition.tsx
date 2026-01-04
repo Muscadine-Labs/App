@@ -2,19 +2,39 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { useAccount } from 'wagmi';
+import { useAccount, useReadContract } from 'wagmi';
 import { MorphoVaultData } from '@/types/vault';
 import { useWallet } from '@/contexts/WalletContext';
 import { formatAssetAmount, formatCurrency, formatNumber } from '@/lib/formatter';
 import { calculateYAxisDomain } from '@/lib/vault-utils';
 import { logger } from '@/lib/logger';
 import { useToast } from '@/contexts/ToastContext';
+import { usePrices } from '@/contexts/PriceContext';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Button } from '@/components/ui';
 import { Skeleton } from '@/components/ui/Skeleton';
 
-// Constants
-const WEI_PER_ETHER = 1e18;
+// ERC20 ABI for balanceOf
+const ERC20_BALANCE_ABI = [
+  {
+    name: 'balanceOf',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'account', type: 'address' }],
+    outputs: [{ name: '', type: 'uint256' }],
+  },
+] as const;
+
+// ERC4626 ABI for convertToAssets
+const ERC4626_ABI = [
+  {
+    inputs: [{ internalType: 'uint256', name: 'shares', type: 'uint256' }],
+    name: 'convertToAssets',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+] as const;
 
 interface VaultPositionProps {
   vaultData: MorphoVaultData;
@@ -42,6 +62,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
   const router = useRouter();
   const { address, isConnected } = useAccount();
   const { morphoHoldings } = useWallet();
+  const { btc: btcPrice, eth: ethPrice } = usePrices();
   const { error: showErrorToast } = useToast();
   const [loading, setLoading] = useState(true);
   const [selectedTimeFrame, setSelectedTimeFrame] = useState<TimeFrame>('all');
@@ -65,70 +86,75 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     assetsUsd: number;
     shares: number;
   }>>([]);
-  const [apiCurrentPosition, setApiCurrentPosition] = useState<{
-    assets: number;
-    assetsUsd: number;
-    shares: number;
-  } | null>(null);
 
-  // Find the current vault position from Alchemy (fallback source)
+  // Get shares using balanceOf
+  const { data: sharesRaw } = useReadContract({
+    address: address ? vaultData.address as `0x${string}` : undefined,
+    abi: ERC20_BALANCE_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address as `0x${string}`] : undefined,
+    query: { enabled: !!address },
+  });
+
+  // Convert shares to assets using convertToAssets
+  const { data: assetsRaw } = useReadContract({
+    address: sharesRaw && sharesRaw > BigInt(0) ? vaultData.address as `0x${string}` : undefined,
+    abi: ERC4626_ABI,
+    functionName: 'convertToAssets',
+    args: sharesRaw && sharesRaw > BigInt(0) ? [sharesRaw] : undefined,
+    query: { enabled: !!sharesRaw && sharesRaw > BigInt(0) },
+  });
+
+  // Find the current vault position from WalletContext (RPC-based)
   const currentVaultPosition = morphoHoldings.positions.find(
     pos => pos.vault.address.toLowerCase() === vaultData.address.toLowerCase()
   );
-  
-  // Use GraphQL API current position as primary source, Alchemy as fallback
-  const effectiveCurrentPosition = useMemo(() => {
-    if (apiCurrentPosition) {
-      return {
-        vault: {
-          address: vaultData.address,
-          name: vaultData.name,
-          symbol: vaultData.symbol,
-          state: {
-            sharePriceUsd: vaultData.sharePriceUsd || 0,
-            totalAssetsUsd: vaultData.totalValueLocked || 0,
-            totalSupply: vaultData.totalSupply || '0',
-          },
-        },
-        shares: (apiCurrentPosition.shares * 1e18).toString(),
-        assets: (apiCurrentPosition.assets * Math.pow(10, vaultData.assetDecimals || 18)).toString(),
-      };
-    }
-    return currentVaultPosition;
-  }, [apiCurrentPosition, vaultData.address, vaultData.name, vaultData.symbol, vaultData.sharePriceUsd, vaultData.totalValueLocked, vaultData.totalSupply, vaultData.assetDecimals, currentVaultPosition]);
 
+  // Calculate USD value using asset price (like liquid assets)
   const userVaultValueUsd = useMemo(() => {
-    // Primary: Use GraphQL API current position USD value (most accurate)
-    if (apiCurrentPosition && apiCurrentPosition.assetsUsd > 0) {
-      return apiCurrentPosition.assetsUsd;
+    // Use position from WalletContext (already calculated with RPC + price)
+    if (currentVaultPosition && currentVaultPosition.assetsUsd !== undefined && currentVaultPosition.assetsUsd > 0) {
+      return currentVaultPosition.assetsUsd;
     }
     
-    // Fallback: Use Alchemy position if available
-    if (!effectiveCurrentPosition) {
-      return 0;
+    // Fallback: Calculate from RPC data if available
+    if (assetsRaw && vaultData) {
+      const assetDecimals = vaultData.assetDecimals || 18;
+      const assetsDecimal = Number(assetsRaw) / Math.pow(10, assetDecimals);
+      
+      // Get asset price (same as liquid assets)
+      let assetPrice = 0;
+      const symbolUpper = vaultData.symbol.toUpperCase();
+      if (symbolUpper === 'USDC' || symbolUpper === 'USDT' || symbolUpper === 'DAI') {
+        assetPrice = 1;
+      } else if (symbolUpper === 'WETH') {
+        assetPrice = ethPrice || 0;
+      } else if (symbolUpper === 'CBBTC' || symbolUpper === 'CBTC') {
+        assetPrice = btcPrice || 0;
+      }
+      
+      return assetsDecimal * assetPrice;
     }
-    return (parseFloat(effectiveCurrentPosition.shares) / WEI_PER_ETHER) * effectiveCurrentPosition.vault.state.sharePriceUsd;
-  }, [effectiveCurrentPosition, apiCurrentPosition]);
+    
+    return 0;
+  }, [currentVaultPosition, assetsRaw, vaultData, ethPrice, btcPrice]);
 
-  // Calculate asset amount from shares
+  // Calculate asset amount from RPC data
   const userVaultAssetAmount = useMemo(() => {
-    // Primary: Use GraphQL API current position (most accurate)
-    if (apiCurrentPosition && apiCurrentPosition.assets > 0) {
-      return apiCurrentPosition.assets;
+    // Use position from WalletContext if available
+    if (currentVaultPosition && currentVaultPosition.assets) {
+      const assetDecimals = vaultData.assetDecimals || 18;
+      return parseFloat(currentVaultPosition.assets) / Math.pow(10, assetDecimals);
     }
     
-    // Fallback: Use Alchemy position if available
-    if (!effectiveCurrentPosition || !vaultData.totalAssets || !vaultData.totalValueLocked) {
-      return 0;
+    // Fallback: Use RPC data
+    if (assetsRaw && vaultData) {
+      const assetDecimals = vaultData.assetDecimals || 18;
+      return Number(assetsRaw) / Math.pow(10, assetDecimals);
     }
     
-    const sharesDecimal = parseFloat(effectiveCurrentPosition.shares) / WEI_PER_ETHER;
-    const totalSupplyDecimal = parseFloat(effectiveCurrentPosition.vault.state.totalSupply) / WEI_PER_ETHER;
-    const totalAssetsDecimal = parseFloat(vaultData.totalAssets) / Math.pow(10, vaultData.assetDecimals || 18);
-    const sharePriceInAsset = totalSupplyDecimal > 0 ? totalAssetsDecimal / totalSupplyDecimal : 0;
-    
-    return sharesDecimal * sharePriceInAsset;
-  }, [effectiveCurrentPosition, apiCurrentPosition, vaultData.totalAssets, vaultData.totalValueLocked, vaultData.assetDecimals]);
+    return 0;
+  }, [currentVaultPosition, assetsRaw, vaultData]);
 
   useEffect(() => {
     const fetchPositionHistory = async () => {
@@ -140,6 +166,9 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
 
       setLoading(true);
       try {
+        // NOTE: Position history graphs use Graph API (via /api/vaults/[address]/position-history)
+        // This provides historical data points for chart display
+        // Current position balance uses RPC (balanceOf + convertToAssets) - see above
         const response = await fetch(
           `/api/vaults/${vaultData.address}/position-history?chainId=${vaultData.chainId}&userAddress=${address}&period=all`
         );
@@ -159,53 +188,12 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
         }
         
         // Set position history - use empty array if error or invalid response
+        // Position history is fetched from Graph API for chart display
+        // Current position is fetched via RPC (balanceOf + convertToAssets) - see above
         if (data && typeof data === 'object' && Array.isArray(data.history)) {
           setUserPositionHistory(data.history);
         } else {
           setUserPositionHistory([]);
-        }
-        
-        // Set current position from API if available
-        if (data && typeof data === 'object' && data.currentPosition) {
-          // Convert raw values to decimal
-          const currentPos = data.currentPosition;
-          // USDC uses 6 decimals, but check vaultData first
-          const assetDecimals = vaultData.assetDecimals || (vaultData.symbol === 'USDC' ? 6 : 18);
-          
-          // Assets are in raw format (wei/smallest unit)
-          const assetsRaw = typeof currentPos.assets === 'string' 
-            ? parseFloat(currentPos.assets) 
-            : (typeof currentPos.assets === 'number' ? currentPos.assets : 0);
-          const assetsDecimal = assetsRaw / Math.pow(10, assetDecimals);
-          
-          // Shares are in raw format (18 decimals/wei)
-          const sharesRaw = typeof currentPos.shares === 'string' 
-            ? parseFloat(currentPos.shares) 
-            : (typeof currentPos.shares === 'number' ? currentPos.shares : 0);
-          const sharesDecimal = sharesRaw / 1e18;
-          
-          // assetsUsd should already be in decimal format
-          const assetsUsd = typeof currentPos.assetsUsd === 'number' 
-            ? currentPos.assetsUsd 
-            : (assetsDecimal * (vaultData.sharePriceUsd || 1));
-          
-          logger.debug('Setting API current position', {
-            assetsRaw,
-            assetsDecimal,
-            sharesRaw,
-            sharesDecimal,
-            assetsUsd,
-            assetDecimals,
-            vaultSymbol: vaultData.symbol,
-          });
-          
-          setApiCurrentPosition({
-            assets: assetsDecimal,
-            assetsUsd,
-            shares: sharesDecimal,
-          });
-        } else {
-          setApiCurrentPosition(null);
         }
       } catch (error) {
         logger.error(
@@ -482,7 +470,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
             <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">Your Deposits</h2>
             {!isConnected ? (
               <p className="text-sm text-[var(--foreground-muted)]">Connect wallet</p>
-            ) : !apiCurrentPosition && !effectiveCurrentPosition ? (
+            ) : !currentVaultPosition && !assetsRaw ? (
               <p className="text-sm text-[var(--foreground-muted)]">No holdings</p>
             ) : (
               <>
