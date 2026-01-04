@@ -19,6 +19,6 @@ export const MAX_WITHDRAW_QUEUE_ITEMS = 30; // Maximum items to fetch from withd
 export const REQUEST_TIMEOUT_MS = 30000; // 30 seconds
 
 // Price API configuration
-export const STABLECOIN_SYMBOLS = ['USDC', 'USDT', 'DAI'] as const;
+export const STABLECOIN_SYMBOLS = ['USDC'] as const;
 export const DEFAULT_ASSET_PRICE = 1;
 export const DEFAULT_ASSET_DECIMALS = 18;
