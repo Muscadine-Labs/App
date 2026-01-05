@@ -357,6 +357,40 @@ export function AccountSelector({
     }
   };
 
+  // Get tokens with logos that the wallet has (non-zero balance)
+  const getWalletTokenLogos = useMemo(() => {
+    const tokensWithLogos: Array<{ symbol: string; logo: string }> = [];
+    
+    // Check token balances
+    if (tokenBalances && tokenBalances.length > 0) {
+      tokenBalances.forEach(token => {
+        const symbol = token.symbol.toUpperCase();
+        const balance = parseFloat(formatUnits(token.balance, token.decimals));
+        
+        // Only include tokens with non-zero balance and available logos
+        if (balance > 0) {
+          // Only add tokens we have logos for
+          if (symbol === 'USDC' || symbol === 'CBBTC' || symbol === 'CBTC' || symbol === 'WETH') {
+            const logo = getVaultLogo(symbol);
+            tokensWithLogos.push({ symbol, logo });
+          }
+        }
+      });
+    }
+    
+    // Also check ETH balance (native ETH)
+    const ethBal = parseFloat(ethBalance || '0');
+    if (ethBal > 0) {
+      // Only add if not already in list (avoid duplicate if WETH is also present)
+      if (!tokensWithLogos.find(t => t.symbol === 'ETH' || t.symbol === 'WETH')) {
+        const ethLogo = getVaultLogo('ETH');
+        tokensWithLogos.push({ symbol: 'ETH', logo: ethLogo });
+      }
+    }
+    
+    return tokensWithLogos;
+  }, [tokenBalances, ethBalance]);
+
   return (
     <div className="relative" ref={dropdownRef}>
       <label className="block text-sm font-medium text-[var(--foreground-secondary)] mb-2">
@@ -384,8 +418,24 @@ export function AccountSelector({
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-[var(--foreground)] truncate">
-                  {getAccountDisplayName(selectedAccount)}
+                <div className="text-sm font-medium text-[var(--foreground)] truncate flex items-center gap-1.5">
+                  <span>{getAccountDisplayName(selectedAccount)}</span>
+                  {selectedAccount.type === 'wallet' && 
+                   getWalletTokenLogos.length > 0 && 
+                   excludeAccount?.type !== 'vault' && (
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {getWalletTokenLogos.map((token) => (
+                        <Image
+                          key={token.symbol}
+                          src={token.logo}
+                          alt={token.symbol}
+                          width={16}
+                          height={16}
+                          className="w-4 h-4 object-contain"
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="text-xs text-[var(--foreground-secondary)]">
                   {isBalanceLoading(selectedAccount) ? (
@@ -451,8 +501,25 @@ export function AccountSelector({
                     )}
                   </div>
                   <div className="flex-1 min-w-0 text-left">
-                    <div className="text-sm font-medium text-[var(--foreground)] truncate">
-                      {getAccountDisplayName(account)}
+                    <div className="text-sm font-medium text-[var(--foreground)] truncate flex items-center gap-1.5">
+                      <span>{getAccountDisplayName(account)}</span>
+                      {account.type === 'wallet' && 
+                       getWalletTokenLogos.length > 0 && 
+                       selectedAccount?.type !== 'vault' && 
+                       excludeAccount?.type !== 'vault' && (
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {getWalletTokenLogos.map((token) => (
+                            <Image
+                              key={token.symbol}
+                              src={token.logo}
+                              alt={token.symbol}
+                              width={16}
+                              height={16}
+                              className="w-4 h-4 object-contain"
+                            />
+                          ))}
+                        </div>
+                      )}
                     </div>
                     {/* Only show balance for wallet if assetSymbol is set (vault selected), or always show for vaults */}
                     {(account.type !== 'wallet' || assetSymbol) && (
