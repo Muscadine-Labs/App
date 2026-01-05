@@ -166,7 +166,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
       try {
         // Fetch all available history data (daily intervals)
         const response = await fetch(
-          `/api/vaults/${vaultData.address}/history?chainId=${vaultData.chainId}&period=all`
+          `/api/vault/${vaultData.version}/${vaultData.address}/history?chainId=${vaultData.chainId}&period=all`
         );
         
         // Validate HTTP response
@@ -204,7 +204,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
     };
 
     fetchAllHistory();
-  }, [vaultData.address, vaultData.chainId, showErrorToast]);
+  }, [vaultData.address, vaultData.chainId, vaultData.version, showErrorToast]);
 
   // Fetch hourly data for 7d period
   useEffect(() => {
@@ -212,7 +212,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
       try {
         // Fetch 7d data with hourly intervals
         const response = await fetch(
-          `/api/vaults/${vaultData.address}/history?chainId=${vaultData.chainId}&period=7d`
+          `/api/vault/${vaultData.version}/${vaultData.address}/history?chainId=${vaultData.chainId}&period=7d`
         );
         
         if (!response.ok) {
@@ -245,7 +245,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
     };
 
     fetch7dHourly();
-  }, [vaultData.address, vaultData.chainId]);
+  }, [vaultData.address, vaultData.chainId, vaultData.version]);
 
   // Fetch hourly data for 30d period
   useEffect(() => {
@@ -253,7 +253,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
       try {
         // Fetch 30d data with hourly intervals
         const response = await fetch(
-          `/api/vaults/${vaultData.address}/history?chainId=${vaultData.chainId}&period=30d`
+          `/api/vault/${vaultData.version}/${vaultData.address}/history?chainId=${vaultData.chainId}&period=30d`
         );
         
         if (!response.ok) {
@@ -286,7 +286,7 @@ export default function VaultOverview({ vaultData }: VaultOverviewProps) {
     };
 
     fetch30dHourly();
-  }, [vaultData.address, vaultData.chainId]);
+  }, [vaultData.address, vaultData.chainId, vaultData.version]);
 
   // Calculate available periods based on data range
   const availablePeriods = useMemo(() => {

@@ -145,12 +145,17 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
 
       setLoading(true);
       try {
-        // NOTE: Position history graphs use Graph API (via /api/vaults/[address]/position-history)
+        // NOTE: Position history graphs use Graph API (via /api/vault/v1|v2/[address]/position-history)
         // This provides historical data points for chart display
         // Current position balance uses RPC (balanceOf + convertToAssets) - see above
         const response = await fetch(
-          `/api/vaults/${vaultData.address}/position-history?chainId=${vaultData.chainId}&userAddress=${address}&period=all`
+          `/api/vault/${vaultData.version}/${vaultData.address}/position-history?chainId=${vaultData.chainId}&userAddress=${address}&period=all`
         );
+        
+        // Validate HTTP response
+        if (!response.ok) {
+          throw new Error(`Failed to fetch position history: ${response.status} ${response.statusText}`);
+        }
         
         const data = await response.json().catch(() => ({}));
         
@@ -161,7 +166,8 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
             { 
               error: data.error,
               vaultAddress: vaultData.address, 
-              userAddress: address 
+              userAddress: address,
+              version: vaultData.version
             }
           );
         }
@@ -203,7 +209,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
       try {
         // Fetch 7D data with hourly intervals
         const response = await fetch(
-          `/api/vaults/${vaultData.address}/position-history?chainId=${vaultData.chainId}&userAddress=${address}&period=7d`,
+          `/api/vault/${vaultData.version}/${vaultData.address}/position-history?chainId=${vaultData.chainId}&userAddress=${address}&period=7d`,
           { signal: abortController.signal }
         );
         
@@ -212,6 +218,11 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
         }
         
         const data = await response.json().catch(() => ({}));
+        
+        // Check for errors in response body
+        if (data.error) {
+          return; // Silently fail, will fall back to daily data
+        }
         
         // Set position history - use empty array if error or invalid response
         if (data && typeof data === 'object' && Array.isArray(data.history)) {
@@ -237,7 +248,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
 
     fetch7dHourlyPosition();
     return () => abortController.abort();
-  }, [vaultData.address, vaultData.chainId, address]);
+  }, [vaultData.address, vaultData.chainId, vaultData.version, address]);
 
   // Fetch hourly data for 30D period
   useEffect(() => {
@@ -252,7 +263,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
       try {
         // Fetch 30D data with hourly intervals
         const response = await fetch(
-          `/api/vaults/${vaultData.address}/position-history?chainId=${vaultData.chainId}&userAddress=${address}&period=30d`,
+          `/api/vault/${vaultData.version}/${vaultData.address}/position-history?chainId=${vaultData.chainId}&userAddress=${address}&period=30d`,
           { signal: abortController.signal }
         );
         
@@ -261,6 +272,11 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
         }
         
         const data = await response.json().catch(() => ({}));
+        
+        // Check for errors in response body
+        if (data.error) {
+          return; // Silently fail, will fall back to daily data
+        }
         
         // Set position history - use empty array if error or invalid response
         if (data && typeof data === 'object' && Array.isArray(data.history)) {
@@ -286,7 +302,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
 
     fetch30dHourlyPosition();
     return () => abortController.abort();
-  }, [vaultData.address, vaultData.chainId, address]);
+  }, [vaultData.address, vaultData.chainId, vaultData.version, address]);
 
   // Get asset price for calculating USD value when assetsUsd is 0
   const getAssetPrice = useMemo(() => {
@@ -462,11 +478,11 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
   
 
   const handleDeposit = () => {
-    router.push(`/transactions?vault=${vaultData.address}&action=deposit`);
+    router.push(`/transact?vault=${vaultData.address}&action=deposit`);
   };
 
   const handleWithdraw = () => {
-    router.push(`/transactions?vault=${vaultData.address}&action=withdraw`);
+    router.push(`/transact?vault=${vaultData.address}&action=withdraw`);
   };
 
   return (

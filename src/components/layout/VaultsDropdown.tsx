@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { VAULTS } from '@/lib/vaults';
 import { getVaultRoute, findVaultByAddress } from '@/lib/vault-utils';
 import { getVaultLogo } from '@/types/vault';
+import { useVaultVersion } from '@/contexts/VaultVersionContext';
 import Image from 'next/image';
 import { Button } from '../ui/Button';
 
@@ -18,30 +19,47 @@ export function VaultsDropdown({ isActive, onVaultSelect }: VaultsDropdownProps)
   const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const pathname = usePathname();
+  const { version } = useVaultVersion();
 
-  // Get vaults from VAULTS
-  const vaults = Object.values(VAULTS);
+  // Filter vaults based on selected version
+  const vaults = useMemo(() => {
+    const allVaults = Object.values(VAULTS);
+    if (version === 'all') {
+      return allVaults;
+    }
+    return allVaults.filter((vault) => vault.version === version);
+  }, [version]);
 
-  // Check if we're currently on a vault page
-  const currentVaultAddress = pathname?.startsWith('/vaults/') 
-    ? pathname.split('/vaults/')[1]?.split('?')[0]
-    : null;
-  const currentVault = currentVaultAddress ? findVaultByAddress(currentVaultAddress) : null;
+  // Check if we're currently on a vault page (v1 or v2) - memoized for performance
+  const currentVaultAddress = useMemo(() => {
+    if (!pathname) return null;
+    if (pathname.startsWith('/vault/v1/')) {
+      return pathname.split('/vault/v1/')[1]?.split('?')[0] || null;
+    }
+    if (pathname.startsWith('/vault/v2/')) {
+      return pathname.split('/vault/v2/')[1]?.split('?')[0] || null;
+    }
+    return null;
+  }, [pathname]);
 
-  const handleVaultClick = (address: string, e: React.MouseEvent) => {
+  const currentVault = useMemo(() => {
+    return currentVaultAddress ? findVaultByAddress(currentVaultAddress) : null;
+  }, [currentVaultAddress]);
+
+  const handleVaultClick = useCallback((address: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent click from bubbling to click-outside handler
     router.push(getVaultRoute(address));
     setIsOpen(false);
     onVaultSelect?.();
-  };
+  }, [router, onVaultSelect]);
 
-  const handleToggleClick = (e: React.MouseEvent) => {
+  const handleToggleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     // If already open (from hover), keep it open; otherwise open it
     if (!isOpen) {
       setIsOpen(true);
     }
-  };
+  }, [isOpen]);
 
   return (
     <div 

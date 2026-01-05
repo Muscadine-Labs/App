@@ -16,6 +16,7 @@ import { WalletProvider } from '../contexts/WalletContext'
 import { TransactionProvider } from '../contexts/TransactionContext'
 import { ToastProvider } from '../contexts/ToastContext'
 import { ThemeProvider } from '../contexts/ThemeContext'
+import { VaultVersionProvider } from '../contexts/VaultVersionContext'
 import { ErrorBoundary } from '../components/common/ErrorBoundary'
 import { logger } from '../lib/logger'
 
@@ -58,15 +59,17 @@ export function Providers({ children, initialState }: Props) {
               })}
             >
               <ThemeProvider>
-                <ToastProvider>
-                  <WalletProvider>
-                    <VaultDataProvider>
-                      <TransactionProvider>
-                        {children}
-                      </TransactionProvider>
-                    </VaultDataProvider>
-                  </WalletProvider>
-                </ToastProvider>
+                <VaultVersionProvider>
+                  <ToastProvider>
+                    <WalletProvider>
+                      <VaultDataProvider>
+                        <TransactionProvider>
+                          {children}
+                        </TransactionProvider>
+                      </VaultDataProvider>
+                    </WalletProvider>
+                  </ToastProvider>
+                </VaultVersionProvider>
               </ThemeProvider>
             </RainbowKitProvider>
           </QueryClientProvider>

@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { formatUnits } from 'viem';
 import { Vault, MorphoVaultData } from '../types/vault';
+import { getVaultVersion } from '../lib/vault-utils';
 
 interface AllocationData {
   market?: {
@@ -129,10 +130,11 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
       }));
 
       try {
-        // NOTE: APY and vault metrics use Graph API (via /api/vaults/[address]/complete)
+        // NOTE: APY and vault metrics use Graph API (via /api/vault/v1|v2/[address]/complete)
         // This provides APY, netApy, rewards, and other vault state data
         // Balance calculations use RPC (balanceOf + convertToAssets) - see WalletContext
-        const response = await fetch(`/api/vaults/${address}/complete?chainId=${effectiveChainId}`);
+        const vaultVersion = getVaultVersion(address);
+        const response = await fetch(`/api/vault/${vaultVersion}/${address}/complete?chainId=${effectiveChainId}`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -158,13 +160,30 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
           : 'MORPHO'; // Default to MORPHO since most rewards are in MORPHO token
         
         // Share price handling
-        // sharePrice from GraphQL is in raw format (asset decimals), convert to decimal
+        // For v1 vaults: sharePrice from GraphQL is in raw format (asset decimals), convert to decimal
+        // For v2 vaults: sharePrice is already calculated in decimal format by the API route
         // This is sharePrice in tokens (not USD) - tokens per share
         const rawSharePrice = vaultInfo.state?.sharePrice;
         const assetDecimals = vaultInfo.asset?.decimals || 18;
-        const sharePriceInTokens = rawSharePrice 
-          ? parseFloat(formatUnits(BigInt(Math.floor(rawSharePrice)), assetDecimals))
-          : 1;
+        
+        let sharePriceInTokens = 1;
+        if (rawSharePrice !== undefined && rawSharePrice !== null) {
+          // Check if sharePrice is already in decimal format (v2) or raw format (v1)
+          // If it's a number and less than a reasonable threshold (e.g., 1000), assume it's already decimal
+          // Otherwise, treat it as raw and convert
+          if (typeof rawSharePrice === 'number' && rawSharePrice < 1000 && rawSharePrice > 0) {
+            // Already in decimal format (v2)
+            sharePriceInTokens = rawSharePrice;
+          } else {
+            // Raw format (v1), convert to decimal
+            try {
+              sharePriceInTokens = parseFloat(formatUnits(BigInt(Math.floor(rawSharePrice)), assetDecimals));
+            } catch {
+              sharePriceInTokens = 1;
+            }
+          }
+        }
+        
         const sharePriceUsd = vaultInfo.state?.sharePriceUsd || 0;
 
         // Build the vault object
@@ -173,6 +192,7 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
           name: vaultInfo.name || `Vault ${address.slice(0, 6)}...${address.slice(-4)}`,
           symbol: vaultInfo.asset?.symbol || 'UNKNOWN',
           chainId: effectiveChainId,
+          version: vaultVersion,
           totalValueLocked: vaultInfo.state?.totalAssetsUsd || 0,
           totalAssets: vaultInfo.state?.totalAssets || '0',
           assetDecimals: assetDecimals,

@@ -9,6 +9,7 @@ import { ConnectButton } from "../features/wallet";
 import { Icon } from "../ui/Icon";
 import { Button } from "../ui/Button";
 import { useTheme } from "@/contexts/ThemeContext";
+import { useVaultVersion } from "@/contexts/VaultVersionContext";
 
 interface NavBarProps {
     isRightSidebarCollapsed?: boolean;
@@ -27,12 +28,12 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
     const hamburgerButtonRef = useRef<HTMLButtonElement>(null);
     
     // Settings state with defaults
-    const [mode, setMode] = useState<'Advanced' | 'Simple'>('Advanced');
+    const { version, setVersion } = useVaultVersion();
     const { theme, setTheme } = useTheme();
 
     const isActive = useCallback((item: NavItem): boolean => {
-        // Vaults dropdown is active if we're on a vault page
-        return item.id === 'vaults' && (pathname?.startsWith('/vaults/') || false);
+        // Vaults dropdown is active if we're on a vault page (v1 or v2)
+        return item.id === 'vaults' && (pathname?.startsWith('/vault/v1/') || pathname?.startsWith('/vault/v2/') || false);
     }, [pathname]);
 
     // Close menu when clicking outside
@@ -247,8 +248,8 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                         <Button
                                             variant="ghost"
                                             size="sm"
-                                            className={`min-w-fit hover:bg-transparent hover:text-[var(--primary)] transition-colors ${pathname === '/transactions' ? 'text-[var(--primary)]' : ''}`}
-                                            onClick={() => router.push('/transactions')}
+                                            className={`min-w-fit hover:bg-transparent hover:text-[var(--primary)] transition-colors ${pathname === '/transact' ? 'text-[var(--primary)]' : ''}`}
+                                            onClick={() => router.push('/transact')}
                                         >
                                             {item.label}
                                         </Button>
@@ -308,36 +309,51 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                     >
                                     {/* Mode Section */}
                                     <div className="px-4 mb-4">
-                                        <div className="flex items-center justify-between">
+                                        <div className="flex items-center justify-between gap-2">
                                             <button
                                                 type="button"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    setMode('Advanced');
+                                                    setVersion('v1');
                                                     setIsSettingsOpen(false);
                                                 }}
                                                 className={`flex-1 py-2 px-3 text-sm rounded-lg transition-colors cursor-pointer ${
-                                                    mode === 'Advanced'
+                                                    version === 'v1'
                                                         ? 'bg-[var(--primary)] text-white'
                                                         : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
                                                 }`}
                                             >
-                                                Advanced
+                                                V1
                                             </button>
                                             <button
                                                 type="button"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    setMode('Simple');
+                                                    setVersion('v2');
                                                     setIsSettingsOpen(false);
                                                 }}
                                                 className={`flex-1 py-2 px-3 text-sm rounded-lg transition-colors cursor-pointer ${
-                                                    mode === 'Simple'
+                                                    version === 'v2'
                                                         ? 'bg-[var(--primary)] text-white'
                                                         : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
                                                 }`}
                                             >
-                                                Simple
+                                                V2
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setVersion('all');
+                                                    setIsSettingsOpen(false);
+                                                }}
+                                                className={`flex-1 py-2 px-3 text-sm rounded-lg transition-colors cursor-pointer ${
+                                                    version === 'all'
+                                                        ? 'bg-[var(--primary)] text-white'
+                                                        : 'text-[var(--foreground)] hover:bg-[var(--surface-hover)]'
+                                                }`}
+                                            >
+                                                All
                                             </button>
                                         </div>
                                     </div>
@@ -489,10 +505,10 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                     {item.id === 'transactions' && (
                                         <button
                                             onClick={() => {
-                                                router.push('/transactions');
+                                                router.push('/transact');
                                                 setIsMobileNavOpen(false);
                                             }}
-                                            className={`w-full px-4 py-3 text-left hover:bg-[var(--surface-hover)] transition-colors cursor-pointer ${pathname === '/transactions' ? 'text-[var(--primary)] bg-[var(--primary-subtle)]' : 'text-[var(--foreground)]'}`}
+                                            className={`w-full px-4 py-3 text-left hover:bg-[var(--surface-hover)] transition-colors cursor-pointer ${pathname === '/transact' ? 'text-[var(--primary)] bg-[var(--primary-subtle)]' : 'text-[var(--foreground)]'}`}
                                         >
                                             {item.label}
                                         </button>

@@ -8,6 +8,7 @@ import { formatCurrency } from '@/lib/formatter';
 import { logger } from '@/lib/logger';
 import { VAULTS } from '@/lib/vaults';
 import { ERC20_BALANCE_ABI, ERC4626_ABI } from '@/lib/abis';
+import { getVaultVersion } from '@/lib/vault-utils';
 
 export interface TokenBalance {
   address: string;
@@ -343,7 +344,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           }) as bigint;
 
           // Step 3: Fetch vault metadata to get vault info (for sharePriceUsd, etc.)
-          const vaultResponse = await fetch(`/api/vaults/${vaultInfo.address}/complete?chainId=${vaultInfo.chainId}`);
+          const vaultVersion = getVaultVersion(vaultInfo.address);
+          const vaultResponse = await fetch(`/api/vault/${vaultVersion}/${vaultInfo.address}/complete?chainId=${vaultInfo.chainId}`);
           if (!vaultResponse.ok) {
             return null;
           }

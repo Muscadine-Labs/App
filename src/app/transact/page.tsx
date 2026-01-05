@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useMemo, useCallback, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAccount, useReadContract } from 'wagmi';
 import { AccountSelector, TransactionFlow, TransactionProgressBar } from '@/components/features/transactions';
@@ -8,6 +8,7 @@ import { useTransactionState } from '@/contexts/TransactionContext';
 import { useWallet } from '@/contexts/WalletContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
 import { usePrices } from '@/contexts/PriceContext';
+import { useVaultVersion } from '@/contexts/VaultVersionContext';
 import { VAULTS } from '@/lib/vaults';
 import { VaultAccount, WalletAccount } from '@/types/vault';
 import { formatBigIntForInput, formatAvailableBalance, formatAssetAmountForMax, formatCurrency, formatAssetBalance } from '@/lib/formatter';
@@ -40,6 +41,8 @@ const ERC4626_ABI = [
   },
 ] as const;
 
+type TransactionTab = 'deposit' | 'withdraw';
+
 export default function TransactionsPage() {
   const { isConnected } = useAccount();
   const searchParams = useSearchParams();
@@ -47,6 +50,7 @@ export default function TransactionsPage() {
   const { tokenBalances, ethBalance, morphoHoldings, refreshBalances } = useWallet();
   const { fetchVaultData } = useVaultData();
   const { btc: btcPrice, eth: ethPrice } = usePrices();
+  const { version } = useVaultVersion();
   const {
     fromAccount,
     toAccount,
@@ -59,6 +63,12 @@ export default function TransactionsPage() {
     setStatus,
     reset,
   } = useTransactionState();
+  
+  // Tab state - determine from URL params or default to deposit
+  const [activeTab, setActiveTab] = useState<TransactionTab>(() => {
+    const action = searchParams.get('action');
+    return action === 'withdraw' ? 'withdraw' : 'deposit';
+  });
 
   // Refresh wallet and vault data when page opens
   useEffect(() => {
@@ -117,8 +127,14 @@ export default function TransactionsPage() {
     const vaultAddress = searchParams.get('vault');
     const action = searchParams.get('action'); // 'deposit' or 'withdraw'
 
+    if (action) {
+      setActiveTab(action === 'withdraw' ? 'withdraw' : 'deposit');
+    }
+
     if (vaultAddress && action) {
-      const vault = Object.values(VAULTS).find((v) => v.address.toLowerCase() === vaultAddress.toLowerCase());
+      const vault = Object.values(VAULTS).find((v) => 
+        v.address.toLowerCase() === vaultAddress.toLowerCase() && (version === 'all' || v.version === version)
+      );
       if (vault) {
         const position = morphoHoldings.positions.find(
           (pos) => pos.vault.address.toLowerCase() === vault.address.toLowerCase()
@@ -162,6 +178,66 @@ export default function TransactionsPage() {
     // Only depend on searchParams and stable functions - morphoHoldings.positions is checked inside
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, setFromAccount, setToAccount]);
+
+  // Sync active tab with transaction type when accounts change
+  // Only update if the tab would actually change to avoid unnecessary re-renders
+  useEffect(() => {
+    if (status === 'idle' && fromAccount && toAccount) {
+      const expectedTab: TransactionTab | null = 
+        fromAccount.type === 'wallet' && toAccount.type === 'vault' ? 'deposit' :
+        fromAccount.type === 'vault' && toAccount.type === 'wallet' ? 'withdraw' :
+        null;
+      
+      // Only update if tab would change
+      if (expectedTab && expectedTab !== activeTab) {
+        setActiveTab(expectedTab);
+      }
+    }
+  }, [fromAccount, toAccount, status, activeTab]);
+
+  // Memoize wallet account to avoid creating new objects on each render
+  const walletAccount = useMemo<WalletAccount>(() => ({
+    type: 'wallet' as const,
+    address: 'wallet',
+    symbol: 'Wallet',
+    balance: BigInt(0),
+  }), []);
+
+  // Initialize accounts based on active tab when page first loads (if no accounts set and no URL params)
+  useEffect(() => {
+    const vaultAddress = searchParams.get('vault');
+    const action = searchParams.get('action');
+    
+    // Only initialize if no URL params and no accounts are set
+    if (!vaultAddress && !action && status === 'idle' && !fromAccount && !toAccount) {
+      if (activeTab === 'deposit') {
+        // Deposit: pre-select wallet as "from"
+        setFromAccount(walletAccount);
+      } else if (activeTab === 'withdraw') {
+        // Withdraw: pre-select wallet as "to"
+        setToAccount(walletAccount);
+      }
+    }
+  }, [activeTab, status, fromAccount, toAccount, walletAccount, setFromAccount, setToAccount, searchParams]);
+
+  // Handle tab changes - reset and pre-select accounts based on tab
+  const handleTabChange = useCallback((tab: TransactionTab) => {
+    if (tab === activeTab || status !== 'idle') return;
+    
+    setActiveTab(tab);
+    setAmount('');
+    
+    // Reset accounts when switching tabs
+    if (tab === 'deposit') {
+      // Deposit: wallet to vault
+      setFromAccount(walletAccount);
+      setToAccount(null);
+    } else {
+      // Withdraw: vault to wallet
+      setFromAccount(null);
+      setToAccount(walletAccount);
+    }
+  }, [activeTab, walletAccount, setFromAccount, setToAccount, setAmount, status]);
 
   // Get vault position for share balance - use data already fetched in WalletContext
   const vaultPosition = useMemo(() => {
@@ -402,7 +478,7 @@ export default function TransactionsPage() {
 
   const handleReset = () => {
     reset();
-    router.push('/transactions');
+    router.push('/transact');
   };
 
   const handleFlipAccounts = () => {
@@ -424,7 +500,9 @@ export default function TransactionsPage() {
       balance: BigInt(0),
     };
 
-    const vaultAccounts: VaultAccount[] = Object.values(VAULTS).map((vault): VaultAccount => {
+    const vaultAccounts: VaultAccount[] = Object.values(VAULTS)
+      .filter((vault) => version === 'all' || vault.version === version)
+      .map((vault): VaultAccount => {
       const position = morphoHoldings.positions.find(
         (pos) => pos.vault.address.toLowerCase() === vault.address.toLowerCase()
       );
@@ -452,7 +530,7 @@ export default function TransactionsPage() {
       }
       return true;
     });
-  }, [toAccount, morphoHoldings.positions]);
+  }, [toAccount, morphoHoldings.positions, version]);
 
   // Calculate available accounts for "To" selector
   const availableToAccounts = useMemo(() => {
@@ -469,6 +547,7 @@ export default function TransactionsPage() {
     }
 
     const vaultAccounts: VaultAccount[] = Object.values(VAULTS)
+      .filter((vault) => version === 'all' || vault.version === version)
       .map((vault): VaultAccount => {
         const position = morphoHoldings.positions.find(
           (pos) => pos.vault.address.toLowerCase() === vault.address.toLowerCase()
@@ -499,7 +578,7 @@ export default function TransactionsPage() {
       const fromVault = fromAccount as unknown as VaultAccount;
       return accountVault.address.toLowerCase() !== fromVault.address.toLowerCase();
     });
-  }, [fromAccount, morphoHoldings.positions]);
+  }, [fromAccount, morphoHoldings.positions, version]);
 
   // Auto-select "From" account if there's only one option
   useEffect(() => {
@@ -575,11 +654,36 @@ export default function TransactionsPage() {
         </p>
       </div>
 
-      {/* Overall Transaction Flow Progress Bar - Always visible */}
+      {/* Progress Bar - Always visible */}
       <TransactionProgressBar steps={getProgressSteps()} isSuccess={status === 'success'} />
 
       {status === 'idle' && (
         <div className="bg-[var(--surface)] rounded-lg border border-[var(--border-subtle)] p-4 md:p-6 space-y-4 md:space-y-6">
+          {/* Deposit/Withdraw Tabs */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => handleTabChange('deposit')}
+              disabled={status !== 'idle'}
+              className={`flex-1 px-4 py-3 md:py-2.5 rounded-lg font-medium text-sm md:text-sm transition-colors min-h-[44px] md:min-h-0 ${
+                activeTab === 'deposit'
+                  ? 'bg-[var(--primary)] text-white'
+                  : 'bg-[var(--background)] text-[var(--foreground-secondary)] hover:bg-[var(--surface-elevated)]'
+              } disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[var(--background)]`}
+            >
+              Deposit
+            </button>
+            <button
+              onClick={() => handleTabChange('withdraw')}
+              disabled={status !== 'idle'}
+              className={`flex-1 px-4 py-3 md:py-2.5 rounded-lg font-medium text-sm md:text-sm transition-colors min-h-[44px] md:min-h-0 ${
+                activeTab === 'withdraw'
+                  ? 'bg-[var(--primary)] text-white'
+                  : 'bg-[var(--background)] text-[var(--foreground-secondary)] hover:bg-[var(--surface-elevated)]'
+              } disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[var(--background)]`}
+            >
+              Withdraw
+            </button>
+          </div>
           {/* From Account */}
           <AccountSelector
             label="From"
@@ -660,7 +764,7 @@ export default function TransactionsPage() {
                   value={amount}
                   onChange={(e) => handleAmountChange(e.target.value)}
                   placeholder="0.00"
-                  className="w-full px-4 py-3 pr-24 bg-[var(--background)] border border-[var(--border-subtle)] rounded-lg text-[var(--foreground)] placeholder-[var(--foreground-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)]"
+                  className="w-full px-4 py-3 pr-20 md:pr-24 bg-[var(--background)] border border-[var(--border-subtle)] rounded-lg text-[var(--foreground)] placeholder-[var(--foreground-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--primary)] text-base md:text-base"
                 />
                 {/* Dollar amount display for BTC/ETH vault transactions - inside input */}
                 {(() => {
@@ -695,8 +799,8 @@ export default function TransactionsPage() {
                   if (isNaN(dollarAmount) || dollarAmount <= 0) return null;
                   
                   return (
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-                      <span className="text-sm text-[var(--foreground-muted)]">
+                    <div className="absolute right-3 md:right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                      <span className="text-xs md:text-sm text-[var(--foreground-muted)]">
                         ≈ {formatCurrency(dollarAmount)}
                       </span>
                     </div>
@@ -746,16 +850,15 @@ export default function TransactionsPage() {
 
       {/* Transaction Flow (Preview, Progress, Success, Error) */}
       {(status === 'preview' || status === 'signing' || status === 'approving' || status === 'confirming' || status === 'success' || status === 'error') && (
-        <>
-          <TransactionFlow
-            onSuccess={() => {
-              setTimeout(() => {
-                handleReset();
-              }, 3000);
-            }}
-          />
-        </>
+        <TransactionFlow
+          onSuccess={() => {
+            setTimeout(() => {
+              handleReset();
+            }, 3000);
+          }}
+        />
       )}
     </div>
   );
 }
+

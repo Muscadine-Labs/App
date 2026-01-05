@@ -11,6 +11,7 @@ import { TransactionProgressBar } from './TransactionProgressBar';
 import { useToast } from '@/contexts/ToastContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
 import { useWallet } from '@/contexts/WalletContext';
+import { logger } from '@/lib/logger';
 
 interface TransactionConfirmationProps {
   fromAccount: Account;
@@ -70,13 +71,16 @@ export function TransactionConfirmation({
         // Force Next.js to refresh server-side data
         router.refresh();
       } catch (error) {
-        console.error('Error refreshing data after transaction:', error);
+        logger.error('Error refreshing data after transaction', error instanceof Error ? error : new Error(String(error)), {
+          fromAccount: fromAccount.type === 'vault' ? (fromAccount as VaultAccount).address : 'wallet',
+          toAccount: toAccount.type === 'vault' ? (toAccount as VaultAccount).address : 'wallet',
+        });
         // Continue with reset even if refresh fails
       }
       
       reset();
       // Reset state and stay on transactions page to start a new transaction
-      router.push('/transactions');
+      router.push('/transact');
     } else {
       onCancel();
     }
@@ -126,7 +130,7 @@ export function TransactionConfirmation({
       await navigator.clipboard.writeText(addressToCopy);
       showToast(`${name} address copied to clipboard`, 'neutral', 2000);
     } catch (err) {
-      console.error('Failed to copy address:', err);
+      logger.error('Failed to copy address', err instanceof Error ? err : new Error(String(err)), { address: addressToCopy, name });
       showErrorToast('Failed to copy to clipboard', 5000);
     }
   };
@@ -154,7 +158,7 @@ export function TransactionConfirmation({
                         await navigator.clipboard.writeText(txHash);
                         showToast('Copied! View on', 'neutral', 3000, `https://basescan.org/tx/${txHash}`, 'Basescan');
                       } catch (err) {
-                        console.error('Failed to copy transaction hash:', err);
+                        logger.error('Failed to copy transaction hash', err instanceof Error ? err : new Error(String(err)), { txHash });
                         showErrorToast('Failed to copy to clipboard', 5000);
                       }
                     }}

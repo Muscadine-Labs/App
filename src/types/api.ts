@@ -51,6 +51,9 @@ export interface GraphQLTransactionItem {
     shares?: string;
     assets?: string;
     assetsUsd?: number;
+    vault?: {
+      address: string;
+    };
   };
 }
 

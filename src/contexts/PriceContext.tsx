@@ -20,9 +20,15 @@ export function PriceProvider({ children }: { children: ReactNode }) {
     const { data, error, isLoading } = useQuery({
       queryKey: ['crypto-prices'],
       queryFn: async () => {
-        // Try to get cached data from localStorage first
-        const cachedData = localStorage.getItem('crypto-prices');
-        const cachedTimestamp = localStorage.getItem('crypto-prices-timestamp');
+        // Try to get cached data from localStorage first (only on client)
+        let cachedData: string | null = null;
+        let cachedTimestamp: string | null = null;
+        
+        if (typeof window !== 'undefined') {
+          cachedData = localStorage.getItem('crypto-prices');
+          cachedTimestamp = localStorage.getItem('crypto-prices-timestamp');
+        }
+        
         const now = Date.now();
         const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
@@ -43,9 +49,11 @@ export function PriceProvider({ children }: { children: ReactNode }) {
         
         const freshData = await response.json();
         
-        // Cache the fresh data in localStorage
-        localStorage.setItem('crypto-prices', JSON.stringify(freshData));
-        localStorage.setItem('crypto-prices-timestamp', now.toString());
+        // Cache the fresh data in localStorage (only on client)
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('crypto-prices', JSON.stringify(freshData));
+          localStorage.setItem('crypto-prices-timestamp', now.toString());
+        }
         
         return freshData;
       },

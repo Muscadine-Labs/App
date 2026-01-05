@@ -64,24 +64,19 @@ export async function GET(
     }
 
     const chainId = parseInt(chainIdParam, 10);
-    // Calculate time range based on period
     const now = Math.floor(Date.now() / 1000);
-    // For 'all', set startTime to 0 (epoch start) to fetch all available data
     const startTime = period === 'all' ? 0 : (now - (PERIOD_SECONDS[period] || PERIOD_SECONDS['30d']));
-
-    // Determine interval based on period
     const interval = INTERVAL_MAP[period] || 'DAY';
 
-    // Query user position history directly from GraphQL
+    // V2 vaults use vaultV2PositionByAddress with direct fields (not nested in state)
+    // and history instead of historicalState
     const query = `
-      query VaultPositionHistory($userAddress: String!, $vaultAddress: String!, $chainId: Int!, $options: TimeseriesOptions) {
-        vaultPosition(userAddress: $userAddress, vaultAddress: $vaultAddress, chainId: $chainId) {
-          state {
-            assets
-            assetsUsd
-            shares
-          }
-          historicalState {
+      query VaultV2PositionHistory($userAddress: String!, $vaultAddress: String!, $chainId: Int!, $options: TimeseriesOptions) {
+        vaultV2PositionByAddress(userAddress: $userAddress, vaultAddress: $vaultAddress, chainId: $chainId) {
+          shares
+          assets
+          assetsUsd
+          history {
             assets(options: $options) {
               x
               y
@@ -119,7 +114,7 @@ export async function GET(
         },
       }),
       next: { 
-        revalidate: 300, // 5 minutes
+        revalidate: 300,
       },
     });
 
@@ -129,12 +124,16 @@ export async function GET(
 
     const data = await response.json();
 
-    // Check if errors are about position not being available
     const hasNotFoundError = data.errors?.some((err: GraphQLError) => 
       err.status === 'NOT_FOUND' || err.message?.includes('No results matching')
     );
     
     if (data.errors && !hasNotFoundError) {
+      logger.error(
+        'GraphQL errors in position history query',
+        new Error(data.errors[0]?.message || 'GraphQL query failed'),
+        { address, chainId, userAddress, errors: data.errors }
+      );
       return NextResponse.json({
         history: [],
         period,
@@ -144,9 +143,14 @@ export async function GET(
       });
     }
 
-    const vaultPosition = data.data?.vaultPosition;
+    // V2 uses vaultV2PositionByAddress with direct fields
+    const vaultPosition = data.data?.vaultV2PositionByAddress;
     
     if (!vaultPosition) {
+      logger.warn(
+        'No vault position data returned from GraphQL',
+        { address, chainId, userAddress, data: data.data }
+      );
       return NextResponse.json({
         history: [],
         currentPosition: null,
@@ -156,14 +160,18 @@ export async function GET(
       });
     }
     
-    // Extract current position from state (if available)
-    const currentPosition = vaultPosition.state ? {
-      assets: vaultPosition.state.assets || 0,
-      assetsUsd: vaultPosition.state.assetsUsd || 0,
-      shares: vaultPosition.state.shares || 0,
-    } : null;
+    // V2 has direct fields, not nested in state
+    const currentPosition = {
+      assets: vaultPosition.assets || 0,
+      assetsUsd: vaultPosition.assetsUsd || 0,
+      shares: vaultPosition.shares || 0,
+    };
     
-    if (!vaultPosition.historicalState) {
+    if (!vaultPosition.history) {
+      logger.warn(
+        'No historical data for vault position',
+        { address, chainId, userAddress, hasPosition: !!vaultPosition }
+      );
       return NextResponse.json({
         history: [],
         currentPosition,
@@ -173,27 +181,25 @@ export async function GET(
       });
     }
     
-    const assetsData = vaultPosition.historicalState.assets || [];
-    const assetsUsdData = vaultPosition.historicalState.assetsUsd || [];
-    const sharesData = vaultPosition.historicalState.shares || [];
+    // V2 uses history instead of historicalState
+    const assetsData = vaultPosition.history.assets || [];
+    const assetsUsdData = vaultPosition.history.assetsUsd || [];
+    const sharesData = vaultPosition.history.shares || [];
     
-    // Create maps for quick lookup
     const assetsMap = new Map(assetsData.map((p: { x: number; y: number | string }) => [p.x, typeof p.y === 'string' ? parseFloat(p.y) : p.y]));
     const assetsUsdMap = new Map(assetsUsdData.map((p: { x: number; y: number | string }) => [p.x, typeof p.y === 'string' ? parseFloat(p.y) : p.y]));
     const sharesMap = new Map(sharesData.map((p: { x: number; y: number | string }) => [p.x, typeof p.y === 'string' ? parseFloat(p.y) : p.y]));
     
-    // Get all unique timestamps
     const timestamps = new Set<number>();
     assetsData.forEach((point: { x: number }) => timestamps.add(point.x));
     assetsUsdData.forEach((point: { x: number }) => timestamps.add(point.x));
     sharesData.forEach((point: { x: number }) => timestamps.add(point.x));
     
-    // Get vault asset info to convert raw assets to decimal
     let assetDecimals = 18;
     try {
       const vaultQuery = `
         query VaultAssetInfo($address: String!, $chainId: Int!) {
-          vaultByAddress(address: $address, chainId: $chainId) {
+          vaultV2ByAddress(address: $address, chainId: $chainId) {
             asset {
               symbol
               decimals
@@ -220,13 +226,12 @@ export async function GET(
       
       if (vaultResponse.ok) {
         const vaultData = await vaultResponse.json();
-        const vaultInfo = vaultData.data?.vaultByAddress;
+        const vaultInfo = vaultData.data?.vaultV2ByAddress;
         if (vaultInfo?.asset) {
           assetDecimals = vaultInfo.asset.decimals || 18;
         }
       }
     } catch (error) {
-      // Log but continue with default decimals
       logger.error(
         'Failed to fetch vault asset info',
         error instanceof Error ? error : new Error(String(error)),
@@ -241,18 +246,15 @@ export async function GET(
         const assetsUsd = (assetsUsdMap.get(timestamp) ?? 0) as number;
         const sharesRaw = (sharesMap.get(timestamp) ?? 0) as number;
         
-        // Convert raw assets to decimal (assets are in raw units, convert using asset decimals)
         const assetsDecimal = assetsRaw / Math.pow(10, assetDecimals);
-        
-        // Convert shares from wei (shares are always 18 decimals)
         const sharesDecimal = sharesRaw / 1e18;
         
         return {
           timestamp,
           date: new Date(timestamp * 1000).toISOString().split('T')[0],
-          assets: assetsDecimal, // Token amount in decimal
-          assetsUsd, // USD value
-          shares: sharesDecimal, // Shares in decimal
+          assets: assetsDecimal,
+          assetsUsd,
+          shares: sharesDecimal,
         };
       })
       .filter(item => item.timestamp >= MIN_VALID_TIMESTAMP);

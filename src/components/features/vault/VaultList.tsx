@@ -2,6 +2,7 @@ import { VAULTS } from "@/lib/vaults";
 import VaultListCard from "./VaultListCard";
 import { Vault } from "../../../types/vault";
 import { useWallet } from "../../../contexts/WalletContext";
+import { useVaultVersion } from "../../../contexts/VaultVersionContext";
 import { useMemo } from "react";
 
 interface VaultListProps {
@@ -11,15 +12,19 @@ interface VaultListProps {
 
 export default function VaultList({ onVaultSelect, selectedVaultAddress }: VaultListProps = {} as VaultListProps) {
     const { morphoHoldings } = useWallet();
+    const { version } = useVaultVersion();
     
     // Sort vaults by user position (highest to lowest) - use RPC positions from WalletContext
     const sortedVaults = useMemo(() => {
-        const vaults: Vault[] = Object.values(VAULTS).map((vault) => ({
-            address: vault.address,
-            name: vault.name,
-            symbol: vault.symbol,
-            chainId: vault.chainId,
-        }));
+        const vaults: Vault[] = Object.values(VAULTS)
+            .filter((vault) => version === 'all' || vault.version === version) // Filter by selected version
+            .map((vault) => ({
+                address: vault.address,
+                name: vault.name,
+                symbol: vault.symbol,
+                chainId: vault.chainId,
+                version: vault.version,
+            }));
 
         // Calculate position value for each vault and sort
         return vaults.sort((a, b) => {
@@ -43,7 +48,7 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
             // Sort descending (highest to lowest)
             return valueB - valueA;
         });
-    }, [morphoHoldings.positions]);
+    }, [morphoHoldings.positions, version]);
 
     // Legacy support: if onVaultSelect is provided, use it
     // Otherwise, VaultListCard will handle navigation directly

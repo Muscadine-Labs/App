@@ -6,6 +6,7 @@ import { Account, WalletAccount, VaultAccount, getVaultLogo } from '@/types/vaul
 import { useWallet } from '@/contexts/WalletContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
 import { usePrices } from '@/contexts/PriceContext';
+import { useVaultVersion } from '@/contexts/VaultVersionContext';
 import { VAULTS } from '@/lib/vaults';
 import { formatUnits } from 'viem';
 import { formatAssetBalance, truncateAddress } from '@/lib/formatter';
@@ -37,6 +38,7 @@ export function AccountSelector({
   const { tokenBalances, ethBalance, morphoHoldings } = useWallet();
   const { getVaultData, fetchVaultData, isLoading: isVaultDataLoading } = useVaultData();
   const { btc: btcPrice, eth: ethPrice } = usePrices();
+  const { version } = useVaultVersion();
   const hasPreloadedRef = useRef(false);
 
   useOnClickOutside(dropdownRef, () => setIsOpen(false));
@@ -73,11 +75,15 @@ export function AccountSelector({
     }];
   }, []);
 
-  // Build vault account options - filter by asset symbol if provided
+  // Build vault account options - filter by asset symbol if provided and by version
   // Always show at least some vaults (if no filter, show all; if filter, show matching)
   const vaultAccounts: VaultAccount[] = useMemo(() => {
     return Object.values(VAULTS)
       .filter((vault) => {
+        // Filter by version first
+        if (vault.version !== version) {
+          return false;
+        }
         // If filter is set, only include vaults with matching asset symbol
         if (filterByAssetSymbol) {
           return vault.symbol.toUpperCase() === filterByAssetSymbol.toUpperCase();
@@ -108,7 +114,7 @@ export function AccountSelector({
           assetDecimals: vaultData?.assetDecimals ?? 18,
         };
       });
-  }, [filterByAssetSymbol, getVaultData, morphoHoldings.positions]);
+  }, [filterByAssetSymbol, getVaultData, morphoHoldings.positions, version]);
 
   // Calculate USD value for sorting accounts
   const getAccountUsdValue = useCallback((account: Account): number => {

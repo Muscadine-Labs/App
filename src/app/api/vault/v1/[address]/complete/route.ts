@@ -39,6 +39,8 @@ export async function GET(
     }
 
     const chainId = parseInt(chainIdParam, 10);
+    
+    // V1 vaults use vaultByAddress with nested state
     const query = `
       query VaultComplete($address: String!, $chainId: Int!) {
         vaultByAddress(address: $address, chainId: $chainId) {

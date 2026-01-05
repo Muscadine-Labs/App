@@ -5,6 +5,7 @@ export interface Vault {
     name: string;
     symbol: string;
     chainId: number;
+    version?: 'v1' | 'v2'; // Vault version (v1 uses Morpho v1 API, v2 uses Morpho v2 API)
     
     // Financial Metrics
     totalValueLocked?: number; // TVL in USD

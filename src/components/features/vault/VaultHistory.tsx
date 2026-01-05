@@ -36,7 +36,7 @@ export default function VaultHistory({ vaultData }: VaultHistoryProps) {
       try {
         // Fetch all vault activity
         const allResponse = await fetch(
-          `/api/vaults/${vaultData.address}/activity?chainId=${vaultData.chainId}`
+          `/api/vault/${vaultData.version}/${vaultData.address}/activity?chainId=${vaultData.chainId}`
         );
         const allData = await allResponse.json();
         
@@ -44,7 +44,7 @@ export default function VaultHistory({ vaultData }: VaultHistoryProps) {
         let userData: Transaction[] = [];
         if (address) {
           const userResponse = await fetch(
-            `/api/vaults/${vaultData.address}/activity?chainId=${vaultData.chainId}&userAddress=${address}`
+            `/api/vault/${vaultData.version}/${vaultData.address}/activity?chainId=${vaultData.chainId}&userAddress=${address}`
           );
           const userResponseData = await userResponse.json();
           userData = userResponseData.transactions || [];
@@ -61,7 +61,7 @@ export default function VaultHistory({ vaultData }: VaultHistoryProps) {
     };
 
     fetchActivity();
-  }, [vaultData.address, vaultData.chainId, address]);
+  }, [vaultData.address, vaultData.chainId, vaultData.version, address]);
 
   const getExplorerUrl = (txHash: string) => {
     return `https://basescan.org/tx/${txHash}`;

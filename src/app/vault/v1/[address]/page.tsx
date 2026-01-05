@@ -43,6 +43,7 @@ export default function VaultPage() {
     name: v.name,
     symbol: v.symbol,
     chainId: v.chainId,
+    version: v.version,
   }));
   useVaultListPreloader(vaults);
 

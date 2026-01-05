@@ -13,6 +13,7 @@ export default function Home() {
     name: vault.name,
     symbol: vault.symbol,
     chainId: vault.chainId,
+    version: vault.version,
   }));
 
   // Preload vault data when dashboard loads

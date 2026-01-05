@@ -1,10 +1,10 @@
-import { VAULTS } from './vaults';
+import { VAULTS, VaultVersion } from './vaults';
 import { Vault } from '../types/vault';
 
 /**
  * Find a vault by its address (case-insensitive)
  * @param address - The vault address to search for
- * @returns The vault if found, null otherwise
+ * @returns The vault if found, null otherwise (includes version)
  */
 export function findVaultByAddress(address: string): Vault | null {
   if (!address) return null;
@@ -21,7 +21,18 @@ export function findVaultByAddress(address: string): Vault | null {
     name: vault.name,
     symbol: vault.symbol,
     chainId: vault.chainId,
+    version: vault.version,
   };
+}
+
+/**
+ * Get the vault version for an address
+ * @param address - The vault address
+ * @returns The vault version ('v1' or 'v2'), defaults to 'v1' if not found
+ */
+export function getVaultVersion(address: string): VaultVersion {
+  const vault = findVaultByAddress(address);
+  return vault?.version || 'v1';
 }
 
 /**
@@ -36,10 +47,24 @@ export function validateVaultAddress(address: string): boolean {
 /**
  * Get the route path for a vault
  * @param address - The vault address
- * @returns The route path (e.g., "/vaults/0x...")
+ * @param version - Optional vault version ('v1' or 'v2'). If not provided, automatically determines from vault definition
+ * @returns The route path (e.g., "/vault/v1/0x...")
  */
-export function getVaultRoute(address: string): string {
-  return `/vaults/${address}`;
+export function getVaultRoute(address: string, version?: VaultVersion): string {
+  const vaultVersion = version || getVaultVersion(address);
+  return `/vault/${vaultVersion}/${address}`;
+}
+
+/**
+ * Get the API path for a vault endpoint
+ * @param address - The vault address
+ * @param endpoint - The API endpoint (e.g., 'complete', 'history', 'activity', 'position-history')
+ * @param version - Optional vault version ('v1' or 'v2'). If not provided, automatically determines from vault definition
+ * @returns The API path (e.g., "/api/vault/v1/0x.../complete")
+ */
+export function getVaultApiPath(address: string, endpoint: string, version?: VaultVersion): string {
+  const vaultVersion = version || getVaultVersion(address);
+  return `/api/vault/${vaultVersion}/${address}/${endpoint}`;
 }
 
 /**
