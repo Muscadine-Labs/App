@@ -8,6 +8,7 @@ import { Providers } from './Providers'
 import { config } from '@/config/wagmi'
 import { PriceProvider } from '@/contexts/PriceContext'
 import { Analytics } from '@vercel/analytics/react'
+import { MiniAppInit } from '@/components/common/MiniAppInit'
 
 const figtree = Figtree({ 
   subsets: ['latin'],
@@ -37,6 +38,8 @@ const tinos = Tinos({
 
 
 
+const appUrl = process.env.NEXT_PUBLIC_URL || 'https://app.muscadine.io';
+
 export const metadata: Metadata = {
   title: 'Muscadine Earn',
   description: 'Powered by Muscadine Labs',
@@ -44,6 +47,23 @@ export const metadata: Metadata = {
     icon: '/favicon.png',
     shortcut: '/favicon.png',
     apple: '/favicon.png',
+  },
+  other: {
+    'fc:miniapp': JSON.stringify({
+      version: 'next',
+      imageUrl: `${appUrl}/favicon.png`,
+      button: {
+        title: 'Launch Muscadine Earn',
+        action: {
+          type: 'launch_miniapp',
+          name: 'Muscadine Earn',
+          url: appUrl,
+          splashImageUrl: `${appUrl}/favicon.png`,
+            // eslint-disable-next-line no-restricted-syntax
+            splashBackgroundColor: '#000000', // Base mini app requires hex color, not CSS variable
+        },
+      },
+    }),
   },
 }
 
@@ -63,6 +83,7 @@ export default async function RootLayout({
       <body className={`${figtree.className} ${funnelDisplay.variable} ${outfit.variable} ${tinos.variable}`}>
           <Providers initialState={initialState}>
               <PriceProvider>
+                <MiniAppInit />
                 <AppLayout>{children}</AppLayout>
               </PriceProvider>
           </Providers>
