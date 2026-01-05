@@ -6,6 +6,7 @@ import { useAccount, useReadContract } from 'wagmi';
 import { AccountSelector, TransactionFlow, TransactionProgressBar } from '@/components/features/transactions';
 import { useTransactionState } from '@/contexts/TransactionContext';
 import { useWallet } from '@/contexts/WalletContext';
+import { useVaultData } from '@/contexts/VaultDataContext';
 import { usePrices } from '@/contexts/PriceContext';
 import { VAULTS } from '@/lib/vaults';
 import { VaultAccount, WalletAccount } from '@/types/vault';
@@ -44,6 +45,7 @@ export default function TransactionsPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { tokenBalances, ethBalance, morphoHoldings, refreshBalances } = useWallet();
+  const { fetchVaultData } = useVaultData();
   const { btc: btcPrice, eth: ethPrice } = usePrices();
   const {
     fromAccount,
@@ -58,11 +60,22 @@ export default function TransactionsPage() {
     reset,
   } = useTransactionState();
 
-  // Refresh wallet balances when page opens
+  // Refresh wallet and vault data when page opens
   useEffect(() => {
     if (isConnected) {
       // Refresh wallet balances immediately (includes vault positions via RPC)
       refreshBalances();
+      
+      // Refresh vault data for all vaults that the user has positions in (force refresh to bypass cache)
+      const vaultsToRefresh = morphoHoldings.positions.map(pos => pos.vault.address);
+      vaultsToRefresh.forEach(vaultAddress => {
+        fetchVaultData(vaultAddress, 8453, true); // Force refresh
+      });
+      
+      // Also refresh all available vaults to ensure we have fresh data for selection
+      Object.values(VAULTS).forEach(vault => {
+        fetchVaultData(vault.address, vault.chainId, true); // Force refresh
+      });
     }
     // Only run once when component mounts or when connection status changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,6 +94,17 @@ export default function TransactionsPage() {
     if (isConnected && transitionedToIdle) {
       // Refresh wallet balances to get updated values (includes vault positions via RPC)
       refreshBalances();
+      
+      // Refresh vault data for all vaults that the user has positions in (force refresh to bypass cache)
+      const vaultsToRefresh = morphoHoldings.positions.map(pos => pos.vault.address);
+      vaultsToRefresh.forEach(vaultAddress => {
+        fetchVaultData(vaultAddress, 8453, true); // Force refresh
+      });
+      
+      // Also refresh all available vaults to ensure we have fresh data for selection
+      Object.values(VAULTS).forEach(vault => {
+        fetchVaultData(vault.address, vault.chainId, true); // Force refresh
+      });
     }
     
     // Update previous status
