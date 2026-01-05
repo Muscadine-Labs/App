@@ -16,6 +16,7 @@ import { useVaultData } from '@/contexts/VaultDataContext';
 import { logger } from '@/lib/logger';
 import { useRouter } from 'next/navigation';
 import { ERC4626_ABI } from '@/lib/abis';
+import { getVaultVersion } from '@/lib/vault-utils';
 
 interface TransactionFlowProps {
   onSuccess?: () => void;
@@ -244,6 +245,17 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
 
   const handleConfirm = async () => {
     if (!fromAccount || !toAccount || !amount || !transactionType) return;
+
+    // Check if transaction involves a v2 vault
+    const fromVaultVersion = fromAccount.type === 'vault' ? getVaultVersion((fromAccount as VaultAccount).address) : null;
+    const toVaultVersion = toAccount.type === 'vault' ? getVaultVersion((toAccount as VaultAccount).address) : null;
+    
+    if (fromVaultVersion === 'v2' || toVaultVersion === 'v2') {
+      const errorMessage = 'Depositing / withdrawing to Muscadine V2 Prime vaults are not available right now.';
+      setStatus('error', errorMessage);
+      showErrorToast(errorMessage, 5000);
+      return;
+    }
 
     // Derive asset if not already computed
     const assetToUse = derivedAsset || (fromAccount.type === 'vault' 

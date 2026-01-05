@@ -10,6 +10,7 @@ import { parseUnits, type Address, getAddress, formatUnits } from 'viem';
 import { useVaultData } from '../contexts/VaultDataContext';
 import { useVaultSimulationState } from './useVaultSimulationState';
 import { BASE_WETH_ADDRESS } from '../lib/constants';
+import { getVaultVersion } from '../lib/vault-utils';
 
 // ABI for vault asset() function and ERC-4626 conversion functions
 const VAULT_ASSET_ABI = [
@@ -107,9 +108,49 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
       throw new Error('Transaction system is still loading.\n\nPlease wait a moment for the system to prepare and try again.');
     }
     
-    // Additional check: ensure simulation state has data
-    if (!currentSimulationState.vaults || Object.keys(currentSimulationState.vaults).length === 0) {
-      throw new Error('Vault data not loaded.\n\nPlease wait for the vault information to load and try again.');
+    // Determine vault version to check the correct array
+    const vaultVersion = getVaultVersion(vault);
+    
+    // Additional check: ensure simulation state has data for the correct vault type
+    const normalizedVault = getAddress(vault);
+    if (vaultVersion === 'v2') {
+      // For v2 vaults, check vaultV2s
+      const v2Vaults = currentSimulationState.vaultV2s || {};
+      const vaultKeys = Object.keys(v2Vaults);
+      const vaultExists = vaultKeys.some(key => 
+        getAddress(key).toLowerCase() === normalizedVault.toLowerCase()
+      );
+      
+      if (vaultKeys.length === 0) {
+        throw new Error('Vault data not loaded.\n\nPlease wait for the vault information to load and try again.');
+      }
+      
+      if (!vaultExists) {
+        throw new Error(
+          `Vault ${normalizedVault} not found in simulation state. ` +
+          `Available v2 vaults: ${vaultKeys.map(k => getAddress(k)).join(', ') || 'none'}. ` +
+          `Please wait for the simulation state to finish loading.`
+        );
+      }
+    } else {
+      // For v1 vaults, check vaults
+      const v1Vaults = currentSimulationState.vaults || {};
+      const vaultKeys = Object.keys(v1Vaults);
+      const vaultExists = vaultKeys.some(key => 
+        getAddress(key).toLowerCase() === normalizedVault.toLowerCase()
+      );
+      
+      if (vaultKeys.length === 0) {
+        throw new Error('Vault data not loaded.\n\nPlease wait for the vault information to load and try again.');
+      }
+      
+      if (!vaultExists) {
+        throw new Error(
+          `Vault ${normalizedVault} not found in simulation state. ` +
+          `Available v1 vaults: ${vaultKeys.map(k => getAddress(k)).join(', ') || 'none'}. ` +
+          `Please wait for the simulation state to finish loading.`
+        );
+      }
     }
 
     setIsLoading(true);
@@ -130,27 +171,36 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
     }
     
     // Re-validate simulation state after refetch
-    if (!simulationState || !simulationState.vaults || Object.keys(simulationState.vaults).length === 0) {
-      throw new Error('Vault data not loaded after refresh.\n\nPlease wait for the vault information to load and try again.');
+    if (vaultVersion === 'v2') {
+      // For v2 vaults, check vaultV2s
+      if (!simulationState || !simulationState.vaultV2s || Object.keys(simulationState.vaultV2s).length === 0) {
+        throw new Error('Vault data not loaded after refresh.\n\nPlease wait for the vault information to load and try again.');
+      }
+    } else {
+      // For v1 vaults, check vaults
+      if (!simulationState || !simulationState.vaults || Object.keys(simulationState.vaults).length === 0) {
+        throw new Error('Vault data not loaded after refresh.\n\nPlease wait for the vault information to load and try again.');
+      }
     }
 
     try {
-      const normalizedVault = getAddress(vault);
       const userAddress = walletClient.account.address as Address;
 
       // Check if this is a WETH vault (Using case-insensitive comparison)
       const isWethVault = assetAddress?.toLowerCase() === BASE_WETH_ADDRESS.toLowerCase();
 
-      // Verify vault exists in simulation state
-      const vaultKeys = simulationState.vaults ? Object.keys(simulationState.vaults) : [];
+      // Vault existence already verified above, but double-check after refetch
+      const vaultKeys = vaultVersion === 'v2' 
+        ? (simulationState.vaultV2s ? Object.keys(simulationState.vaultV2s) : [])
+        : (simulationState.vaults ? Object.keys(simulationState.vaults) : []);
       const vaultExists = vaultKeys.some(key => 
         getAddress(key).toLowerCase() === normalizedVault.toLowerCase()
       );
       
       if (!vaultExists) {
         throw new Error(
-          `Vault ${normalizedVault} not found in simulation state. ` +
-          `Available vaults: ${vaultKeys.map(k => getAddress(k)).join(', ') || 'none'}. ` +
+          `Vault ${normalizedVault} not found in simulation state after refresh. ` +
+          `Available ${vaultVersion === 'v2' ? 'v2' : 'v1'} vaults: ${vaultKeys.map(k => getAddress(k)).join(', ') || 'none'}. ` +
           `Please wait for the simulation state to finish loading.`
         );
       }
@@ -546,6 +596,7 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
       if (!bundleTx.to) {
         throw new Error('Bundle transaction missing "to" address');
       }
+
 
       // Notify that we're about to send the main transaction - wallet will open
       onProgress?.({ 

@@ -37,6 +37,7 @@ interface VaultDataState {
     allocation: AllocationData[] | null;
     yield: YieldData | null;
     metadata: MetadataData | null;
+    adapters: string[] | null; // Adapter addresses for v2 vaults
     loading: boolean;
     error: string | null;
     lastFetched: number;
@@ -49,6 +50,7 @@ interface VaultDataContextType {
   fetchVaultData: (address: string, chainId?: number, forceRefresh?: boolean) => Promise<void>;
   getVaultData: (address: string) => MorphoVaultData | null;
   getVaultMarketIds: (address: string) => `0x${string}`[]; // Get market uniqueKeys for simulation
+  getVaultAdapters: (address: string) => `0x${string}`[]; // Get adapter addresses for v2 vaults
   isLoading: (address: string) => boolean;
   hasError: (address: string) => boolean;
   isStaleData: (address: string) => boolean;
@@ -142,10 +144,25 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
         }
 
         const vaultInfo = data.data.vaultByAddress;
+        // For v2 vaults, also get the original vaultV2ByAddress to access adapters
+        // Note: vaultV2ByAddress is only present for v2 vaults after normalization
+        const vaultV2Info = data.data.vaultV2ByAddress;
         
         // Extract curator name from metadata
         const curatorAddress = vaultInfo.state?.curator;
         const curatorName = vaultInfo.metadata?.curators?.[0]?.name;
+        
+        // Extract adapter addresses for v2 vaults
+        // Adapters are only available in the original vaultV2ByAddress structure
+        const adapterAddresses: string[] = [];
+        if (vaultVersion === 'v2') {
+          // Try to get adapters from vaultV2ByAddress (original v2 structure)
+          if (vaultV2Info?.adapters?.items && Array.isArray(vaultV2Info.adapters.items)) {
+            adapterAddresses.push(...vaultV2Info.adapters.items
+              .map((adapter: { address: string }) => adapter.address)
+              .filter((addr: string) => addr && typeof addr === 'string' && addr.startsWith('0x')));
+          }
+        }
         
         // APY data from Graph API
         const currentNetApy = vaultInfo.state?.netApy || 0;
@@ -259,6 +276,7 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
             allocation: vaultInfo.state?.allocation || null,
             yield: vaultInfo as YieldData,
             metadata: vaultInfo.metadata as MetadataData,
+            adapters: adapterAddresses.length > 0 ? adapterAddresses : null,
             loading: false,
             error: null,
             lastFetched: Date.now(),
@@ -270,6 +288,7 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
           ...prev,
           [address]: {
             ...prev[address],
+            adapters: null,
             loading: false,
             error: error instanceof Error ? error.message : 'Unknown error',
           }
@@ -359,11 +378,23 @@ export function VaultDataProvider({ children }: VaultDataProviderProps) {
       .filter((key: string) => key.startsWith('0x')) as `0x${string}`[];
   }, [vaultData]);
 
+  // Extract adapter addresses for v2 vaults
+  const getVaultAdapters = useCallback((address: string): `0x${string}`[] => {
+    const data = vaultData[address];
+    if (!data?.adapters || !Array.isArray(data.adapters)) {
+      return [];
+    }
+    
+    return data.adapters
+      .filter((addr: string) => addr && addr.startsWith('0x')) as `0x${string}`[];
+  }, [vaultData]);
+
   const value: VaultDataContextType = {
     vaultData,
     fetchVaultData: fetchCompleteVaultData,
     getVaultData,
     getVaultMarketIds,
+    getVaultAdapters,
     isLoading,
     hasError,
     isStaleData,

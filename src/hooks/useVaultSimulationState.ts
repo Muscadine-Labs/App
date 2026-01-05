@@ -14,6 +14,7 @@ import {
 import { type Address } from "viem";
 import { useVaultData } from "../contexts/VaultDataContext";
 import { BASE_CHAIN_ID, BASE_WETH_ADDRESS, GENERAL_ADAPTER_ADDRESS, MAX_WITHDRAW_QUEUE_ITEMS } from "../lib/constants";
+import { getVaultVersion } from "../lib/vault-utils";
 
 // Extended ABI to include Withdrawal Queue functions
 const VAULT_ABI_EXTENDED = [
@@ -97,6 +98,11 @@ export const useVaultSimulationState = (
   const queryClient = useQueryClient();
   const shouldFetch = enabled && !!vaultAddress && !!address;
 
+  // Determine vault version early
+  const vaultVersion = useMemo(() => {
+    return vaultAddress ? getVaultVersion(vaultAddress) : 'v1';
+  }, [vaultAddress]);
+
   // Fetch native ETH balance to ensure it's available for wrapping
   const { data: nativeBalance, refetch: refetchNativeBalance } = useBalance({
     address: address as Address,
@@ -126,12 +132,16 @@ export const useVaultSimulationState = (
     query: { enabled: shouldFetch },
   });
 
+
+  // For v2 vaults, withdrawQueue might not exist - only query for v1 vaults
+  const shouldQueryQueue = shouldFetch && vaultVersion === 'v1';
+  
   const { data: queueLength, isLoading: isLengthLoading } = useReadContract({
     address: vaultAddress as Address,
     abi: VAULT_ABI_EXTENDED,
     functionName: "withdrawQueueLength",
     chainId: BASE_CHAIN_ID,
-    query: { enabled: shouldFetch },
+    query: { enabled: shouldQueryQueue },
   });
 
   const queueCalls = useMemo(() => {
@@ -150,7 +160,7 @@ export const useVaultSimulationState = (
 
   const { data: queueMarkets, isLoading: isQueueLoading } = useReadContracts({
     contracts: queueCalls,
-    query: { enabled: queueCalls.length > 0 && shouldFetch },
+    query: { enabled: queueCalls.length > 0 && shouldQueryQueue },
   });
 
   // Get market IDs from vault allocation data (preferred) or queue markets (fallback)
@@ -228,7 +238,7 @@ export const useVaultSimulationState = (
     if (address) list.push(address);
     if (bundler) list.push(bundler);
     
-    // Include generalAdapter
+    // Include generalAdapter for v1 vaults
     if (generalAdapter) {
       const normalizedAdapter = generalAdapter.toLowerCase();
       if (!list.some(addr => addr.toLowerCase() === normalizedAdapter)) {
@@ -245,24 +255,36 @@ export const useVaultSimulationState = (
     return list;
   }, [address, bundler, generalAdapter, vaultAddress]);
 
-  const vaults = useMemo(() => {
-    return vaultAddress ? [vaultAddress] : [];
-  }, [vaultAddress]);
+  // vaultVersion already determined above
 
+  const vaults = useMemo(() => {
+    // Only include v1 vaults in vaults array
+    return vaultAddress && vaultVersion === 'v1' ? [vaultAddress] : [];
+  }, [vaultAddress, vaultVersion]);
+
+  const vaultV2s = useMemo(() => {
+    // Only include v2 vaults in vaultV2s array
+    return vaultAddress && vaultVersion === 'v2' ? [vaultAddress] : [];
+  }, [vaultAddress, vaultVersion]);
+
+  // For v2 vaults, don't require queue loading (they might not have withdrawQueue)
+  // For v1 vaults, require queue loading to complete
   const isDataReady =
     shouldFetch &&
     !!address &&
     !!assetAddress &&
-    !isLengthLoading &&
-    !isQueueLoading;
+    (vaultVersion === 'v2' || (!isLengthLoading && !isQueueLoading));
+
+  // vaultV2Adapters - empty array since v2 transactions are disabled
+  const vaultV2Adapters: `0x${string}`[] = [];
 
   const simulation = useSimulationState({
     marketIds: marketIds as MarketId[],
     users: users as `0x${string}`[],
     tokens: tokens as `0x${string}`[],
     vaults: vaults as `0x${string}`[],
-    vaultV2s: [],
-    vaultV2Adapters: [],
+    vaultV2s: vaultV2s as `0x${string}`[],
+    vaultV2Adapters: vaultV2Adapters,
     block: block
       ? {
           number: block.number,
