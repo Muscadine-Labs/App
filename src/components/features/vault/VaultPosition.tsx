@@ -503,7 +503,11 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                   {formatAssetAmount(
                     BigInt(Math.floor(userVaultAssetAmount * Math.pow(10, vaultData.assetDecimals || 18))),
                     vaultData.assetDecimals || 18,
-                    vaultData.symbol
+                    vaultData.symbol,
+                    { 
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: (vaultData.symbol === 'WETH' || vaultData.symbol === 'cbBTC') ? 8 : undefined
+                    }
                   )}
                 </p>
                 <p className="text-sm text-[var(--foreground-secondary)] mt-1">
