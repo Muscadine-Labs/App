@@ -1,8 +1,8 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useWaitForTransactionReceipt, useReadContract } from 'wagmi';
-import { formatUnits } from 'viem';
+import { useWaitForTransactionReceipt, useReadContract, useWalletClient, usePublicClient, useAccount } from 'wagmi';
+import { formatUnits, type Address } from 'viem';
 import { VaultAccount } from '@/types/vault';
 import { useTransactionState } from '@/contexts/TransactionContext';
 import { useVaultTransactions, TransactionProgressStep } from '@/hooks/useVaultTransactions';
@@ -12,7 +12,8 @@ import { TransactionStatus as TransactionStatusComponent } from './TransactionSt
 import { useToast } from '@/contexts/ToastContext';
 import { useWallet } from '@/contexts/WalletContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
-
+import { BASE_WETH_ADDRESS } from '@/lib/constants';
+import { VAULTS } from '@/lib/vaults';
 import { logger } from '@/lib/logger';
 import { useRouter } from 'next/navigation';
 import { ERC4626_ABI } from '@/lib/abis';
@@ -32,12 +33,16 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
     txHash,
     transactionType,
     derivedAsset,
+    preferredAsset,
     setStatus,
   } = useTransactionState();
   const { success, error: showErrorToast } = useToast();
   const { refreshBalancesWithPolling, morphoHoldings, refreshBalances } = useWallet();
   const { fetchVaultData } = useVaultData();
   const router = useRouter();
+  const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
+  const { address: accountAddress } = useAccount();
 
   const [currentTxHash, setCurrentTxHash] = useState<string | null>(null);
   const [stepsInfo, setStepsInfo] = useState<Array<{ stepIndex: number; label: string; type: 'signing' | 'approving' | 'confirming'; txHash?: string }>>([]);
@@ -210,11 +215,88 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
       refreshBalancesWithPolling({
         maxAttempts: 10, // Try up to 10 times (30 seconds total with 3s intervals)
         intervalMs: 3000, // 3 seconds between attempts
-        onComplete: () => {
+        onComplete: async () => {
           logger.info('Wallet balances refreshed successfully after transaction', {
             txHash: hashToUse,
             timestamp: new Date().toISOString(),
           });
+          
+          // Handle WETH unwrapping for withdrawals to ETH
+          if (transactionType === 'withdraw' && 
+              fromAccount?.type === 'vault' && 
+              preferredAsset === 'ETH' &&
+              walletClient &&
+              publicClient &&
+              accountAddress) {
+            const vaultAccount = fromAccount as VaultAccount;
+            const isWethVault = vaultAccount.address.toLowerCase() === VAULTS.WETH_VAULT.address.toLowerCase() ||
+                               vaultAccount.address.toLowerCase() === VAULTS.WETH_VAULT_V2.address.toLowerCase();
+            
+            if (isWethVault) {
+              try {
+                // Get WETH balance to unwrap (the amount we just withdrew)
+                const wethBalance = await publicClient.readContract({
+                  address: BASE_WETH_ADDRESS,
+                  abi: [
+                    {
+                      inputs: [{ name: "account", type: "address" }],
+                      name: "balanceOf",
+                      outputs: [{ name: "", type: "uint256" }],
+                      stateMutability: "view",
+                      type: "function",
+                    },
+                  ],
+                  functionName: 'balanceOf',
+                  args: [accountAddress as Address],
+                }) as bigint;
+                
+                // Unwrap all WETH to ETH
+                if (wethBalance > BigInt(0)) {
+                  logger.info('Unwrapping WETH to ETH after withdrawal', {
+                    wethAmount: wethBalance.toString(),
+                    timestamp: new Date().toISOString(),
+                  });
+                  
+                  const unwrapHash = await walletClient.writeContract({
+                    address: BASE_WETH_ADDRESS,
+                    abi: [
+                      {
+                        inputs: [{ internalType: "uint256", name: "amount", type: "uint256" }],
+                        name: "withdraw",
+                        outputs: [],
+                        stateMutability: "nonpayable",
+                        type: "function",
+                      },
+                    ],
+                    functionName: 'withdraw',
+                    args: [wethBalance],
+                  });
+                  
+                  logger.info('WETH unwrap transaction sent', {
+                    txHash: unwrapHash,
+                    timestamp: new Date().toISOString(),
+                  });
+                  
+                  // Wait for unwrap transaction to complete
+                  await publicClient.waitForTransactionReceipt({ hash: unwrapHash });
+                  
+                  logger.info('WETH successfully unwrapped to ETH', {
+                    txHash: unwrapHash,
+                    timestamp: new Date().toISOString(),
+                  });
+                  
+                  // Refresh balances again after unwrapping
+                  await refreshBalances();
+                }
+              } catch (err) {
+                // Log error but don't fail the entire transaction
+                logger.error('Failed to unwrap WETH to ETH', err, {
+                  txHash: hashToUse,
+                  timestamp: new Date().toISOString(),
+                });
+              }
+            }
+          }
         },
       }).catch((err: unknown) => {
         logger.error('Failed to refresh wallet balances after polling', err, { txHash: hashToUse });
@@ -333,14 +415,14 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
 
       if (transactionType === 'deposit') {
         const vaultAddress = (toAccount as VaultAccount).address;
-        txHash = await executeVaultAction('deposit', vaultAddress, amount, onProgress, undefined, assetToUse.decimals);
+        txHash = await executeVaultAction('deposit', vaultAddress, amount, onProgress, undefined, assetToUse.decimals, preferredAsset);
       } else if (transactionType === 'withdraw') {
         const vaultAddress = (fromAccount as VaultAccount).address;
         // Use withdrawAll (redeem) if amount matches max, otherwise use regular withdraw
         if (shouldUseWithdrawAll) {
-          txHash = await executeVaultAction('withdrawAll', vaultAddress, undefined, onProgress, undefined, assetToUse.decimals);
+          txHash = await executeVaultAction('withdrawAll', vaultAddress, undefined, onProgress, undefined, assetToUse.decimals, preferredAsset);
         } else {
-          txHash = await executeVaultAction('withdraw', vaultAddress, amount, onProgress, undefined, assetToUse.decimals);
+          txHash = await executeVaultAction('withdraw', vaultAddress, amount, onProgress, undefined, assetToUse.decimals, preferredAsset);
         }
       } else if (transactionType === 'transfer') {
         // For transfer, withdraw from source vault and deposit to destination vault in single bundle
