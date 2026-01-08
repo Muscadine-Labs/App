@@ -57,10 +57,12 @@ export default function TransactionsPage() {
     amount,
     status,
     derivedAsset,
+    preferredAsset,
     setFromAccount,
     setToAccount,
     setAmount,
     setStatus,
+    setPreferredAsset,
     reset,
   } = useTransactionState();
   
@@ -160,6 +162,11 @@ export default function TransactionsPage() {
           };
           setFromAccount(walletAccount);
           setToAccount(vaultAccount);
+          // Set default preferredAsset to 'ALL' for WETH vault deposits
+          if (vault.address.toLowerCase() === VAULTS.WETH_VAULT.address.toLowerCase() ||
+              vault.address.toLowerCase() === VAULTS.WETH_VAULT_V2.address.toLowerCase()) {
+            setPreferredAsset('ALL');
+          }
         } else if (action === 'withdraw') {
           // Pre-fill vault as "from" and wallet as "to"
           const walletAccount: WalletAccount = {
@@ -170,6 +177,11 @@ export default function TransactionsPage() {
           };
           setFromAccount(vaultAccount);
           setToAccount(walletAccount);
+          // Set default preferredAsset to 'WETH' for WETH vault withdrawals
+          if (vault.address.toLowerCase() === VAULTS.WETH_VAULT.address.toLowerCase() ||
+              vault.address.toLowerCase() === VAULTS.WETH_VAULT_V2.address.toLowerCase()) {
+            setPreferredAsset('WETH');
+          }
         }
 
         // Keep status as 'idle' so user stays on select page and can modify before proceeding
@@ -226,6 +238,7 @@ export default function TransactionsPage() {
     
     setActiveTab(tab);
     setAmount('');
+    setPreferredAsset(undefined); // Reset preferred asset when switching tabs
     
     // Reset accounts when switching tabs
     if (tab === 'deposit') {
@@ -237,7 +250,7 @@ export default function TransactionsPage() {
       setFromAccount(null);
       setToAccount(walletAccount);
     }
-  }, [activeTab, walletAccount, setFromAccount, setToAccount, setAmount, status]);
+  }, [activeTab, walletAccount, setFromAccount, setToAccount, setAmount, setPreferredAsset, status]);
 
   // Get vault position for share balance - use data already fetched in WalletContext
   const vaultPosition = useMemo(() => {
@@ -354,10 +367,27 @@ export default function TransactionsPage() {
       const symbol = derivedAsset.symbol;
       if (toAccount?.type === 'vault') {
         const toVault = toAccount as VaultAccount;
-        const isWethVault = toVault.address.toLowerCase() === VAULTS.WETH_VAULT.address.toLowerCase();
+        const isWethVault = toVault.address.toLowerCase() === VAULTS.WETH_VAULT.address.toLowerCase() ||
+                           toVault.address.toLowerCase() === VAULTS.WETH_VAULT_V2.address.toLowerCase();
         if (isWethVault && (symbol === 'WETH' || symbol === 'ETH')) {
-          // For WETH vault deposits: can use all ETH + WETH (USDC can be used for gas on Base)
-          return getCombinedEthWethBalance;
+          // For WETH vault deposits: respect preferredAsset selection
+          const assetPreference = preferredAsset || 'ALL';
+          
+          if (assetPreference === 'ETH') {
+            // Only use ETH (all can be wrapped since USDC can be used for gas)
+            const ethBal = parseFloat(ethBalance || '0');
+            return ethBal;
+          } else if (assetPreference === 'WETH') {
+            // Only use WETH balance
+            const wethToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'WETH');
+            if (wethToken) {
+              return parseFloat(formatUnits(wethToken.balance, wethToken.decimals));
+            }
+            return 0;
+          } else {
+            // ALL: use both ETH + WETH (USDC can be used for gas on Base)
+            return getCombinedEthWethBalance;
+          }
         }
       }
       
@@ -406,7 +436,7 @@ export default function TransactionsPage() {
       return null;
     }
     return null;
-  }, [fromAccount, derivedAsset, toAccount, ethBalance, tokenBalances, vaultShareBalance, exactAssetAmount, getCombinedEthWethBalance]);
+  }, [fromAccount, derivedAsset, toAccount, ethBalance, tokenBalances, vaultShareBalance, exactAssetAmount, getCombinedEthWethBalance, preferredAsset]);
 
   // Calculate max amount for the selected "from" account
   const calculateMaxAmount = useCallback(() => {
@@ -415,6 +445,35 @@ export default function TransactionsPage() {
 
     if (fromAccount?.type === 'wallet') {
       const symbol = derivedAsset?.symbol || '';
+      // Check if this is a WETH vault deposit - respect preferredAsset selection
+      if (toAccount?.type === 'vault') {
+        const toVault = toAccount as VaultAccount;
+        const isWethVault = toVault.address.toLowerCase() === VAULTS.WETH_VAULT.address.toLowerCase() || 
+                           toVault.address.toLowerCase() === VAULTS.WETH_VAULT_V2.address.toLowerCase();
+        if (isWethVault && (symbol === 'WETH' || symbol === 'ETH')) {
+          // For WETH vault deposits: use calculated max based on preferredAsset
+          const assetPreference = preferredAsset || 'ALL';
+          const decimals = getAssetDecimals(symbol);
+          
+          if (assetPreference === 'ETH') {
+            // Use ETH balance directly
+            setAmount(maxAmount > 0 ? formatAssetAmountForMax(maxAmount, 'ETH', decimals) : '0');
+          } else if (assetPreference === 'WETH') {
+            // Use WETH balance directly
+            const wethToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'WETH');
+            if (wethToken) {
+              setAmount(formatBigIntForInput(wethToken.balance, wethToken.decimals));
+            } else {
+              setAmount('0');
+            }
+          } else {
+            // ALL: use combined ETH+WETH balance
+            setAmount(maxAmount > 0 ? formatAssetAmountForMax(maxAmount, symbol, decimals) : '0');
+          }
+          return;
+        }
+      }
+      
       if (symbol === 'ETH') {
         // For ETH: use calculated max (which already accounts for gas reserve)
         setAmount(maxAmount > 0 ? formatAssetAmountForMax(maxAmount, symbol) : '0');
@@ -441,7 +500,7 @@ export default function TransactionsPage() {
       const decimals = getAssetDecimals(vaultAccount.symbol);
       setAmount(formatAssetAmountForMax(maxAmount, derivedAsset?.symbol || '', decimals));
     }
-  }, [getMaxAmount, fromAccount, derivedAsset, tokenBalances, setAmount]);
+  }, [getMaxAmount, fromAccount, toAccount, derivedAsset, tokenBalances, preferredAsset, setAmount]);
 
   const handleAmountChange = (value: string) => {
     if (value === '') {
@@ -698,6 +757,21 @@ export default function TransactionsPage() {
                 setToAccount(null);
               }
               setFromAccount(account);
+              
+              // Set default preferredAsset for WETH vault withdrawals
+              if (account?.type === 'vault' && toAccount?.type === 'wallet' && activeTab === 'withdraw') {
+                const vault = account as VaultAccount;
+                if (vault.address.toLowerCase() === VAULTS.WETH_VAULT.address.toLowerCase() ||
+                    vault.address.toLowerCase() === VAULTS.WETH_VAULT_V2.address.toLowerCase()) {
+                  setPreferredAsset('WETH');
+                } else {
+                  // Reset preferredAsset for non-WETH vaults
+                  setPreferredAsset(undefined);
+                }
+              } else if (!account || account.type === 'wallet') {
+                // Reset preferredAsset when deselecting vault or selecting wallet
+                setPreferredAsset(undefined);
+              }
             }}
             excludeAccount={toAccount}
             assetSymbol={derivedAsset?.symbol || null}
@@ -735,27 +809,93 @@ export default function TransactionsPage() {
                 setFromAccount(null);
               }
               setToAccount(account);
+              
+              // Set default preferredAsset to 'ALL' when WETH vault is selected for deposit
+              if (account?.type === 'vault' && fromAccount?.type === 'wallet' && activeTab === 'deposit') {
+                const vault = account as VaultAccount;
+                if (vault.address.toLowerCase() === VAULTS.WETH_VAULT.address.toLowerCase() ||
+                    vault.address.toLowerCase() === VAULTS.WETH_VAULT_V2.address.toLowerCase()) {
+                  setPreferredAsset('ALL');
+                } else {
+                  // Reset preferredAsset for non-WETH vaults
+                  setPreferredAsset(undefined);
+                }
+              } else if (!account || account.type === 'wallet') {
+                // Reset preferredAsset when deselecting vault or selecting wallet
+                setPreferredAsset(undefined);
+              }
             }}
             excludeAccount={fromAccount}
             filterByAssetSymbol={fromAccount?.type === 'vault' ? (fromAccount as VaultAccount).symbol : null}
             assetSymbol={derivedAsset?.symbol || null}
           />
 
+
           {/* Amount Input */}
           {fromAccount && derivedAsset && (
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <label className="text-sm font-medium text-[var(--foreground-secondary)]">
                   Amount ({derivedAsset.symbol})
                 </label>
-                <button
-                  type="button"
-                  onClick={calculateMaxAmount}
-                  disabled={getMaxAmount === null}
-                  className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)] disabled:text-[var(--foreground-muted)] disabled:cursor-not-allowed disabled:hover:text-[var(--foreground-muted)] cursor-pointer"
-                >
-                  MAX
-                </button>
+                <div className="flex items-center gap-2">
+                  {/* ETH/WETH/All Dropdown for WETH Vault - Next to MAX button */}
+                  {(() => {
+                    // Check if this is a WETH vault transaction
+                    const isWethVaultDeposit = activeTab === 'deposit' && 
+                      toAccount?.type === 'vault' && 
+                      fromAccount?.type === 'wallet' &&
+                      ((toAccount as VaultAccount).address.toLowerCase() === VAULTS.WETH_VAULT.address.toLowerCase() || 
+                       (toAccount as VaultAccount).address.toLowerCase() === VAULTS.WETH_VAULT_V2.address.toLowerCase());
+                    
+                    const isWethVaultWithdraw = activeTab === 'withdraw' && 
+                      fromAccount?.type === 'vault' && 
+                      toAccount?.type === 'wallet' &&
+                      ((fromAccount as VaultAccount).address.toLowerCase() === VAULTS.WETH_VAULT.address.toLowerCase() || 
+                       (fromAccount as VaultAccount).address.toLowerCase() === VAULTS.WETH_VAULT_V2.address.toLowerCase());
+                    
+                    if (isWethVaultDeposit) {
+                      const currentAsset = preferredAsset || 'ALL';
+                      return (
+                        <select
+                          value={currentAsset}
+                          onChange={(e) => setPreferredAsset(e.target.value as 'ETH' | 'WETH' | 'ALL')}
+                          className="text-xs px-1.5 py-0.5 bg-[var(--background)] border border-[var(--border-subtle)] rounded text-[var(--foreground-muted)] hover:bg-[var(--surface-elevated)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)] cursor-pointer"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <option value="ALL">All (ETH + WETH)</option>
+                          <option value="ETH">ETH</option>
+                          <option value="WETH">WETH</option>
+                        </select>
+                      );
+                    }
+                    
+                    if (isWethVaultWithdraw) {
+                      const currentAsset = preferredAsset || 'WETH';
+                      return (
+                        <select
+                          value={currentAsset}
+                          onChange={(e) => setPreferredAsset(e.target.value as 'ETH' | 'WETH')}
+                          className="text-xs px-1.5 py-0.5 bg-[var(--background)] border border-[var(--border-subtle)] rounded text-[var(--foreground-muted)] hover:bg-[var(--surface-elevated)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)] cursor-pointer"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <option value="WETH">WETH</option>
+                          <option value="ETH">ETH</option>
+                        </select>
+                      );
+                    }
+                    
+                    return null;
+                  })()}
+                  <button
+                    type="button"
+                    onClick={calculateMaxAmount}
+                    disabled={getMaxAmount === null}
+                    className="text-xs text-[var(--primary)] hover:text-[var(--primary-hover)] disabled:text-[var(--foreground-muted)] disabled:cursor-not-allowed disabled:hover:text-[var(--foreground-muted)] cursor-pointer"
+                  >
+                    MAX
+                  </button>
+                </div>
               </div>
               <div className="relative">
                 <input

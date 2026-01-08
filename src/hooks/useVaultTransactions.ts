@@ -41,6 +41,7 @@ const ERC20_BALANCE_ABI = [
   },
 ] as const;
 
+
 type VaultAction = 'deposit' | 'withdraw' | 'withdrawAll' | 'transfer';
 
 export type TransactionProgressStep = 
@@ -90,7 +91,8 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
     amount?: string,
     onProgress?: TransactionProgressCallback,
     destinationVault?: string, // For transfer operations
-    assetDecimalsOverride?: number // Override asset decimals from selected asset
+    assetDecimalsOverride?: number, // Override asset decimals from selected asset
+    preferredAsset?: 'ETH' | 'WETH' | 'ALL' // For WETH vault deposits/withdrawals ('ALL' means use both ETH+WETH)
   ): Promise<string> => {
     if (!accountAddress) {
       throw new Error('Wallet not connected.\n\nPlease connect your wallet and try again.');
@@ -340,29 +342,62 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
             address: accountAddress as Address,
           });
           
-          // Total available: existing WETH + all available ETH (all ETH can be wrapped)
-          const totalAvailable = existingWeth + availableEth;
+          // Respect preferredAsset selection
+          const assetPreference = preferredAsset || 'ALL';
+          let ethToWrap: bigint = BigInt(0);
           
-          // Detailed balance information for error messages
-          const existingWethFormatted = formatUnits(existingWeth, 18);
-          const availableEthFormatted = formatUnits(availableEth, 18);
-          const totalAvailableFormatted = formatUnits(totalAvailable, 18);
-          const requestedFormatted = formatUnits(amountBigInt, 18);
-          
-          if (amountBigInt > totalAvailable) {
-            throw new Error(
-              `Insufficient balance for WETH vault deposit.\n\n` +
-              `Requested: ${requestedFormatted} WETH\n` +
-              `Available: ${totalAvailableFormatted} WETH\n\n` +
-              `Breakdown:\n` +
-              `  • Existing WETH: ${existingWethFormatted} WETH\n` +
-              `  • Wrappable ETH: ${availableEthFormatted} ETH\n\n` +
-              `Please reduce the amount or add more funds to your wallet.`
-            );
+          if (assetPreference === 'ETH') {
+            // Only use ETH - must wrap all of it
+            const availableFormatted = formatUnits(availableEth, 18);
+            
+            if (amountBigInt > availableEth) {
+              throw new Error(
+                `Insufficient ETH balance.\n\n` +
+                `Requested: ${formatUnits(amountBigInt, 18)} ETH\n` +
+                `Available: ${availableFormatted} ETH\n\n` +
+                `Please reduce the amount or add more ETH to your wallet.`
+              );
+            }
+            
+            // Wrap all requested ETH
+            ethToWrap = amountBigInt;
+            
+          } else if (assetPreference === 'WETH') {
+            // Only use existing WETH - no wrapping
+            const availableFormatted = formatUnits(existingWeth, 18);
+            
+            if (amountBigInt > existingWeth) {
+              throw new Error(
+                `Insufficient WETH balance.\n\n` +
+                `Requested: ${formatUnits(amountBigInt, 18)} WETH\n` +
+                `Available: ${availableFormatted} WETH\n\n` +
+                `Please reduce the amount or add more WETH to your wallet.`
+              );
+            }
+            
+            // No wrapping needed - use existing WETH only
+            ethToWrap = BigInt(0);
+            
+          } else {
+            // ALL: Use both ETH + WETH (default behavior)
+            const totalAvailable = existingWeth + availableEth;
+            const availableFormatted = formatUnits(totalAvailable, 18);
+            
+            if (amountBigInt > totalAvailable) {
+              throw new Error(
+                `Insufficient balance for WETH vault deposit.\n\n` +
+                `Requested: ${formatUnits(amountBigInt, 18)} WETH\n` +
+                `Available: ${availableFormatted} WETH\n\n` +
+                `Breakdown:\n` +
+                `  • Existing WETH: ${formatUnits(existingWeth, 18)} WETH\n` +
+                `  • Wrappable ETH: ${formatUnits(availableEth, 18)} ETH\n\n` +
+                `Please reduce the amount or add more funds to your wallet.`
+              );
+            }
+            
+            // Determine how much ETH to wrap (only what's needed after using existing WETH)
+            ethToWrap = amountBigInt > existingWeth ? amountBigInt - existingWeth : BigInt(0);
           }
-          
-          // Determine how much ETH to wrap
-          const ethToWrap = amountBigInt > existingWeth ? amountBigInt - existingWeth : BigInt(0);
           
           // If we need to wrap ETH, add wrap operation
           if (ethToWrap > BigInt(0)) {
@@ -370,7 +405,7 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
               const ethToWrapFormatted = formatUnits(ethToWrap, 18);
               throw new Error(
                 `Cannot wrap ${ethToWrapFormatted} ETH.\n\n` +
-                `Available ETH: ${availableEthFormatted} ETH\n` +
+                `Available ETH: ${formatUnits(availableEth, 18)} ETH\n` +
                 `ETH needed to wrap: ${ethToWrapFormatted} ETH\n\n` +
                 `Please reduce the amount or add more ETH to your wallet.`
               );
@@ -492,6 +527,10 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
             },
           });
         }
+        
+        // Note: Unwrapping WETH to ETH for withdrawals with preferredAsset === 'ETH'
+        // is handled separately after the withdrawal transaction completes.
+        // This ensures we have the WETH balance before attempting to unwrap.
       }
 
       // Configure bundling options
