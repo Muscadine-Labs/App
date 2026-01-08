@@ -186,6 +186,11 @@ async function ensureApproval(
   stepIndex: number = 0,
   totalSteps: number = 1
 ): Promise<boolean> {
+  // Early return if amount is zero (no approval needed)
+  if (amount === BigInt(0)) {
+    return false;
+  }
+
   // Check current allowance
   const allowance = await publicClient.readContract({
     address: tokenAddress,
@@ -235,13 +240,15 @@ async function ensureApproval(
 
     // Wait for reset transaction to be confirmed
     await publicClient.waitForTransactionReceipt({ hash: resetHash });
-    stepIndex++; // Increment for the actual approval step
+    // Don't mutate stepIndex here - caller handles step increments
   }
 
   // Approve only the exact amount needed (more secure than unlimited approval)
+  // Use stepIndex + 1 if reset happened, otherwise use stepIndex
+  const approvalStepIndex = needsReset ? stepIndex + 1 : stepIndex;
   onProgress?.({
     type: 'approving',
-    stepIndex,
+    stepIndex: approvalStepIndex,
     totalSteps,
     stepLabel: 'Approve token',
     contractAddress: tokenAddress,
@@ -258,7 +265,7 @@ async function ensureApproval(
 
   onProgress?.({
     type: 'approving',
-    stepIndex,
+    stepIndex: approvalStepIndex,
     totalSteps,
     stepLabel: 'Approve token',
     contractAddress: tokenAddress,
@@ -515,11 +522,8 @@ export async function depositToVaultV2(
   // Parse amount using centralized function
   const amountBigInt = parseAmount(amount, assetDecimals);
 
-  // Calculate total steps
-  let totalSteps = 1;
-  let currentStep = 0;
-
-  // For WETH vaults, handle wrapping
+  // Determine if wrapping is needed (read-only operations first)
+  let ethToWrap: bigint = BigInt(0);
   if (isWethVault) {
     // Fetch balances
     const existingWeth = await publicClient.readContract({
@@ -534,7 +538,6 @@ export async function depositToVaultV2(
     });
 
     const assetPreference = preferredAsset || 'ALL';
-    let ethToWrap: bigint = BigInt(0);
 
     if (assetPreference === 'ETH') {
       if (amountBigInt > availableEth) {
@@ -546,7 +549,6 @@ export async function depositToVaultV2(
         );
       }
       ethToWrap = amountBigInt;
-      totalSteps = 3; // Wrap, Approve, Deposit
     } else if (assetPreference === 'WETH') {
       if (amountBigInt > existingWeth) {
         throw new Error(
@@ -557,7 +559,6 @@ export async function depositToVaultV2(
         );
       }
       ethToWrap = BigInt(0);
-      totalSteps = 2; // Approve, Deposit
     } else {
       // ALL: Use both ETH + WETH
       const totalAvailable = existingWeth + availableEth;
@@ -573,19 +574,10 @@ export async function depositToVaultV2(
         );
       }
       ethToWrap = amountBigInt > existingWeth ? amountBigInt - existingWeth : BigInt(0);
-      totalSteps = ethToWrap > BigInt(0) ? 3 : 2; // Wrap (if needed), Approve, Deposit
     }
-
-    // Wrap ETH if needed
-    if (ethToWrap > BigInt(0)) {
-      await wrapEthIfNeeded(publicClient, walletClient, ethToWrap, onProgress, currentStep, totalSteps);
-      currentStep++;
-    }
-  } else {
-    totalSteps = 2; // Approve, Deposit
   }
 
-  // Check if approval needs reset (to account for extra step)
+  // Check if approval is needed (read-only operation)
   const allowance = await publicClient.readContract({
     address: assetAddress,
     abi: ERC20_ABI,
@@ -593,24 +585,40 @@ export async function depositToVaultV2(
     args: [userAddress, normalizedVault],
   }) as bigint;
   
-  const needsReset = allowance > BigInt(0) && allowance < amountBigInt;
-  if (needsReset) {
-    totalSteps++; // Account for reset step
+  // Compute totalSteps once from actual actions (before any transactions)
+  const needsApproval = allowance < amountBigInt;
+  const needsReset = needsApproval && allowance > BigInt(0) && allowance < amountBigInt;
+  const needsWrap = ethToWrap > BigInt(0);
+
+  const totalSteps =
+    1 +                 // deposit
+    (needsWrap ? 1 : 0) + // wrap
+    (needsApproval ? 1 : 0) +
+    (needsReset ? 1 : 0);
+
+  let currentStep = 0;
+
+  // Wrap ETH if needed (now with accurate totalSteps)
+  if (needsWrap) {
+    await wrapEthIfNeeded(publicClient, walletClient, ethToWrap, onProgress, currentStep, totalSteps);
+    currentStep++;
   }
 
-  // Ensure token approval
-  await ensureApproval(
-    publicClient,
-    walletClient,
-    assetAddress,
-    normalizedVault,
-    amountBigInt,
-    userAddress,
-    onProgress,
-    currentStep,
-    totalSteps
-  );
-  currentStep += needsReset ? 2 : 1; // Increment by 2 if reset was needed, 1 otherwise
+  if (needsApproval) {
+    const didReset = await ensureApproval(
+      publicClient,
+      walletClient,
+      assetAddress,
+      normalizedVault,
+      amountBigInt,
+      userAddress,
+      onProgress,
+      currentStep,
+      totalSteps
+    );
+    currentStep += didReset ? 2 : 1;
+  }
+  // else: no approval step
 
   // Deposit to vault
   onProgress?.({
