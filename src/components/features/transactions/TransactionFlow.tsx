@@ -7,6 +7,7 @@ import { VaultAccount } from '@/types/vault';
 import { useTransactionState } from '@/contexts/TransactionContext';
 import { useVaultTransactions, TransactionProgressStep } from '@/hooks/useVaultTransactions';
 import { isCancellationError, formatTransactionError } from '@/lib/transactionUtils';
+import { depositToVaultV2, withdrawFromVaultV2, redeemFromVaultV2, TransactionProgressStep as V2TransactionProgressStep } from '@/lib/transactionUtilsV2';
 import { TransactionConfirmation } from './TransactionConfirmation';
 import { TransactionStatus as TransactionStatusComponent } from './TransactionStatus';
 import { useToast } from '@/contexts/ToastContext';
@@ -331,13 +332,7 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
     // Check if transaction involves a v2 vault
     const fromVaultVersion = fromAccount.type === 'vault' ? getVaultVersion((fromAccount as VaultAccount).address) : null;
     const toVaultVersion = toAccount.type === 'vault' ? getVaultVersion((toAccount as VaultAccount).address) : null;
-    
-    if (fromVaultVersion === 'v2' || toVaultVersion === 'v2') {
-      const errorMessage = 'Depositing / withdrawing to Muscadine V2 Prime vaults are not available right now.';
-      setStatus('error', errorMessage);
-      showErrorToast(errorMessage, 5000);
-      return;
-    }
+    const isV2Transaction = fromVaultVersion === 'v2' || toVaultVersion === 'v2';
 
     // Derive asset if not already computed
     const assetToUse = derivedAsset || (fromAccount.type === 'vault' 
@@ -353,6 +348,14 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
       return;
     }
 
+    // Validate wallet and public clients are available
+    if (!walletClient || !publicClient) {
+      const errorMessage = 'Wallet not connected. Please connect your wallet and try again.';
+      setStatus('error', errorMessage);
+      showErrorToast(errorMessage, 5000);
+      return;
+    }
+
     try {
       // Don't set status here - let onProgress callback set it based on actual step
       // This ensures we start with the correct status (signing/approving) for pre-authorization
@@ -363,10 +366,11 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
         toAccount: toAccount?.type === 'wallet' ? 'wallet' : (toAccount as VaultAccount)?.address,
         amount,
         assetSymbol: assetToUse.symbol,
+        isV2: isV2Transaction,
         timestamp: new Date().toISOString(),
       });
       
-      const onProgress = (step: TransactionProgressStep) => {
+      const onProgress = (step: TransactionProgressStep | V2TransactionProgressStep) => {
         if (step.type === 'confirming' && step.txHash) {
           logger.info('Transaction sent, waiting for confirmation', {
             txHash: step.txHash,
@@ -413,24 +417,73 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
 
       let txHash: string;
 
-      if (transactionType === 'deposit') {
-        const vaultAddress = (toAccount as VaultAccount).address;
-        txHash = await executeVaultAction('deposit', vaultAddress, amount, onProgress, undefined, assetToUse.decimals, preferredAsset);
-      } else if (transactionType === 'withdraw') {
-        const vaultAddress = (fromAccount as VaultAccount).address;
-        // Use withdrawAll (redeem) if amount matches max, otherwise use regular withdraw
-        if (shouldUseWithdrawAll) {
-          txHash = await executeVaultAction('withdrawAll', vaultAddress, undefined, onProgress, undefined, assetToUse.decimals, preferredAsset);
+      // Use v2 transaction functions for v2 vaults, otherwise use bundler (v1)
+      if (isV2Transaction) {
+        // Type assertion needed because wagmi's usePublicClient/useWalletClient return types
+        // that are compatible but TypeScript can't infer the exact match
+        if (transactionType === 'deposit') {
+          const vaultAddress = (toAccount as VaultAccount).address as Address;
+          txHash = await depositToVaultV2(
+            publicClient as any,
+            walletClient as any,
+            vaultAddress,
+            amount,
+            assetToUse.decimals,
+            preferredAsset,
+            onProgress
+          );
+        } else if (transactionType === 'withdraw') {
+          const vaultAddress = (fromAccount as VaultAccount).address as Address;
+          // For withdrawals, preferredAsset should be 'ETH' or 'WETH' (not 'ALL')
+          const withdrawPreferredAsset = preferredAsset === 'ALL' ? undefined : (preferredAsset as 'ETH' | 'WETH' | undefined);
+          // Use redeem (withdraw all) if amount matches max, otherwise use regular withdraw
+          if (shouldUseWithdrawAll) {
+            txHash = await redeemFromVaultV2(
+              publicClient as any,
+              walletClient as any,
+              vaultAddress,
+              assetToUse.decimals,
+              withdrawPreferredAsset,
+              onProgress
+            );
+          } else {
+            txHash = await withdrawFromVaultV2(
+              publicClient as any,
+              walletClient as any,
+              vaultAddress,
+              amount,
+              assetToUse.decimals,
+              withdrawPreferredAsset,
+              onProgress
+            );
+          }
+        } else if (transactionType === 'transfer') {
+          // Transfer not supported for v2 yet (would need to combine withdraw + deposit)
+          throw new Error('Vault-to-vault transfers are not yet supported for v2 vaults');
         } else {
-          txHash = await executeVaultAction('withdraw', vaultAddress, amount, onProgress, undefined, assetToUse.decimals, preferredAsset);
+          throw new Error('Invalid transaction type');
         }
-      } else if (transactionType === 'transfer') {
-        // For transfer, withdraw from source vault and deposit to destination vault in single bundle
-        const sourceVaultAddress = (fromAccount as VaultAccount).address;
-        const destVaultAddress = (toAccount as VaultAccount).address;
-        txHash = await executeVaultAction('transfer', sourceVaultAddress, amount, onProgress, destVaultAddress, assetToUse.decimals);
       } else {
-        throw new Error('Invalid transaction type');
+        // Use v1 bundler-based transactions
+        if (transactionType === 'deposit') {
+          const vaultAddress = (toAccount as VaultAccount).address;
+          txHash = await executeVaultAction('deposit', vaultAddress, amount, onProgress, undefined, assetToUse.decimals, preferredAsset);
+        } else if (transactionType === 'withdraw') {
+          const vaultAddress = (fromAccount as VaultAccount).address;
+          // Use withdrawAll (redeem) if amount matches max, otherwise use regular withdraw
+          if (shouldUseWithdrawAll) {
+            txHash = await executeVaultAction('withdrawAll', vaultAddress, undefined, onProgress, undefined, assetToUse.decimals, preferredAsset);
+          } else {
+            txHash = await executeVaultAction('withdraw', vaultAddress, amount, onProgress, undefined, assetToUse.decimals, preferredAsset);
+          }
+        } else if (transactionType === 'transfer') {
+          // For transfer, withdraw from source vault and deposit to destination vault in single bundle
+          const sourceVaultAddress = (fromAccount as VaultAccount).address;
+          const destVaultAddress = (toAccount as VaultAccount).address;
+          txHash = await executeVaultAction('transfer', sourceVaultAddress, amount, onProgress, destVaultAddress, assetToUse.decimals);
+        } else {
+          throw new Error('Invalid transaction type');
+        }
       }
 
       if (!currentTxHash && txHash) {

@@ -12,7 +12,6 @@ import { useToast } from '@/contexts/ToastContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
 import { useWallet } from '@/contexts/WalletContext';
 import { logger } from '@/lib/logger';
-import { getVaultVersion } from '@/lib/vault-utils';
 
 interface TransactionConfirmationProps {
   fromAccount: Account;
@@ -108,11 +107,6 @@ export function TransactionConfirmation({
   };
 
   const formattedAmount = formatAmount();
-
-  // Check if transaction involves a v2 vault
-  const fromVaultVersion = fromAccount.type === 'vault' ? getVaultVersion((fromAccount as VaultAccount).address) : null;
-  const toVaultVersion = toAccount.type === 'vault' ? getVaultVersion((toAccount as VaultAccount).address) : null;
-  const isV2Vault = fromVaultVersion === 'v2' || toVaultVersion === 'v2';
 
   // Get current date for transaction details
   const getCurrentDate = () => {
@@ -415,19 +409,6 @@ export function TransactionConfirmation({
         </div>
       )}
 
-      {/* V2 Vault Not Available Message */}
-      {isV2Vault && (
-        <div className="flex items-start gap-2 md:gap-3 p-3 md:p-4 bg-[var(--danger-subtle)] rounded-lg border border-[var(--danger)]">
-          <div className="w-4 h-4 md:w-5 md:h-5 rounded-full bg-[var(--danger)] flex items-center justify-center shrink-0 mt-0.5">
-            <svg className="w-2.5 h-2.5 md:w-3 md:h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </div>
-          <p className="text-xs md:text-sm text-[var(--foreground)]">
-            <span className="font-medium">Not Available:</span> Depositing / withdrawing to Muscadine V2 Prime vaults are not available right now.
-          </p>
-        </div>
-      )}
 
       {/* Disclaimer */}
       <div className="pt-3 md:pt-4 border-t border-[var(--border-subtle)]">
@@ -485,7 +466,7 @@ export function TransactionConfirmation({
             </Button>
             <Button
               onClick={onConfirm}
-              disabled={isLoading || !amount || parseFloat(amount) <= 0 || isV2Vault}
+              disabled={isLoading || !amount || parseFloat(amount) <= 0}
               variant="primary"
               size="lg"
               fullWidth

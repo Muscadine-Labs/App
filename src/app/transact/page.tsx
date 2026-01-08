@@ -15,6 +15,7 @@ import { formatBigIntForInput, formatAvailableBalance, formatAssetAmountForMax, 
 import { Button } from '@/components/ui';
 import { Icon } from '@/components/ui/Icon';
 import { formatUnits } from 'viem';
+import { ERC4626_ABI } from '@/lib/abis';
 
 // Helper function to get asset decimals from vault symbol (no API needed)
 const getAssetDecimals = (symbol: string): number => {
@@ -29,17 +30,6 @@ const getAssetDecimals = (symbol: string): number => {
   }
   return 18; // Default to 18 for other tokens
 };
-
-// ERC-4626 ABI for convertToAssets
-const ERC4626_ABI = [
-  {
-    inputs: [{ internalType: 'uint256', name: 'shares', type: 'uint256' }],
-    name: 'convertToAssets',
-    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const;
 
 type TransactionTab = 'deposit' | 'withdraw';
 

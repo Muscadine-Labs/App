@@ -11,6 +11,7 @@ import { useVaultData } from '../contexts/VaultDataContext';
 import { useVaultSimulationState } from './useVaultSimulationState';
 import { BASE_WETH_ADDRESS } from '../lib/constants';
 import { getVaultVersion } from '../lib/vault-utils';
+import { ERC20_BALANCE_ABI } from '../lib/abis';
 
 // ABI for vault asset() function and ERC-4626 conversion functions
 const VAULT_ASSET_ABI = [
@@ -27,17 +28,6 @@ const VAULT_ASSET_ABI = [
     outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
     stateMutability: 'view',
     type: 'function',
-  },
-] as const;
-
-// ERC20 ABI for balanceOf (vault shares are ERC20 tokens)
-const ERC20_BALANCE_ABI = [
-  {
-    inputs: [{ name: "account", type: "address" }],
-    name: "balanceOf",
-    outputs: [{ name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
   },
 ] as const;
 
