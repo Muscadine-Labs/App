@@ -9,34 +9,13 @@ import { useAccount, useReadContract } from 'wagmi';
 import { Skeleton } from '../../../components/ui/Skeleton';
 import { useMemo } from 'react';
 import { usePrices } from '../../../contexts/PriceContext';
+import { ERC20_BALANCE_ABI, ERC4626_ABI } from '../../../lib/abis';
 
 interface VaultListCardProps {
     vault: Vault;
     onClick?: (vault: Vault) => void;
     isSelected?: boolean;
 }
-
-// ERC20 ABI for balanceOf
-const ERC20_BALANCE_ABI = [
-  {
-    name: 'balanceOf',
-    type: 'function',
-    stateMutability: 'view',
-    inputs: [{ name: 'account', type: 'address' }],
-    outputs: [{ name: '', type: 'uint256' }],
-  },
-] as const;
-
-// ERC4626 ABI for convertToAssets
-const ERC4626_ABI = [
-  {
-    inputs: [{ internalType: 'uint256', name: 'shares', type: 'uint256' }],
-    name: 'convertToAssets',
-    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const;
 
 export default function VaultListCard({ vault, onClick, isSelected }: VaultListCardProps) {
     const { getVaultData, isLoading } = useVaultData();
