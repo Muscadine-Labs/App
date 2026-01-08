@@ -23,18 +23,20 @@ import { CowSwapWidget } from '@cowprotocol/widget-react';
 // Memoized Swap Widget component to prevent unnecessary re-renders
 const SwapWidget = React.memo(({ theme }: { theme: 'dark' | 'light' }) => {
   const [isLoading, setIsLoading] = useState(true);
-  const [key, setKey] = useState(0); // Force re-render key for balance loading
+  const [widgetHeight, setWidgetHeight] = useState('640px');
 
   // Use responsive height - smaller on mobile, larger on desktop
-  const getResponsiveHeight = useCallback(() => {
-    if (typeof window === 'undefined') return '640px';
-    // Mobile: 500px, Tablet: 600px, Desktop: 640px
-    if (window.innerWidth < 640) return '500px';
-    if (window.innerWidth < 1024) return '600px';
-    return '640px';
+  useEffect(() => {
+    const updateHeight = () => {
+      if (window.innerWidth < 640) setWidgetHeight('500px');
+      else if (window.innerWidth < 1024) setWidgetHeight('600px');
+      else setWidgetHeight('640px');
+    };
+    
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
   }, []);
-
-  const widgetHeight = getResponsiveHeight();
 
   const widgetParams = useMemo(() => ({
     appCode: 'Muscadine',
@@ -81,10 +83,6 @@ const SwapWidget = React.memo(({ theme }: { theme: 'dark' | 'light' }) => {
     // Small delay to ensure provider is fully connected
     const timer = setTimeout(() => {
       setIsLoading(false);
-      // Force a re-render after a short delay to trigger balance loading
-      setTimeout(() => {
-        setKey(prev => prev + 1);
-      }, 500);
     }, 800);
 
     return () => clearTimeout(timer);
@@ -105,7 +103,6 @@ const SwapWidget = React.memo(({ theme }: { theme: 'dark' | 'light' }) => {
       )}
       {!isLoading && provider && (
         <CowSwapWidget 
-          key={key}
           params={widgetParams} 
           provider={provider}
         />
@@ -459,8 +456,8 @@ export default function TransactionsPage() {
   // For vaults: returns exact asset amount from full share balance (no dust)
   // For wallet tokens: returns full balance (no dust) except ETH which leaves gas reserve
   // Returns null only for loading states, returns 0 for zero balance
-  const getMaxAmount = useMemo(() => {
-    if (!fromAccount || !derivedAsset) return 0;
+  const getMaxAmount = useMemo((): number | null => {
+    if (!fromAccount || !derivedAsset) return null;
 
     if (fromAccount.type === 'wallet') {
       const symbol = derivedAsset.symbol;

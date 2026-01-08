@@ -15,9 +15,15 @@ export async function GET() {
     accountAssociation: {
       // These will be generated via Base Build Account association tool
       // See: https://build.base.org/account-association
-      header: process.env.NEXT_PUBLIC_ACCOUNT_ASSOCIATION_HEADER || '',
-      payload: process.env.NEXT_PUBLIC_ACCOUNT_ASSOCIATION_PAYLOAD || '',
-      signature: process.env.NEXT_PUBLIC_ACCOUNT_ASSOCIATION_SIGNATURE || '',
+      ...(process.env.NEXT_PUBLIC_ACCOUNT_ASSOCIATION_HEADER && {
+        header: process.env.NEXT_PUBLIC_ACCOUNT_ASSOCIATION_HEADER,
+      }),
+      ...(process.env.NEXT_PUBLIC_ACCOUNT_ASSOCIATION_PAYLOAD && {
+        payload: process.env.NEXT_PUBLIC_ACCOUNT_ASSOCIATION_PAYLOAD,
+      }),
+      ...(process.env.NEXT_PUBLIC_ACCOUNT_ASSOCIATION_SIGNATURE && {
+        signature: process.env.NEXT_PUBLIC_ACCOUNT_ASSOCIATION_SIGNATURE,
+      }),
     },
     miniapp: withValidProperties({
       version: '1',
@@ -44,10 +50,6 @@ export async function GET() {
     }),
   };
 
-  return Response.json(manifest, {
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
+  return Response.json(manifest);
 }
 

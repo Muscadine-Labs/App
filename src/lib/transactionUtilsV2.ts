@@ -773,7 +773,7 @@ export async function redeemFromVaultV2(
   publicClient: PublicClient,
   walletClient: WalletClient,
   vaultAddress: Address,
-  assetDecimals: number,
+  _assetDecimals: number, // Reserved for future use (currently unused as redeem uses full share balance)
   preferredAsset?: 'ETH' | 'WETH',
   onProgress?: TransactionProgressCallback
 ): Promise<string> {

@@ -9,8 +9,18 @@ import { sdk } from '@farcaster/miniapp-sdk';
  */
 export function MiniAppInit() {
   useEffect(() => {
+    // Async helper to initialize the SDK with proper error handling
+    const initializeSDK = async () => {
+      try {
+        await sdk.actions.ready();
+      } catch (error) {
+        console.error('Failed to initialize MiniApp SDK:', error);
+        // Optionally implement retry logic or fallback behavior here
+      }
+    };
+
     // Call ready() as soon as possible to prevent jitter and content reflows
-    sdk.actions.ready();
+    initializeSDK();
   }, []);
 
   return null;

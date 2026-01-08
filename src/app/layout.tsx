@@ -50,14 +50,14 @@ export const metadata: Metadata = {
   other: {
     'fc:miniapp': JSON.stringify({
       version: 'next',
-      imageUrl: `${appUrl}/favicon.png`,
+      imageUrl: `${appUrl}/miniapp-image.png`,
       button: {
         title: 'Launch Muscadine Earn',
         action: {
           type: 'launch_miniapp',
           name: 'Muscadine Earn',
           url: appUrl,
-          splashImageUrl: `${appUrl}/favicon.png`,
+          splashImageUrl: `${appUrl}/miniapp-splash.png`,
           // eslint-disable-next-line no-restricted-syntax
           splashBackgroundColor: '#000000', // Base mini app requires hex color, not CSS variable
         },
