@@ -360,8 +360,9 @@ export default function TransactionsPage() {
   // Get max amount as a number for validation
   // For vaults: returns exact asset amount from full share balance (no dust)
   // For wallet tokens: returns full balance (no dust) except ETH which leaves gas reserve
+  // Returns null only for loading states, returns 0 for zero balance
   const getMaxAmount = useMemo(() => {
-    if (!fromAccount || !derivedAsset) return null;
+    if (!fromAccount || !derivedAsset) return 0;
 
     if (fromAccount.type === 'wallet') {
       const symbol = derivedAsset.symbol;
@@ -432,16 +433,19 @@ export default function TransactionsPage() {
         return parseFloat(formatUnits(exactAssetAmount, assetDecimals));
       }
       
-      // Return null to show loading if convertToAssets not available yet
-      return null;
+      // Return 0 to show loading if convertToAssets not available yet (still allows input)
+      return 0;
     }
-    return null;
+    return 0;
   }, [fromAccount, derivedAsset, toAccount, ethBalance, tokenBalances, vaultShareBalance, exactAssetAmount, getCombinedEthWethBalance, preferredAsset]);
 
   // Calculate max amount for the selected "from" account
   const calculateMaxAmount = useCallback(() => {
     const maxAmount = getMaxAmount;
-    if (maxAmount === null) return;
+    if (maxAmount === null || maxAmount === 0) {
+      setAmount('0');
+      return;
+    }
 
     if (fromAccount?.type === 'wallet') {
       const symbol = derivedAsset?.symbol || '';
@@ -512,22 +516,23 @@ export default function TransactionsPage() {
       return;
     }
     
-    // Validate against max amount
-    const maxAmount = getMaxAmount;
-    if (maxAmount !== null) {
-      const numValue = parseFloat(value);
-      if (!isNaN(numValue) && numValue > maxAmount) {
-        // Cap the value at max amount
-        const decimals = fromAccount?.type === 'vault' 
-          ? (fromAccount as VaultAccount).assetDecimals ?? derivedAsset?.decimals ?? 18
-          : derivedAsset?.decimals ?? 18;
-        setAmount(formatAssetAmountForMax(maxAmount, derivedAsset?.symbol || '', decimals));
-        return;
-      }
-    }
-    
+    // Allow any amount to be entered - validation happens when user tries to continue
     setAmount(value);
   };
+  
+  // Check if entered amount exceeds available balance
+  const exceedsBalance = useMemo(() => {
+    if (!amount || !fromAccount || !derivedAsset) return false;
+    
+    const enteredAmount = parseFloat(amount);
+    if (isNaN(enteredAmount) || enteredAmount <= 0) return false;
+    
+    const maxAmount = getMaxAmount;
+    // Allow checking even if maxAmount is 0 (no balance)
+    if (maxAmount === null) return false;
+    
+    return enteredAmount > maxAmount;
+  }, [amount, fromAccount, derivedAsset, getMaxAmount]);
 
   const handleStartTransaction = () => {
     if (fromAccount && toAccount && derivedAsset) {
@@ -951,6 +956,14 @@ export default function TransactionsPage() {
                 <p className="text-xs text-[var(--foreground-muted)]">
                   {fromAccount.type === 'wallet' ? getWalletBalanceText : getVaultBalanceText}
                 </p>
+              )}
+              {/* Warning if amount exceeds available balance */}
+              {exceedsBalance && (
+                <div className="p-3 bg-[var(--warning-subtle)] rounded-lg border border-[var(--warning)]">
+                  <p className="text-xs text-[var(--foreground)]">
+                    <span className="font-medium">Warning:</span> Amount exceeds available balance. This transaction will fail if you proceed.
+                  </p>
+                </div>
               )}
             </div>
           )}
