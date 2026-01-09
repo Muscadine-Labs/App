@@ -9,7 +9,6 @@ import { useWallet } from '@/contexts/WalletContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
 import { usePrices } from '@/contexts/PriceContext';
 import { useVaultVersion } from '@/contexts/VaultVersionContext';
-import { useTheme } from '@/contexts/ThemeContext';
 import { VAULTS } from '@/lib/vaults';
 import { VaultAccount, WalletAccount } from '@/types/vault';
 import { formatBigIntForInput, formatAvailableBalance, formatAssetAmountForMax, formatCurrency, formatAssetBalance } from '@/lib/formatter';
@@ -17,101 +16,6 @@ import { Button } from '@/components/ui';
 import { Icon } from '@/components/ui/Icon';
 import { formatUnits } from 'viem';
 import { ERC4626_ABI } from '@/lib/abis';
-import { TradeType } from '@cowprotocol/widget-lib';
-import { CowSwapWidget } from '@cowprotocol/widget-react';
-
-// Memoized Swap Widget component to prevent unnecessary re-renders
-const SwapWidget = React.memo(({ theme }: { theme: 'dark' | 'light' }) => {
-  const [isLoading, setIsLoading] = useState(true);
-  const [widgetHeight, setWidgetHeight] = useState('640px');
-
-  // Use responsive height - smaller on mobile, larger on desktop
-  useEffect(() => {
-    const updateHeight = () => {
-      if (window.innerWidth < 640) setWidgetHeight('500px');
-      else if (window.innerWidth < 1024) setWidgetHeight('600px');
-      else setWidgetHeight('640px');
-    };
-    
-    updateHeight();
-    window.addEventListener('resize', updateHeight);
-    return () => window.removeEventListener('resize', updateHeight);
-  }, []);
-
-  const widgetParams = useMemo(() => ({
-    appCode: 'Muscadine',
-    width: '100%',
-    height: widgetHeight,
-    chainId: 8453, // Base
-    tokenLists: [
-      'https://files.cow.fi/tokens/CowSwap.json'
-    ],
-    tradeType: TradeType.SWAP,
-    sell: {
-      asset: 'USDC',
-      amount: '100'
-    },
-    buy: {
-      asset: 'cbbtc',
-      amount: '0'
-    },
-    enabledTradeTypes: [TradeType.SWAP, TradeType.LIMIT],
-    theme: theme,
-    standaloneMode: false,
-    disableToastMessages: true,
-    disableProgressBar: false,
-    hideBridgeInfo: false,
-    hideOrdersTable: false,
-    images: {},
-    sounds: {},
-    customTokens: []
-  }), [theme, widgetHeight]);
-
-  const provider = useMemo(() => {
-    return (typeof window !== 'undefined' && window.ethereum) 
-      ? window.ethereum 
-      : undefined;
-  }, []);
-
-  // Handle widget load - ensure provider is ready before showing widget
-  useEffect(() => {
-    if (!provider) {
-      setIsLoading(true);
-      return;
-    }
-
-    // Small delay to ensure provider is fully connected
-    const timer = setTimeout(() => {
-      setIsLoading(false);
-    }, 800);
-
-    return () => clearTimeout(timer);
-  }, [provider]);
-
-  return (
-    <div className="w-full">
-      {isLoading && (
-        <div 
-          className="flex items-center justify-center bg-[var(--surface)] rounded-lg border border-[var(--border-subtle)]"
-          style={{ minHeight: widgetHeight }}
-        >
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--primary)] mb-4"></div>
-            <p className="text-sm text-[var(--foreground-secondary)]">Loading swap widget...</p>
-          </div>
-        </div>
-      )}
-      {!isLoading && provider && (
-        <CowSwapWidget 
-          params={widgetParams} 
-          provider={provider}
-        />
-      )}
-    </div>
-  );
-});
-
-SwapWidget.displayName = 'SwapWidget';
 
 // Helper function to get asset decimals from vault symbol (no API needed)
 const getAssetDecimals = (symbol: string): number => {
@@ -127,7 +31,7 @@ const getAssetDecimals = (symbol: string): number => {
   return 18; // Default to 18 for other tokens
 };
 
-type TransactionTab = 'deposit' | 'withdraw' | 'swap';
+type TransactionTab = 'deposit' | 'withdraw';
 
 export default function TransactionsPage() {
   const { isConnected } = useAccount();
@@ -137,7 +41,6 @@ export default function TransactionsPage() {
   const { fetchVaultData } = useVaultData();
   const { btc: btcPrice, eth: ethPrice } = usePrices();
   const { version } = useVaultVersion();
-  const { effectiveTheme } = useTheme();
   const {
     fromAccount,
     toAccount,
@@ -157,13 +60,12 @@ export default function TransactionsPage() {
   const [activeTab, setActiveTab] = useState<TransactionTab>(() => {
     const action = searchParams.get('action');
     if (action === 'withdraw') return 'withdraw';
-    if (action === 'swap') return 'swap';
     return 'deposit';
   });
 
-  // Refresh wallet and vault data when page opens (skip if on swap tab)
+  // Refresh wallet and vault data when page opens
   useEffect(() => {
-    if (isConnected && activeTab !== 'swap') {
+    if (isConnected) {
       // Refresh wallet balances immediately (includes vault positions via RPC)
       refreshBalances();
       
@@ -180,20 +82,19 @@ export default function TransactionsPage() {
     }
     // Only run once when component mounts or when connection status changes
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isConnected, activeTab]);
+  }, [isConnected]);
 
   // Track previous status to detect transitions to idle
   const prevStatusRef = useRef<typeof status>(status);
   
   // Refresh balances when status returns to idle (after transaction completion/reset)
-  // Skip if on swap tab to avoid interfering with the widget
   useEffect(() => {
     // Only refresh when transitioning TO idle from another state (not on initial mount)
     const wasIdle = prevStatusRef.current === 'idle';
     const isNowIdle = status === 'idle';
     const transitionedToIdle = !wasIdle && isNowIdle;
     
-    if (isConnected && transitionedToIdle && activeTab !== 'swap') {
+    if (isConnected && transitionedToIdle) {
       // Refresh wallet balances to get updated values (includes vault positions via RPC)
       refreshBalances();
       
@@ -212,7 +113,7 @@ export default function TransactionsPage() {
     // Update previous status
     prevStatusRef.current = status;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status, isConnected, activeTab]);
+  }, [status, isConnected]);
 
   // Handle URL params for pre-filling vault (when navigating from vault page)
   useEffect(() => {
@@ -319,7 +220,6 @@ export default function TransactionsPage() {
         // Withdraw: pre-select wallet as "to"
         setToAccount(walletAccount);
       }
-      // Swap tab doesn't need account initialization
     }
   }, [activeTab, status, fromAccount, toAccount, walletAccount, setFromAccount, setToAccount, searchParams]);
 
@@ -340,10 +240,6 @@ export default function TransactionsPage() {
       // Withdraw: vault to wallet
       setFromAccount(null);
       setToAccount(walletAccount);
-    } else if (tab === 'swap') {
-      // Swap: clear accounts (handled by widget)
-      setFromAccount(null);
-      setToAccount(null);
     }
   }, [activeTab, walletAccount, setFromAccount, setToAccount, setAmount, setPreferredAsset, status]);
 
@@ -813,14 +709,12 @@ export default function TransactionsPage() {
         </p>
       </div>
 
-      {/* Progress Bar - Always visible (only for deposit/withdraw) */}
-      {activeTab !== 'swap' && (
-        <TransactionProgressBar steps={getProgressSteps()} isSuccess={status === 'success'} />
-      )}
+      {/* Progress Bar - Always visible */}
+      <TransactionProgressBar steps={getProgressSteps()} isSuccess={status === 'success'} />
 
       {status === 'idle' && (
         <div className="bg-[var(--surface)] rounded-lg border border-[var(--border-subtle)] p-4 md:p-6 space-y-4 md:space-y-6">
-          {/* Deposit/Withdraw/Swap Tabs */}
+          {/* Deposit/Withdraw Tabs */}
           <div className="flex gap-2">
             <button
               onClick={() => handleTabChange('deposit')}
@@ -844,37 +738,10 @@ export default function TransactionsPage() {
             >
               Withdraw
             </button>
-            <button
-              onClick={() => handleTabChange('swap')}
-              disabled={status !== 'idle'}
-              className={`flex-1 px-4 py-3 md:py-2.5 rounded-lg font-medium text-sm md:text-sm transition-colors min-h-[44px] md:min-h-0 ${
-                activeTab === 'swap'
-                  ? 'bg-[var(--primary)] text-white'
-                  : 'bg-[var(--background)] text-[var(--foreground-secondary)] hover:bg-[var(--surface-elevated)]'
-              } disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-[var(--background)]`}
-            >
-              Swap
-            </button>
           </div>
 
-          {/* Swap Widget */}
-          {activeTab === 'swap' && (
-            <div className="w-full overflow-hidden">
-              {isConnected ? (
-                <SwapWidget theme={effectiveTheme} />
-              ) : (
-                <div className="p-8 text-center">
-                  <p className="text-sm text-[var(--foreground-secondary)]">
-                    Please connect your wallet to use the swap feature.
-                  </p>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Deposit/Withdraw Form */}
-          {activeTab !== 'swap' && (
-            <>
+          <>
           {/* From Account */}
           <AccountSelector
             label="From"
@@ -1125,8 +992,7 @@ export default function TransactionsPage() {
           >
             Continue
           </Button>
-            </>
-          )}
+          </>
         </div>
       )}
 
