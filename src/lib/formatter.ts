@@ -240,8 +240,11 @@ export function formatAssetBalance(
     precision = maxPrecision;
   }
   
-  // Format with calculated precision
-  const formatted = numValue.toFixed(precision);
+  // Format with calculated precision using formatNumber to get comma separators
+  const formatted = formatNumber(numValue, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: precision,
+  });
   
   // Remove trailing zeros, but keep at least one digit after decimal if there was a decimal point
   const trimmed = formatted.includes('.') 
