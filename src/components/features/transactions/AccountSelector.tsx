@@ -15,6 +15,9 @@ import { useAccount } from 'wagmi';
 import { Icon } from '@/components/ui/Icon';
 import { Skeleton } from '@/components/ui/Skeleton';
 
+// cbBTC token address on Base
+const CBBTC_ADDRESS = '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf';
+
 interface AccountSelectorProps {
   label: string;
   selectedAccount: Account | null;
@@ -147,7 +150,7 @@ export function AccountSelector({
       }
       
       if (assetSymbol === 'cbBTC' || assetSymbol === 'CBBTC') {
-        const cbbtcToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'CBBTC' || t.symbol.toUpperCase() === 'CBTC');
+        const cbbtcToken = tokenBalances.find((t) => t.address.toLowerCase() === CBBTC_ADDRESS.toLowerCase());
         if (cbbtcToken) {
           const balance = parseFloat(formatUnits(cbbtcToken.balance, cbbtcToken.decimals));
           return balance * (btcPrice || 0);
@@ -234,7 +237,13 @@ export function AccountSelector({
           // Return as string to preserve precision
           return { value: combinedBalance.toString(), symbol: assetSymbol, decimals: 18 };
         }
-        const token = tokenBalances.find((t) => t.symbol.toUpperCase() === assetSymbol.toUpperCase());
+        // Special handling for cbBTC - use address-based matching for reliability
+        let token;
+        if (assetSymbol === 'cbBTC' || assetSymbol === 'CBBTC') {
+          token = tokenBalances.find((t) => t.address.toLowerCase() === CBBTC_ADDRESS.toLowerCase());
+        } else {
+          token = tokenBalances.find((t) => t.symbol.toUpperCase() === assetSymbol.toUpperCase());
+        }
         if (token) {
           const decimals = token.decimals;
           // Use formatUnits directly to preserve precision
@@ -375,10 +384,15 @@ export function AccountSelector({
         
         // Only include tokens with non-zero balance and available logos
         if (balance > 0) {
-          // Only add tokens we have logos for
-          if (symbol === 'USDC' || symbol === 'CBBTC' || symbol === 'CBTC' || symbol === 'WETH') {
-            const logo = getVaultLogo(symbol);
-            tokensWithLogos.push({ symbol, logo });
+          // Check if it's cbBTC by address, otherwise check symbol
+          const isCbbtc = token.address.toLowerCase() === CBBTC_ADDRESS.toLowerCase();
+          const isKnownToken = symbol === 'USDC' || symbol === 'CBBTC' || symbol === 'WETH';
+          
+          if (isCbbtc || isKnownToken) {
+            // For cbBTC, always use 'CBBTC' for logo lookup
+            const logoSymbol = isCbbtc ? 'CBBTC' : symbol;
+            const logo = getVaultLogo(logoSymbol);
+            tokensWithLogos.push({ symbol: logoSymbol, logo });
           }
         }
       });

@@ -17,6 +17,9 @@ import { Icon } from '@/components/ui/Icon';
 import { formatUnits } from 'viem';
 import { ERC4626_ABI } from '@/lib/abis';
 
+// cbBTC token address on Base
+const CBBTC_ADDRESS = '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf';
+
 // Helper function to get asset decimals from vault symbol (no API needed)
 const getAssetDecimals = (symbol: string): number => {
   if (symbol === 'USDC') {
@@ -307,7 +310,14 @@ export default function TransactionsPage() {
       return formatAvailableBalance(ethBalance || '0', derivedAsset.symbol);
     }
     
-    const token = tokenBalances.find((t) => t.symbol.toUpperCase() === derivedAsset.symbol.toUpperCase());
+    // Special handling for cbBTC - use address-based matching for reliability
+    let token;
+    if (derivedAsset.symbol === 'cbBTC' || derivedAsset.symbol === 'CBBTC') {
+      token = tokenBalances.find((t) => t.address.toLowerCase() === CBBTC_ADDRESS.toLowerCase());
+    } else {
+      token = tokenBalances.find((t) => t.symbol.toUpperCase() === derivedAsset.symbol.toUpperCase());
+    }
+    
     if (token) {
       // Use raw balance string from formatUnits to preserve full precision for small amounts
       // Pass as string to avoid floating point precision loss
@@ -400,7 +410,13 @@ export default function TransactionsPage() {
       }
       
       // For all other tokens (USDC, cbBTC, etc.): use full balance (no dust)
-      const token = tokenBalances.find((t) => t.symbol.toUpperCase() === symbol.toUpperCase());
+      // Special handling for cbBTC - use address-based matching for reliability
+      let token;
+      if (symbol === 'cbBTC' || symbol === 'CBBTC') {
+        token = tokenBalances.find((t) => t.address.toLowerCase() === CBBTC_ADDRESS.toLowerCase());
+      } else {
+        token = tokenBalances.find((t) => t.symbol.toUpperCase() === symbol.toUpperCase());
+      }
       if (token) {
         return parseFloat(formatUnits(token.balance, token.decimals));
       }
@@ -482,7 +498,13 @@ export default function TransactionsPage() {
         }
       } else {
         // For all other tokens (USDC, cbBTC, etc.): use full balance
-        const token = tokenBalances.find((t) => t.symbol.toUpperCase() === symbol.toUpperCase());
+        // Special handling for cbBTC - use address-based matching for reliability
+        let token;
+        if (symbol === 'cbBTC' || symbol === 'CBBTC') {
+          token = tokenBalances.find((t) => t.address.toLowerCase() === CBBTC_ADDRESS.toLowerCase());
+        } else {
+          token = tokenBalances.find((t) => t.symbol.toUpperCase() === symbol.toUpperCase());
+        }
         if (token) {
           setAmount(formatBigIntForInput(token.balance, token.decimals));
         } else {

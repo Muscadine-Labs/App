@@ -62,8 +62,19 @@ const WalletContext = createContext<WalletContextType | undefined>(undefined);
 // Major token addresses on Base
 const TOKEN_ADDRESSES = {
   USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
-  cbBTC: '0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22', // Coinbase Wrapped BTC on Base
+  cbBTC: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', // Coinbase Wrapped BTC on Base
   WETH: '0x4200000000000000000000000000000000000006', // Wrapped ETH on Base
+  cbETH: '0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22', // Coinbase Wrapped ETH on Base
+  wstETH: '0xc1CBa3fCea344f92D9239c08C0568f6F2F0ee452', // Wrapped Lido staked ETH on Base
+} as const;
+
+// Pre-compute lowercased addresses for efficient comparisons (avoid repeated .toLowerCase() calls)
+const TOKEN_ADDRESSES_LOWER = {
+  USDC: TOKEN_ADDRESSES.USDC.toLowerCase(),
+  cbBTC: TOKEN_ADDRESSES.cbBTC.toLowerCase(),
+  WETH: TOKEN_ADDRESSES.WETH.toLowerCase(),
+  cbETH: TOKEN_ADDRESSES.cbETH.toLowerCase(),
+  wstETH: TOKEN_ADDRESSES.wstETH.toLowerCase(),
 } as const;
 
 // ERC20 ABI for balanceOf, decimals, and symbol
@@ -129,7 +140,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     usdc: boolean;
     cbbtc: boolean;
     weth: boolean;
-  }>({ usdc: false, cbbtc: false, weth: false });
+    cbeth: boolean;
+    wsteth: boolean;
+  }>({ usdc: false, cbbtc: false, weth: false, cbeth: false, wsteth: false });
 
   // Get token balances for major tokens (fallback only)
   const { data: usdcBalance, refetch: refetchUsdcBalance } = useReadContract({
@@ -156,6 +169,22 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     query: { enabled: !!address && needsWagmiFallback.weth }
   });
 
+  const { data: cbethBalance, refetch: refetchCbethBalance } = useReadContract({
+    address: TOKEN_ADDRESSES.cbETH,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address as `0x${string}`] : undefined,
+    query: { enabled: !!address && needsWagmiFallback.cbeth }
+  });
+
+  const { data: wstethBalance, refetch: refetchWstethBalance } = useReadContract({
+    address: TOKEN_ADDRESSES.wstETH,
+    abi: ERC20_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address as `0x${string}`] : undefined,
+    query: { enabled: !!address && needsWagmiFallback.wsteth }
+  });
+
   // Get token decimals (fallback only - Alchemy provides decimals)
   const { data: usdcDecimals } = useReadContract({
     address: TOKEN_ADDRESSES.USDC,
@@ -176,6 +205,20 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     abi: ERC20_ABI,
     functionName: 'decimals',
     query: { enabled: !!address && needsWagmiFallback.weth }
+  });
+
+  const { data: cbethDecimals } = useReadContract({
+    address: TOKEN_ADDRESSES.cbETH,
+    abi: ERC20_ABI,
+    functionName: 'decimals',
+    query: { enabled: !!address && needsWagmiFallback.cbeth }
+  });
+
+  const { data: wstethDecimals } = useReadContract({
+    address: TOKEN_ADDRESSES.wstETH,
+    abi: ERC20_ABI,
+    functionName: 'decimals',
+    query: { enabled: !!address && needsWagmiFallback.wsteth }
   });
 
   // Fetch token prices dynamically
@@ -474,14 +517,18 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         setAlchemyTokenBalances(alchemyBalances);
 
         // Check if Alchemy returned key tokens - enable wagmi fallback only if missing
-        const hasUsdc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.USDC.toLowerCase());
-        const hasCbbtc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.cbBTC.toLowerCase());
-        const hasWeth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.WETH.toLowerCase());
+        const hasUsdc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.USDC);
+        const hasCbbtc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.cbBTC);
+        const hasWeth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.WETH);
+        const hasCbeth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.cbETH);
+        const hasWsteth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.wstETH);
         
         setNeedsWagmiFallback({
           usdc: !hasUsdc,
           cbbtc: !hasCbbtc,
           weth: !hasWeth,
+          cbeth: !hasCbeth,
+          wsteth: !hasWsteth,
         });
 
         // Get unique symbols for price fetching
@@ -539,14 +586,18 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setAlchemyTokenBalances(alchemyBalances);
 
     // Check if Alchemy returned key tokens - enable wagmi fallback only if missing
-    const hasUsdc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.USDC.toLowerCase());
-    const hasCbbtc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.cbBTC.toLowerCase());
-    const hasWeth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.WETH.toLowerCase());
+    const hasUsdc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.USDC);
+    const hasCbbtc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.cbBTC);
+    const hasWeth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.WETH);
+    const hasCbeth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.cbETH);
+    const hasWsteth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.wstETH);
     
     setNeedsWagmiFallback({
       usdc: !hasUsdc,
       cbbtc: !hasCbbtc,
       weth: !hasWeth,
+      cbeth: !hasCbeth,
+      wsteth: !hasWsteth,
     });
 
     // Only refetch wagmi hooks if fallback is needed
@@ -555,6 +606,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       if (!hasUsdc && refetchUsdcBalance) refetchPromises.push(refetchUsdcBalance());
       if (!hasCbbtc && refetchCbbtcBalance) refetchPromises.push(refetchCbbtcBalance());
       if (!hasWeth && refetchWethBalance) refetchPromises.push(refetchWethBalance());
+      if (!hasCbeth && refetchCbethBalance) refetchPromises.push(refetchCbethBalance());
+      if (!hasWsteth && refetchWstethBalance) refetchPromises.push(refetchWstethBalance());
     }
     await Promise.all(refetchPromises);
 
@@ -607,7 +660,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       timestamp: new Date().toISOString(),
       note: 'Check detailed logs above for fetched values - state updates asynchronously via React',
     });
-  }, [fetchTokenPrices, fetchVaultPositions, fetchAllTokenBalances, refetchEthBalance, refetchUsdcBalance, refetchCbbtcBalance, refetchWethBalance, address]);
+  }, [fetchTokenPrices, fetchVaultPositions, fetchAllTokenBalances, refetchEthBalance, refetchUsdcBalance, refetchCbbtcBalance, refetchWethBalance, refetchCbethBalance, refetchWstethBalance, address]);
 
   // Helper function to sleep/delay
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -624,14 +677,18 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setAlchemyTokenBalances(alchemyBalances);
 
     // Check if Alchemy returned key tokens - enable wagmi fallback only if missing
-    const hasUsdc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.USDC.toLowerCase());
-    const hasCbbtc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.cbBTC.toLowerCase());
-    const hasWeth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES.WETH.toLowerCase());
+    const hasUsdc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.USDC);
+    const hasCbbtc = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.cbBTC);
+    const hasWeth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.WETH);
+    const hasCbeth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.cbETH);
+    const hasWsteth = alchemyBalances.some(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.wstETH);
     
     setNeedsWagmiFallback({
       usdc: !hasUsdc,
       cbbtc: !hasCbbtc,
       weth: !hasWeth,
+      cbeth: !hasCbeth,
+      wsteth: !hasWsteth,
     });
 
     // Only refetch wagmi hooks if fallback is needed
@@ -640,6 +697,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       if (!hasUsdc && refetchUsdcBalance) refetchPromises.push(refetchUsdcBalance());
       if (!hasCbbtc && refetchCbbtcBalance) refetchPromises.push(refetchCbbtcBalance());
       if (!hasWeth && refetchWethBalance) refetchPromises.push(refetchWethBalance());
+      if (!hasCbeth && refetchCbethBalance) refetchPromises.push(refetchCbethBalance());
+      if (!hasWsteth && refetchWstethBalance) refetchPromises.push(refetchWstethBalance());
     }
     await Promise.all(refetchPromises);
 
@@ -667,7 +726,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     });
 
     await fetchVaultPositions();
-  }, [fetchTokenPrices, fetchVaultPositions, fetchAllTokenBalances, refetchEthBalance, refetchUsdcBalance, refetchCbbtcBalance, refetchWethBalance, address]);
+  }, [fetchTokenPrices, fetchVaultPositions, fetchAllTokenBalances, refetchEthBalance, refetchUsdcBalance, refetchCbbtcBalance, refetchWethBalance, refetchCbethBalance, refetchWstethBalance, address]);
 
   // Refresh with retry logic (exponential backoff)
   const refreshBalancesWithRetry = useCallback(async (options?: { maxRetries?: number; retryDelay?: number }) => {
@@ -763,6 +822,13 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const wethFormatted = wethBalance ? Number(wethBalance) / Math.pow(10, wethDecimalsValue) : 0;
   const wethUsdValue = wethFormatted * (tokenPrices.weth || tokenPrices.eth || 0);
   
+  const cbethDecimalsValue = cbethDecimals || 18;
+  const cbethFormatted = cbethBalance ? Number(cbethBalance) / Math.pow(10, cbethDecimalsValue) : 0;
+  const cbethUsdValue = cbethFormatted * (tokenPrices.cbeth || tokenPrices.eth || 0);
+  
+  const wstethDecimalsValue = wstethDecimals || 18;
+  const wstethFormatted = wstethBalance ? Number(wstethBalance) / Math.pow(10, wstethDecimalsValue) : 0;
+  const wstethUsdValue = wstethFormatted * (tokenPrices.wsteth || tokenPrices.eth || 0);
 
   // Build token balances array - combine ETH, manually fetched tokens, and Alchemy tokens
   // Calculate USD values for Alchemy tokens
@@ -775,6 +841,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       price = tokenPrices.cbbtc || tokenPrices.btc || 0;
     } else if (symbolUpper === 'WETH') {
       price = tokenPrices.weth || tokenPrices.eth || 0;
+    } else if (symbolUpper === 'CBETH') {
+      price = tokenPrices.cbeth || tokenPrices.eth || 0;
+    } else if (symbolUpper === 'WSTETH') {
+      price = tokenPrices.wsteth || tokenPrices.eth || 0;
     } else if (symbolUpper === 'USDC') {
       price = tokenPrices.usdc || 1;
     } else {
@@ -804,7 +874,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     // Alchemy tokens (primary source - includes USDC, cbBTC, WETH if available)
     ...alchemyBalancesWithPrices,
     // Wagmi fallback tokens (only if Alchemy didn't return them)
-    ...(usdcBalance && usdcBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.address.toLowerCase() === TOKEN_ADDRESSES.USDC.toLowerCase()) ? [{
+    ...(usdcBalance && usdcBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.USDC) ? [{
       address: TOKEN_ADDRESSES.USDC,
       symbol: 'USDC',
       decimals: usdcDecimalsValue,
@@ -812,7 +882,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       formatted: usdcFormatted.toString(),
       usdValue: usdcUsdValue,
     }] : []),
-    ...(cbbtcBalance && cbbtcBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.address.toLowerCase() === TOKEN_ADDRESSES.cbBTC.toLowerCase()) ? [{
+    ...(cbbtcBalance && cbbtcBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.cbBTC) ? [{
       address: TOKEN_ADDRESSES.cbBTC,
       symbol: 'cbBTC',
       decimals: cbbtcDecimalsValue,
@@ -820,13 +890,29 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       formatted: cbbtcFormatted.toString(),
       usdValue: cbbtcUsdValue,
     }] : []),
-    ...(wethBalance && wethBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.address.toLowerCase() === TOKEN_ADDRESSES.WETH.toLowerCase()) ? [{
+    ...(wethBalance && wethBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.WETH) ? [{
       address: TOKEN_ADDRESSES.WETH,
       symbol: 'WETH',
       decimals: wethDecimalsValue,
       balance: wethBalance,
       formatted: wethFormatted.toString(),
       usdValue: wethUsdValue,
+    }] : []),
+    ...(cbethBalance && cbethBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.cbETH) ? [{
+      address: TOKEN_ADDRESSES.cbETH,
+      symbol: 'cbETH',
+      decimals: cbethDecimalsValue,
+      balance: cbethBalance,
+      formatted: cbethFormatted.toString(),
+      usdValue: cbethUsdValue,
+    }] : []),
+    ...(wstethBalance && wstethBalance > BigInt(0) && !alchemyBalancesWithPrices.find(t => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.wstETH) ? [{
+      address: TOKEN_ADDRESSES.wstETH,
+      symbol: 'wstETH',
+      decimals: wstethDecimalsValue,
+      balance: wstethBalance,
+      formatted: wstethFormatted.toString(),
+      usdValue: wstethUsdValue,
     }] : []),
   ];
 
