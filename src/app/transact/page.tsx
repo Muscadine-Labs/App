@@ -1006,6 +1006,7 @@ export default function TransactionsPage() {
               !derivedAsset || 
               !amount || 
               parseFloat(amount) <= 0 ||
+              exceedsBalance || // Prevent continuing with insufficient balance
               (fromAccount.type === 'wallet' && toAccount.type === 'wallet') || // Prevent wallet-to-wallet
               (fromAccount.type === 'vault' && toAccount.type === 'vault') // Prevent vault-to-vault
             }

@@ -16,11 +16,7 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
     const [isMounted, setIsMounted] = useState(false);
     
     useEffect(() => {
-        // Defer mount state update to avoid setState-in-effect warning
-        const timeoutId = setTimeout(() => {
-            setIsMounted(true);
-        }, 0);
-        return () => clearTimeout(timeoutId);
+        setIsMounted(true);
     }, []);
     
     // Get base vault list (stable order for SSR - use 'v1' during SSR to prevent hydration mismatch)
