@@ -77,6 +77,20 @@ export const TOKEN_ADDRESSES_LOWER = {
   wstETH: TOKEN_ADDRESSES.wstETH.toLowerCase(),
 } as const;
 
+// Token metadata cache - persists across component remounts
+// Token metadata rarely changes, so we cache it to avoid repeated RPC calls
+const tokenMetadataCache = new Map<string, { decimals: number; symbol: string; name?: string; timestamp: number }>();
+const METADATA_CACHE_DURATION = 60 * 60 * 1000; // 1 hour cache duration
+
+// Known token metadata - no need to fetch from API (most common tokens)
+const KNOWN_TOKEN_METADATA: Record<string, { decimals: number; symbol: string; name: string }> = {
+  [TOKEN_ADDRESSES.USDC.toLowerCase()]: { decimals: 6, symbol: 'USDC', name: 'USD Coin' },
+  [TOKEN_ADDRESSES.cbBTC.toLowerCase()]: { decimals: 8, symbol: 'cbBTC', name: 'Coinbase Wrapped BTC' },
+  [TOKEN_ADDRESSES.WETH.toLowerCase()]: { decimals: 18, symbol: 'WETH', name: 'Wrapped Ether' },
+  [TOKEN_ADDRESSES.cbETH.toLowerCase()]: { decimals: 18, symbol: 'cbETH', name: 'Coinbase Wrapped ETH' },
+  [TOKEN_ADDRESSES.wstETH.toLowerCase()]: { decimals: 18, symbol: 'wstETH', name: 'Wrapped Lido Staked ETH' },
+};
+
 // ERC20 ABI for balanceOf, decimals, and symbol
 const ERC20_ABI = [
   {
@@ -267,47 +281,71 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
       const tokenAddresses = data.result?.tokenBalances || [];
       
+      // Filter tokens with non-zero balance and separate into known/unknown
+      const tokensWithBalance = tokenAddresses.filter((token: AlchemyTokenBalance) => {
+        const balance = BigInt(token.tokenBalance || '0');
+        return balance > BigInt(0); // Only process tokens with non-zero balance
+      });
 
-      // Fetch metadata for each token in parallel
-      const tokenMetadataPromises = tokenAddresses
-        .filter((token: AlchemyTokenBalance) => {
-          const balance = BigInt(token.tokenBalance || '0');
-          return balance > BigInt(0); // Only process tokens with non-zero balance
-        })
-        .map(async (token: AlchemyTokenBalance) => {
-          try {
-            const metadataResponse = await fetch(
-              `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  jsonrpc: '2.0',
-                  id: 1,
-                  method: 'alchemy_getTokenMetadata',
-                  params: [token.contractAddress],
-                }),
-              }
-            );
+      // Separate tokens into known (use cached metadata) and unknown (fetch metadata)
+      const knownTokens: Array<{ token: AlchemyTokenBalance; metadata: { decimals: number; symbol: string } }> = [];
+      const unknownTokens: AlchemyTokenBalance[] = [];
 
-            const metadataData = await metadataResponse.json() as AlchemyTokenMetadataResponse;
-            
-            if (metadataData.error || !metadataData.result) {
-              return null;
-            }
+      tokensWithBalance.forEach((token: AlchemyTokenBalance) => {
+        const addressLower = token.contractAddress.toLowerCase();
+        
+        // Check if it's a known token
+        if (KNOWN_TOKEN_METADATA[addressLower]) {
+          knownTokens.push({
+            token,
+            metadata: KNOWN_TOKEN_METADATA[addressLower],
+          });
+          return;
+        }
 
+        // Check cache
+        const cached = tokenMetadataCache.get(addressLower);
+        if (cached && Date.now() - cached.timestamp < METADATA_CACHE_DURATION) {
+          knownTokens.push({
+            token,
+            metadata: cached,
+          });
+          return;
+        }
+
+        // Need to fetch metadata
+        unknownTokens.push(token);
+      });
+
+      // Process known tokens immediately (no API calls needed)
+      const knownTokenBalances = knownTokens.map(({ token, metadata }) => {
+        const balance = BigInt(token.tokenBalance || '0');
+        const decimals = metadata.decimals;
+        const symbol = metadata.symbol;
+        const formatted = (Number(balance) / Math.pow(10, decimals)).toString();
+
+        return {
+          address: token.contractAddress,
+          symbol,
+          decimals,
+          balance,
+          formatted,
+          usdValue: 0, // Will be calculated later with prices
+        };
+      });
+
+      // Fetch metadata for unknown tokens only (dramatically reduces RPC calls)
+      const tokenMetadataPromises = unknownTokens.map(async (token: AlchemyTokenBalance) => {
+        try {
+          const addressLower = token.contractAddress.toLowerCase();
+          
+          // Check cache again (in case another request populated it)
+          const cached = tokenMetadataCache.get(addressLower);
+          if (cached && Date.now() - cached.timestamp < METADATA_CACHE_DURATION) {
             const balance = BigInt(token.tokenBalance || '0');
-            const decimals = metadataData.result.decimals || 18;
-            let symbol = metadataData.result.symbol || 'UNKNOWN';
+            const decimals = cached.decimals;
+            const symbol = cached.symbol;
             const formatted = (Number(balance) / Math.pow(10, decimals)).toString();
-
-            // Normalize cbBTC to ensure consistent symbol
-            const addressLower = token.contractAddress.toLowerCase();
-            if (addressLower === TOKEN_ADDRESSES_LOWER.cbBTC) {
-              symbol = 'cbBTC'; // Always use cbBTC (not CBTC or BTC)
-            }
 
             return {
               address: token.contractAddress,
@@ -315,15 +353,69 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
               decimals,
               balance,
               formatted,
-              usdValue: 0, // Will be calculated later with prices
+              usdValue: 0,
             };
-          } catch {
+          }
+
+          const metadataResponse = await fetch(
+            `https://base-mainnet.g.alchemy.com/v2/${alchemyApiKey}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                jsonrpc: '2.0',
+                id: 1,
+                method: 'alchemy_getTokenMetadata',
+                params: [token.contractAddress],
+              }),
+            }
+          );
+
+          const metadataData = await metadataResponse.json() as AlchemyTokenMetadataResponse;
+          
+          if (metadataData.error || !metadataData.result) {
             return null;
           }
-        });
 
+          const balance = BigInt(token.tokenBalance || '0');
+          const decimals = metadataData.result.decimals || 18;
+          let symbol = metadataData.result.symbol || 'UNKNOWN';
+          const formatted = (Number(balance) / Math.pow(10, decimals)).toString();
+
+          // Normalize cbBTC to ensure consistent symbol
+          if (addressLower === TOKEN_ADDRESSES_LOWER.cbBTC) {
+            symbol = 'cbBTC'; // Always use cbBTC (not CBTC or BTC)
+          }
+
+          // Cache the metadata to avoid future API calls
+          tokenMetadataCache.set(addressLower, {
+            decimals,
+            symbol,
+            name: metadataData.result.name,
+            timestamp: Date.now(),
+          });
+
+          return {
+            address: token.contractAddress,
+            symbol,
+            decimals,
+            balance,
+            formatted,
+            usdValue: 0, // Will be calculated later with prices
+          };
+        } catch {
+          return null;
+        }
+      });
+
+      // Combine known tokens (no API calls) with fetched tokens
       const metadataResults = await Promise.all(tokenMetadataPromises);
-      return metadataResults.filter((result): result is TokenBalance => result !== null);
+      const fetchedTokens = metadataResults.filter((result): result is TokenBalance => result !== null);
+      
+      // Return combined results (known tokens + fetched tokens)
+      return [...knownTokenBalances, ...fetchedTokens];
     } catch {
       return [];
     }
