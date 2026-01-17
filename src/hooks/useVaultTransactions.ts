@@ -229,9 +229,16 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
         
         // Sanitize and validate amount string before parsing
         // Remove any whitespace and ensure it's a valid decimal number
-        const sanitizedAmount = amount.trim().replace(/\s+/g, '');
+        let sanitizedAmount = amount.trim().replace(/\s+/g, '');
+        
+        // Normalize: if amount starts with decimal point, prepend "0"
+        // This allows inputs like ".00003" to be valid
+        if (sanitizedAmount.startsWith('.')) {
+          sanitizedAmount = '0' + sanitizedAmount;
+        }
         
         // Validate format: must be a valid decimal number (no scientific notation, no extra characters)
+        // Allows: "123", "123.456", "0.123", ".123" (normalized to "0.123")
         if (!/^\d+\.?\d*$/.test(sanitizedAmount)) {
           throw new Error(`Invalid amount format: "${amount}". Expected a decimal number.`);
         }
@@ -518,9 +525,62 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
           });
         }
         
-        // Note: Unwrapping WETH to ETH for withdrawals with preferredAsset === 'ETH'
-        // is handled separately after the withdrawal transaction completes.
-        // This ensures we have the WETH balance before attempting to unwrap.
+        // Add WETH unwrap operation to bundle if withdrawing to ETH
+        // IMPORTANT: Add unwrap AFTER withdrawal so it executes after WETH is received
+        // Use isWethVault which is already defined earlier in this function scope (line 182)
+        if (isWethVault && preferredAsset === 'ETH') {
+          // For withdrawAll, we need to calculate the asset amount that will be withdrawn
+          // For regular withdraw, we already have amountBigInt
+          let wethAmountToUnwrap: bigint;
+          
+          if (action === 'withdrawAll') {
+            // For withdrawAll, amountBigInt contains the user's share balance
+            // We need to convert shares to assets to know how much WETH will be withdrawn
+            if (!publicClient) {
+              throw new Error('Public client not available');
+            }
+            
+            try {
+              const assetsFromShares = await publicClient.readContract({
+                address: normalizedVault,
+                abi: [
+                  {
+                    inputs: [{ internalType: 'uint256', name: 'shares', type: 'uint256' }],
+                    name: 'convertToAssets',
+                    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+                    stateMutability: 'view',
+                    type: 'function',
+                  },
+                ],
+                functionName: 'convertToAssets',
+                args: [amountBigInt], // amountBigInt contains shares for withdrawAll
+              }) as bigint;
+              wethAmountToUnwrap = assetsFromShares;
+            } catch {
+              // If conversion fails, skip unwrap (shouldn't happen, but be safe)
+              wethAmountToUnwrap = BigInt(0);
+            }
+          } else {
+            // For regular withdraw, amountBigInt is already the asset amount
+            wethAmountToUnwrap = amountBigInt;
+          }
+          
+          // Only add unwrap operation if we have a valid amount
+          if (wethAmountToUnwrap > BigInt(0)) {
+            // Add unwrap operation BEFORE withdrawal so it executes after withdrawal in the bundle
+            // The bundler will optimize the order, but we want unwrap to happen after WETH is received
+            inputOperations.push({
+              type: 'Erc20_Unwrap',
+              address: BASE_WETH_ADDRESS,
+              sender: userAddress,
+              args: {
+                amount: wethAmountToUnwrap,
+                receiver: userAddress,
+              },
+            });
+            // The unwrap operation is now part of the bundle and will execute atomically with the withdrawal
+          }
+        }
       }
 
       // Configure bundling options
@@ -581,9 +641,11 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
       for (let i = 0; i < prerequisiteTxCount; i++) {
         const prereqTx = bundle.requirements.txs[i];
         const contractAddress = prereqTx.tx.to || '';
+        // Use more descriptive labels for prerequisite transactions (approvals, resets, etc.)
+        // These are different from signatures - they're actual on-chain transactions
         const stepLabel = prerequisiteTxCount > 1 
-          ? `Pre authorize ${i + 1}/${prerequisiteTxCount}` 
-          : 'Pre authorize';
+          ? `Approve ${i + 1}/${prerequisiteTxCount}` 
+          : 'Approve';
         
         // Call progress callback BEFORE sending - wallet will open for approval
         onProgress?.({ 
@@ -628,11 +690,15 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
 
 
       // Notify that we're about to send the main transaction - wallet will open
+      // Use appropriate label based on action
+      const mainTxLabel = action === 'deposit' ? 'Deposit' : 
+                         action === 'withdraw' || action === 'withdrawAll' ? 'Withdraw' : 
+                         'Transfer';
       onProgress?.({ 
         type: 'confirming', 
         stepIndex: currentStepIndex, 
         totalSteps,
-        stepLabel: 'Confirm',
+        stepLabel: mainTxLabel,
         txHash: '' // Will be updated after sending
       });
 
@@ -650,7 +716,7 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
         type: 'confirming', 
         stepIndex: currentStepIndex, 
         totalSteps,
-        stepLabel: 'Confirm',
+        stepLabel: mainTxLabel,
         txHash 
       });
 
