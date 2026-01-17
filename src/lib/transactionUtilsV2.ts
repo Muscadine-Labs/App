@@ -155,7 +155,16 @@ export type TransactionProgressCallback = (step: TransactionProgressStep) => voi
  * Truncates decimals if user enters more than assetDecimals
  */
 function parseAmount(amount: string, decimals: number): bigint {
-  const sanitizedAmount = amount.trim().replace(/\s+/g, '');
+  let sanitizedAmount = amount.trim().replace(/\s+/g, '');
+  
+  // Normalize: if amount starts with decimal point, prepend "0"
+  // This allows inputs like ".00003" to be valid
+  if (sanitizedAmount.startsWith('.')) {
+    sanitizedAmount = '0' + sanitizedAmount;
+  }
+  
+  // Validate format: must be a valid decimal number
+  // Allows: "123", "123.456", "0.123", ".123" (normalized to "0.123")
   if (!/^\d+\.?\d*$/.test(sanitizedAmount)) {
     throw new Error(`Invalid amount format: "${amount}". Expected a decimal number.`);
   }

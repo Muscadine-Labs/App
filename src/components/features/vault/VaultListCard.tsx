@@ -22,7 +22,11 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
     const [isMounted, setIsMounted] = useState(false);
     
     useEffect(() => {
-        setIsMounted(true);
+        // Defer mount state update to avoid setState-in-effect warning
+        const timeoutId = setTimeout(() => {
+            setIsMounted(true);
+        }, 0);
+        return () => clearTimeout(timeoutId);
     }, []);
     
     const { getVaultData, isLoading } = useVaultData();

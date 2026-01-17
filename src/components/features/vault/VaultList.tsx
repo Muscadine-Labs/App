@@ -3,7 +3,7 @@ import VaultListCard from "./VaultListCard";
 import { Vault } from "../../../types/vault";
 import { useWallet } from "../../../contexts/WalletContext";
 import { useVaultVersion } from "../../../contexts/VaultVersionContext";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 
 interface VaultListProps {
     onVaultSelect?: (vault: Vault | null) => void;
@@ -13,11 +13,22 @@ interface VaultListProps {
 export default function VaultList({ onVaultSelect, selectedVaultAddress }: VaultListProps = {} as VaultListProps) {
     const { morphoHoldings } = useWallet();
     const { version } = useVaultVersion();
+    const [isMounted, setIsMounted] = useState(false);
     
-    // Sort vaults by user position (highest to lowest) - use RPC positions from WalletContext
-    const sortedVaults = useMemo(() => {
-        const vaults: Vault[] = Object.values(VAULTS)
-            .filter((vault) => version === 'all' || vault.version === version) // Filter by selected version
+    useEffect(() => {
+        // Defer mount state update to avoid setState-in-effect warning
+        const timeoutId = setTimeout(() => {
+            setIsMounted(true);
+        }, 0);
+        return () => clearTimeout(timeoutId);
+    }, []);
+    
+    // Get base vault list (stable order for SSR - use 'v1' during SSR to prevent hydration mismatch)
+    // After mount, use actual version from context
+    const effectiveVersion = isMounted ? version : 'v1';
+    const baseVaults = useMemo(() => {
+        return Object.values(VAULTS)
+            .filter((vault) => effectiveVersion === 'all' || vault.version === effectiveVersion)
             .map((vault) => ({
                 address: vault.address,
                 name: vault.name,
@@ -25,9 +36,23 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
                 chainId: vault.chainId,
                 version: vault.version,
             }));
-
+    }, [effectiveVersion]);
+    
+    // Sort vaults by user position (highest to lowest) - only after mount to prevent hydration mismatch
+    const sortedVaults = useMemo(() => {
+        // Always return stable order during SSR/initial render (before mount)
+        if (!isMounted) {
+            return baseVaults;
+        }
+        
+        // Only sort after mount when we have client-side data
+        // Use positions length as additional check to ensure data is loaded
+        if (!morphoHoldings.positions || morphoHoldings.positions.length === 0) {
+            return baseVaults;
+        }
+        
         // Calculate position value for each vault and sort
-        return vaults.sort((a, b) => {
+        return [...baseVaults].sort((a, b) => {
             // Use RPC positions from WalletContext (already calculated with balanceOf + convertToAssets)
             const positionA = morphoHoldings.positions.find(
                 pos => pos.vault.address.toLowerCase() === a.address.toLowerCase()
@@ -48,7 +73,7 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
             // Sort descending (highest to lowest)
             return valueB - valueA;
         });
-    }, [morphoHoldings.positions, version]);
+    }, [baseVaults, isMounted, morphoHoldings.positions]);
 
     // Legacy support: if onVaultSelect is provided, use it
     // Otherwise, VaultListCard will handle navigation directly
