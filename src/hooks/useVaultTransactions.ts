@@ -288,19 +288,34 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
         const destVault = getAddress(destinationVault);
         
         // First, withdraw from source vault
-        // Convert assets to shares for withdrawal
+        // Use previewWithdraw for accurate share calculation (accounts for fees/slippage)
         if (!publicClient) {
           throw new Error('Public client not available');
         }
         
         let sharesBigInt: bigint;
         try {
-          sharesBigInt = await publicClient.readContract({
-            address: normalizedVault,
-            abi: VAULT_ASSET_ABI,
-            functionName: 'convertToShares',
-            args: [amountBigInt],
-          });
+          // Try previewWithdraw first (more accurate, accounts for actual vault state)
+          try {
+            sharesBigInt = await publicClient.readContract({
+              address: normalizedVault,
+              abi: VAULT_ASSET_ABI,
+              functionName: 'previewWithdraw',
+              args: [amountBigInt],
+            });
+          } catch (previewError) {
+            // Fallback to convertToShares if previewWithdraw is not available
+            logger.warn('previewWithdraw not available for transfer, falling back to convertToShares', {
+              vault: normalizedVault,
+              error: previewError instanceof Error ? previewError.message : String(previewError),
+            });
+            sharesBigInt = await publicClient.readContract({
+              address: normalizedVault,
+              abi: VAULT_ASSET_ABI,
+              functionName: 'convertToShares',
+              args: [amountBigInt],
+            });
+          }
         } catch {
           throw new Error('Failed to convert assets to shares. Please try again.');
         }
@@ -657,23 +672,20 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
         }
         
         // Add WETH unwrap operation to bundle if withdrawing to ETH
-        // Flow: Withdraw shares → Receive WETH → Unwrap WETH to ETH
+        // Flow: Withdraw shares → Receive WETH → Unwrap all WETH to ETH (no dust)
         if (isWethVault && preferredAsset === 'ETH') {
-          // Unwrap the amount calculated from previewRedeem
-          // This is the exact amount that will be received from the withdrawal
-          const wethAmountToUnwrap = actualAssetsToWithdraw;
-          
-          if (wethAmountToUnwrap > BigInt(0)) {
-            inputOperations.push({
-              type: 'Erc20_Unwrap',
-              address: BASE_WETH_ADDRESS,
-              sender: userAddress,
-              args: {
-                amount: wethAmountToUnwrap,
-                receiver: userAddress,
-              },
-            });
-          }
+          // Use MaxUint256 to unwrap the full WETH balance
+          // This ensures we unwrap all WETH received from withdrawal, eliminating dust
+          // The bundler SDK interprets MaxUint256 as "unwrap as much as possible"
+          inputOperations.push({
+            type: 'Erc20_Unwrap',
+            address: BASE_WETH_ADDRESS,
+            sender: userAddress,
+            args: {
+              amount: maxUint256, // Unwrap full balance (no dust)
+              receiver: userAddress,
+            },
+          });
         }
       }
 
