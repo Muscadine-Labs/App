@@ -19,13 +19,15 @@ export default function VaultPage() {
   const router = useRouter();
   const address = (params?.address as string) || '';
   const [activeTab, setActiveTab] = useState<string>('position');
-
-  // Redirect safety tab to position if somehow accessed
-  useEffect(() => {
-    if (activeTab === 'safety') {
+  
+  // Wrapper to prevent safety tab from being set
+  const handleTabChange = (tab: string) => {
+    if (tab === 'safety') {
       setActiveTab('position');
+    } else {
+      setActiveTab(tab);
     }
-  }, [activeTab]);
+  };
   const [tabContentHeight, setTabContentHeight] = useState<string>('0px');
   const heroRef = useRef<HTMLDivElement>(null);
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -182,7 +184,7 @@ export default function VaultPage() {
           <div ref={tabsRef} className="flex-shrink-0 -mx-4 sm:-mx-6 md:mx-0">
             <VaultTabs
               activeTab={activeTab}
-              onTabChange={setActiveTab}
+              onTabChange={handleTabChange}
             />
           </div>
 

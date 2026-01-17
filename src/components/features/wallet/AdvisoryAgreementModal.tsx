@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { useAdvisoryAgreement } from '@/contexts/AdvisoryAgreementContext';
@@ -12,16 +12,23 @@ export function AdvisoryAgreementModal() {
     risks: false,
     jurisdiction: false,
   });
+  const prevModalOpenRef = useRef(false);
 
-  // Reset checkboxes when modal opens
+  // Reset checkboxes when modal opens (using ref to track previous state)
   useEffect(() => {
-    if (shouldShowModal) {
-      setCheckboxes({
-        agreement: false,
-        risks: false,
-        jurisdiction: false,
-      });
+    if (shouldShowModal && !prevModalOpenRef.current) {
+      // Modal just opened - reset checkboxes asynchronously to avoid setState in effect
+      const timeoutId = setTimeout(() => {
+        setCheckboxes({
+          agreement: false,
+          risks: false,
+          jurisdiction: false,
+        });
+      }, 0);
+      prevModalOpenRef.current = shouldShowModal;
+      return () => clearTimeout(timeoutId);
     }
+    prevModalOpenRef.current = shouldShowModal;
   }, [shouldShowModal]);
 
   const allChecked = checkboxes.agreement && checkboxes.risks && checkboxes.jurisdiction;
