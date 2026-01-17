@@ -7,7 +7,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { getVaultRoute } from '../../../lib/vault-utils';
 import { useAccount, useReadContract } from 'wagmi';
 import { Skeleton } from '../../../components/ui/Skeleton';
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { usePrices } from '../../../contexts/PriceContext';
 import { ERC20_BALANCE_ABI, ERC4626_ABI } from '../../../lib/abis';
 
@@ -18,6 +18,13 @@ interface VaultListCardProps {
 }
 
 export default function VaultListCard({ vault, onClick, isSelected }: VaultListCardProps) {
+    // Prevent hydration mismatch by ensuring client-only hooks don't affect initial render
+    const [isMounted, setIsMounted] = useState(false);
+    
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+    
     const { getVaultData, isLoading } = useVaultData();
     const { morphoHoldings } = useWallet();
     const { address } = useAccount();
@@ -28,8 +35,9 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
     const loading = isLoading(vault.address);
     
     // Check if this vault is active based on the current route
+    // Only check pathname after mount to prevent hydration mismatch
     const vaultRoute = getVaultRoute(vault.address);
-    const isActive = pathname === vaultRoute || isSelected;
+    const isActive = isMounted && (pathname === vaultRoute || isSelected);
 
     // Get shares using balanceOf
     const { data: sharesRaw } = useReadContract({
@@ -182,7 +190,7 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
             <div className="flex flex-row md:flex-row items-start md:items-center justify-between md:justify-end gap-4 md:gap-6 w-full md:w-auto md:flex-1">
                 {/* Your Position Column - Token balance on top, USD below */}
                 <div className="text-left md:text-right w-auto md:min-w-[140px]">
-                    {loading || morphoHoldings.isLoading || (address && !vaultData) ? (
+                    {!isMounted || loading || morphoHoldings.isLoading || (address && !vaultData) ? (
                         <div className="flex flex-col md:items-end gap-1.5">
                             <Skeleton width="5rem" height="1rem" />
                             <Skeleton width="4rem" height="0.875rem" />
@@ -203,7 +211,7 @@ export default function VaultListCard({ vault, onClick, isSelected }: VaultListC
                 
                 {/* APY and TVL - Stacked on mobile, side by side with Position */}
                 <div className="text-right md:text-right w-auto md:min-w-[120px] flex-shrink-0">
-                    {loading || !vaultData ? (
+                    {!isMounted || loading || !vaultData ? (
                         <div className="flex flex-col items-end md:items-end gap-1.5">
                             <Skeleton width="4rem" height="1rem" />
                             <Skeleton width="3rem" height="0.875rem" />
