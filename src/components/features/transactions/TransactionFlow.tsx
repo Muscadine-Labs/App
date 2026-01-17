@@ -5,9 +5,10 @@ import { useWaitForTransactionReceipt, useReadContract, useWalletClient, usePubl
 import { formatUnits, type Address } from 'viem';
 import { VaultAccount } from '@/types/vault';
 import { useTransactionState } from '@/contexts/TransactionContext';
-import { useVaultTransactions, TransactionProgressStep } from '@/hooks/useVaultTransactions';
+import { useVaultTransactions } from '@/hooks/useVaultTransactions';
+import type { TransactionProgressStep } from '@/types/transactions';
 import { isCancellationError, formatTransactionError } from '@/lib/transactionUtils';
-import { depositToVaultV2, withdrawFromVaultV2, redeemFromVaultV2, TransactionProgressStep as V2TransactionProgressStep } from '@/lib/transactionUtilsV2';
+import { depositToVaultV2, withdrawFromVaultV2, redeemFromVaultV2 } from '@/lib/transactionUtilsV2';
 import { TransactionConfirmation } from './TransactionConfirmation';
 import { TransactionStatus as TransactionStatusComponent } from './TransactionStatus';
 import { useToast } from '@/contexts/ToastContext';
@@ -298,7 +299,7 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
         timestamp: new Date().toISOString(),
       });
       
-      const onProgress = (step: TransactionProgressStep | V2TransactionProgressStep) => {
+      const onProgress = (step: TransactionProgressStep) => {
         if (step.type === 'confirming' && step.txHash) {
           logger.info('Transaction sent, waiting for confirmation', {
             txHash: step.txHash,
@@ -347,12 +348,13 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
 
       // Use v2 transaction functions for v2 vaults, otherwise use bundler (v1)
       if (isV2Transaction) {
-        // Type assertion needed because wagmi's usePublicClient/useWalletClient return types
-        // that are compatible but TypeScript can't infer the exact match
+        // Note: Wagmi's usePublicClient/useWalletClient return types are compatible
+        // with viem's PublicClient and WalletClient, but TypeScript may show errors
+        // due to transaction type variations in different viem versions
         if (transactionType === 'deposit') {
           const vaultAddress = (toAccount as VaultAccount).address as Address;
           txHash = await depositToVaultV2(
-            publicClient as any,
+            publicClient as any, // Type assertion needed for viem compatibility
             walletClient as any,
             vaultAddress,
             amount,

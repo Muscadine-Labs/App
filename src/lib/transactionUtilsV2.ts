@@ -5,6 +5,7 @@
 
 import { type Address, type PublicClient, type WalletClient, parseUnits, formatUnits, getAddress } from 'viem';
 import { BASE_WETH_ADDRESS } from './constants';
+import type { TransactionProgressCallback } from '../types/transactions';
 
 // ERC20 ABI for approvals and balance checks
 const ERC20_ABI = [
@@ -142,13 +143,6 @@ const WETH_ABI = [
     outputs: [],
   },
 ] as const;
-
-export type TransactionProgressStep = 
-  | { type: 'signing'; stepIndex: number; totalSteps: number; stepLabel: string }
-  | { type: 'approving'; stepIndex: number; totalSteps: number; stepLabel: string; contractAddress: string; txHash?: string }
-  | { type: 'confirming'; stepIndex: number; totalSteps: number; stepLabel: string; txHash: string };
-
-export type TransactionProgressCallback = (step: TransactionProgressStep) => void;
 
 /**
  * Parse and validate amount string, converting to bigint

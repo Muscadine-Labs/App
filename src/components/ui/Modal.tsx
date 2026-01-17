@@ -66,12 +66,15 @@ export function Modal({
       <div 
         className="relative w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] bg-[var(--surface)] rounded-lg sm:rounded-2xl shadow-xl border border-[var(--border)] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? 'modal-title' : undefined}
       >
         {/* Header */}
         {(title || showCloseButton) && (
           <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-[var(--border-subtle)]">
             {title && (
-              <h2 className="text-lg sm:text-xl font-semibold text-[var(--foreground)]">
+              <h2 id="modal-title" className="text-lg sm:text-xl font-semibold text-[var(--foreground)]">
                 {title}
               </h2>
             )}
