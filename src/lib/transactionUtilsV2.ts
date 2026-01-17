@@ -144,6 +144,10 @@ const WETH_ABI = [
   },
 ] as const;
 
+// Gas reserve to keep ETH for transaction fees (0.0001 ETH = 100,000,000,000,000 wei)
+// This can be tuned based on gas estimation if needed
+const gasReserveWei = parseUnits('0.0001', 18);
+
 /**
  * Parse and validate amount string, converting to bigint
  * Truncates decimals if user enters more than assetDecimals
@@ -166,6 +170,16 @@ function parseAmount(amount: string, decimals: number): bigint {
   const parts = sanitizedAmount.split('.');
   const integerPart = parts[0] || '0';
   const decimalPart = parts[1] || '';
+
+  // Special case for 0-decimal assets (e.g., whole tokens only)
+  if (decimals === 0) {
+    // Check if decimalPart contains any non-zero digit
+    if (decimalPart && /[1-9]/.test(decimalPart)) {
+      throw new Error(`Fractional input not allowed for 0-decimal assets. Received: "${amount}"`);
+    }
+    // Use just integerPart (no decimal point) for 0-decimal assets
+    return parseUnits(integerPart, 0);
+  }
 
   // Truncate decimals if user entered more than allowed
   const truncatedDecimal = decimalPart.slice(0, decimals);
@@ -540,14 +554,20 @@ export async function depositToVaultV2(
       address: userAddress,
     });
 
+    // Reserve ETH for gas fees - clamp to zero if availableEth is less than reserve
+    const availableEthAfterReserve = availableEth > gasReserveWei 
+      ? availableEth - gasReserveWei 
+      : BigInt(0);
+
     const assetPreference = preferredAsset || 'ALL';
 
     if (assetPreference === 'ETH') {
-      if (amountBigInt > availableEth) {
+      if (amountBigInt > availableEthAfterReserve) {
         throw new Error(
           `Insufficient ETH balance.\n\n` +
           `Requested: ${formatUnits(amountBigInt, 18)} ETH\n` +
-          `Available: ${formatUnits(availableEth, 18)} ETH\n\n` +
+          `Available: ${formatUnits(availableEthAfterReserve, 18)} ETH\n` +
+          `(Reserved ${formatUnits(gasReserveWei, 18)} ETH for gas)\n\n` +
           `Please reduce the amount or add more ETH to your wallet.`
         );
       }
@@ -563,8 +583,8 @@ export async function depositToVaultV2(
       }
       ethToWrap = BigInt(0);
     } else {
-      // ALL: Use both ETH + WETH
-      const totalAvailable = existingWeth + availableEth;
+      // ALL: Use both ETH + WETH (with gas reserve)
+      const totalAvailable = existingWeth + availableEthAfterReserve;
       if (amountBigInt > totalAvailable) {
         throw new Error(
           `Insufficient balance for WETH vault deposit.\n\n` +
@@ -572,11 +592,18 @@ export async function depositToVaultV2(
           `Available: ${formatUnits(totalAvailable, 18)} WETH\n\n` +
           `Breakdown:\n` +
           `  • Existing WETH: ${formatUnits(existingWeth, 18)} WETH\n` +
-          `  • Wrappable ETH: ${formatUnits(availableEth, 18)} ETH\n\n` +
+          `  • Wrappable ETH: ${formatUnits(availableEthAfterReserve, 18)} ETH\n` +
+          `  • Reserved for gas: ${formatUnits(gasReserveWei, 18)} ETH\n\n` +
           `Please reduce the amount or add more funds to your wallet.`
         );
       }
-      ethToWrap = amountBigInt > existingWeth ? amountBigInt - existingWeth : BigInt(0);
+      // Compute ethToWrap = max(0, amountBigInt - existingWeth) but capped to availableEthAfterReserve
+      const ethNeeded = amountBigInt > existingWeth ? amountBigInt - existingWeth : BigInt(0);
+      ethToWrap = ethNeeded > availableEthAfterReserve ? availableEthAfterReserve : ethNeeded;
+      // Clamp to zero to ensure no negative values
+      ethToWrap = ethToWrap < BigInt(0) ? BigInt(0) : ethToWrap;
+      // Clamp to zero to ensure no negative values
+      ethToWrap = ethToWrap < BigInt(0) ? BigInt(0) : ethToWrap;
     }
   }
 

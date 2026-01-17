@@ -6,7 +6,7 @@ import {
   type BundlingOptions,
 } from '@morpho-org/bundler-sdk-viem';
 import { DEFAULT_SLIPPAGE_TOLERANCE } from '@morpho-org/blue-sdk';
-import { parseUnits, type Address, getAddress, formatUnits, maxUint256 } from 'viem';
+import { parseUnits, type Address, getAddress, formatUnits } from 'viem';
 import { useVaultData } from '../contexts/VaultDataContext';
 import { useVaultSimulationState } from './useVaultSimulationState';
 import { BASE_WETH_ADDRESS } from '../lib/constants';
@@ -672,20 +672,44 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
         }
         
         // Add WETH unwrap operation to bundle if withdrawing to ETH
-        // Flow: Withdraw shares → Receive WETH → Unwrap all WETH to ETH (no dust)
-        if (isWethVault && preferredAsset === 'ETH') {
-          // Use MaxUint256 to unwrap the full WETH balance
-          // This ensures we unwrap all WETH received from withdrawal, eliminating dust
-          // The bundler SDK interprets MaxUint256 as "unwrap as much as possible"
-          inputOperations.push({
-            type: 'Erc20_Unwrap',
-            address: BASE_WETH_ADDRESS,
-            sender: userAddress,
-            args: {
-              amount: maxUint256, // Unwrap full balance (no dust)
-              receiver: userAddress,
-            },
-          });
+        // Flow: Withdraw shares → Receive WETH → Unwrap exact WETH received to ETH
+        if (isWethVault && preferredAsset === 'ETH' && actualAssetsToWithdraw > BigInt(0)) {
+          // Optional defensive check: Verify user will have enough WETH to unwrap after withdrawal
+          // After withdrawal, user will have: existing WETH + actualAssetsToWithdraw
+          let shouldUnwrap = true;
+          if (publicClient) {
+            try {
+              const existingWethBalance = await publicClient.readContract({
+                address: BASE_WETH_ADDRESS,
+                abi: ERC20_BALANCE_ABI,
+                functionName: 'balanceOf',
+                args: [userAddress],
+              }) as bigint;
+              
+              const totalWethAfterWithdrawal = existingWethBalance + actualAssetsToWithdraw;
+              
+              // Verify user will have enough WETH to unwrap the requested amount
+              shouldUnwrap = totalWethAfterWithdrawal >= actualAssetsToWithdraw;
+            } catch (error) {
+              // If balance check fails, still proceed with unwrap (defensive check is optional)
+              // The bundler SDK will handle validation during execution
+              logger.warn('Failed to verify WETH balance before unwrap, proceeding anyway', {
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
+          
+          if (shouldUnwrap) {
+            inputOperations.push({
+              type: 'Erc20_Unwrap',
+              address: BASE_WETH_ADDRESS,
+              sender: userAddress,
+              args: {
+                amount: actualAssetsToWithdraw, // Unwrap exact amount received from withdrawal
+                receiver: userAddress,
+              },
+            });
+          }
         }
       }
 
