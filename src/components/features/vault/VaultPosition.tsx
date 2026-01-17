@@ -521,7 +521,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                     vaultData.symbol,
                     { 
                       minimumFractionDigits: 0,
-                      maximumFractionDigits: (vaultData.symbol === 'WETH' || vaultData.symbol === 'cbBTC') ? 8 : undefined
+                      maximumFractionDigits: (['WETH', 'CBBTC', 'CBTC'].includes(vaultData.symbol.toUpperCase())) ? 8 : undefined
                     }
                   )}
                 </p>

@@ -241,9 +241,11 @@ export function formatAssetBalance(
   }
   
   // Format with calculated precision using formatNumber to get comma separators
+  // Clamp precision to 20 to avoid Intl.RangeError (Intl.NumberFormat max is 20)
+  const safePrecision = Math.min(precision, 20);
   const formatted = formatNumber(numValue, {
     minimumFractionDigits: 0,
-    maximumFractionDigits: precision,
+    maximumFractionDigits: safePrecision,
   });
   
   // Remove trailing zeros, but keep at least one digit after decimal if there was a decimal point
