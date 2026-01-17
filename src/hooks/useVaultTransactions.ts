@@ -6,7 +6,7 @@ import {
   type BundlingOptions,
 } from '@morpho-org/bundler-sdk-viem';
 import { DEFAULT_SLIPPAGE_TOLERANCE } from '@morpho-org/blue-sdk';
-import { parseUnits, type Address, getAddress, formatUnits } from 'viem';
+import { parseUnits, type Address, getAddress, formatUnits, maxUint256 } from 'viem';
 import { useVaultData } from '../contexts/VaultDataContext';
 import { useVaultSimulationState } from './useVaultSimulationState';
 import { BASE_WETH_ADDRESS } from '../lib/constants';
@@ -27,6 +27,27 @@ const VAULT_ASSET_ABI = [
   {
     inputs: [{ internalType: 'uint256', name: 'assets', type: 'uint256' }],
     name: 'convertToShares',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'uint256', name: 'shares', type: 'uint256' }],
+    name: 'convertToAssets',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'uint256', name: 'shares', type: 'uint256' }],
+    name: 'previewRedeem',
+    outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ internalType: 'uint256', name: 'assets', type: 'uint256' }],
+    name: 'previewWithdraw',
     outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
     stateMutability: 'view',
     type: 'function',
@@ -436,30 +457,43 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
         if (useSharesForWithdraw) {
           // For withdrawAll/MAX: Redeem all shares → Calculate exact WETH received → Unwrap to ETH
           // Step 1: Calculate the EXACT amount of WETH that will be received when redeeming all shares
-          // This uses convertToAssets to account for any rounding in the vault's share calculations
+          // Use previewRedeem for more accurate calculation (accounts for fees/slippage)
+          // Falls back to convertToAssets if previewRedeem is not available
           // For WETH vaults, this ensures we unwrap exactly what we receive (no dust)
           try {
-            actualAssetsToWithdraw = await publicClient!.readContract({
-              address: normalizedVault,
-              abi: [
-                {
-                  inputs: [{ internalType: 'uint256', name: 'shares', type: 'uint256' }],
-                  name: 'convertToAssets',
-                  outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
-                  stateMutability: 'view',
-                  type: 'function',
-                },
-              ],
-              functionName: 'convertToAssets',
-              args: [amountBigInt], // amountBigInt = all user shares for withdrawAll
-            });
-            logger.info('Calculated exact WETH amount for withdrawAll', {
-              vault: normalizedVault,
-              shares: amountBigInt.toString(),
-              wethToReceive: actualAssetsToWithdraw.toString(),
-            });
+            // Try previewRedeem first (more accurate, accounts for actual vault state)
+            try {
+              actualAssetsToWithdraw = await publicClient!.readContract({
+                address: normalizedVault,
+                abi: VAULT_ASSET_ABI,
+                functionName: 'previewRedeem',
+                args: [amountBigInt], // amountBigInt = all user shares for withdrawAll
+              });
+              logger.info('Calculated exact WETH amount for withdrawAll using previewRedeem', {
+                vault: normalizedVault,
+                shares: amountBigInt.toString(),
+                wethToReceive: actualAssetsToWithdraw.toString(),
+              });
+            } catch (previewError) {
+              // Fallback to convertToAssets if previewRedeem is not available
+              logger.warn('previewRedeem not available, falling back to convertToAssets', {
+                vault: normalizedVault,
+                error: previewError instanceof Error ? previewError.message : String(previewError),
+              });
+              actualAssetsToWithdraw = await publicClient!.readContract({
+                address: normalizedVault,
+                abi: VAULT_ASSET_ABI,
+                functionName: 'convertToAssets',
+                args: [amountBigInt],
+              });
+              logger.info('Calculated WETH amount for withdrawAll using convertToAssets (fallback)', {
+                vault: normalizedVault,
+                shares: amountBigInt.toString(),
+                wethToReceive: actualAssetsToWithdraw.toString(),
+              });
+            }
           } catch (error) {
-            logger.error('Failed to convert shares to assets for withdrawAll', error, {
+            logger.error('Failed to calculate assets for withdrawAll', error, {
               vault: normalizedVault,
               shares: amountBigInt.toString(),
             });
@@ -495,39 +529,78 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
           }) as bigint;
           
           // Step 2: Convert requested assets to shares (what we'll redeem)
+          // Use previewWithdraw for more accurate share calculation (accounts for fees/slippage)
+          // Falls back to convertToShares if previewWithdraw is not available
           let sharesBigInt: bigint;
           try {
-            sharesBigInt = await publicClient.readContract({
-              address: normalizedVault,
-              abi: VAULT_ASSET_ABI,
-              functionName: 'convertToShares',
-              args: [amountBigInt], // User's requested asset amount
-            });
+            // Try previewWithdraw first (more accurate, accounts for actual vault state)
+            try {
+              sharesBigInt = await publicClient.readContract({
+                address: normalizedVault,
+                abi: VAULT_ASSET_ABI,
+                functionName: 'previewWithdraw',
+                args: [amountBigInt], // User's requested asset amount
+              });
+              logger.info('Calculated shares for regular withdraw using previewWithdraw', {
+                vault: normalizedVault,
+                requestedAssets: amountBigInt.toString(),
+                sharesToRedeem: sharesBigInt.toString(),
+              });
+            } catch (previewError) {
+              // Fallback to convertToShares if previewWithdraw is not available
+              logger.warn('previewWithdraw not available, falling back to convertToShares', {
+                vault: normalizedVault,
+                error: previewError instanceof Error ? previewError.message : String(previewError),
+              });
+              sharesBigInt = await publicClient.readContract({
+                address: normalizedVault,
+                abi: VAULT_ASSET_ABI,
+                functionName: 'convertToShares',
+                args: [amountBigInt],
+              });
+            }
             
-            // Step 3: Convert shares back to assets to get the EXACT amount of WETH that will be received
-            // This accounts for any rounding differences in the vault's share calculations
+            // Step 3: Calculate the EXACT amount of WETH that will be received
+            // Use previewRedeem for more accurate calculation (accounts for fees/slippage)
+            // Falls back to convertToAssets if previewRedeem is not available
             // For WETH vaults, this ensures we unwrap exactly what we receive (no dust)
-            actualAssetsToWithdraw = await publicClient.readContract({
-              address: normalizedVault,
-              abi: [
-                {
-                  inputs: [{ internalType: 'uint256', name: 'shares', type: 'uint256' }],
-                  name: 'convertToAssets',
-                  outputs: [{ internalType: 'uint256', name: '', type: 'uint256' }],
-                  stateMutability: 'view',
-                  type: 'function',
-                },
-              ],
-              functionName: 'convertToAssets',
-              args: [sharesBigInt], // Convert back to get exact WETH amount
-            });
-            logger.info('Calculated exact WETH amount for regular withdraw', {
+            try {
+              actualAssetsToWithdraw = await publicClient.readContract({
+                address: normalizedVault,
+                abi: VAULT_ASSET_ABI,
+                functionName: 'previewRedeem',
+                args: [sharesBigInt], // Shares that will be redeemed
+              });
+              logger.info('Calculated exact WETH amount for regular withdraw using previewRedeem', {
+                vault: normalizedVault,
+                requestedAssets: amountBigInt.toString(),
+                sharesToRedeem: sharesBigInt.toString(),
+                wethToReceive: actualAssetsToWithdraw.toString(),
+              });
+            } catch (previewError) {
+              // Fallback to convertToAssets if previewRedeem is not available
+              logger.warn('previewRedeem not available, falling back to convertToAssets', {
+                vault: normalizedVault,
+                error: previewError instanceof Error ? previewError.message : String(previewError),
+              });
+              actualAssetsToWithdraw = await publicClient.readContract({
+                address: normalizedVault,
+                abi: VAULT_ASSET_ABI,
+                functionName: 'convertToAssets',
+                args: [sharesBigInt],
+              });
+              logger.info('Calculated WETH amount for regular withdraw using convertToAssets (fallback)', {
+                vault: normalizedVault,
+                requestedAssets: amountBigInt.toString(),
+                sharesToRedeem: sharesBigInt.toString(),
+                wethToReceive: actualAssetsToWithdraw.toString(),
+              });
+            }
+          } catch (error) {
+            logger.error('Failed to convert assets to shares or calculate withdrawal amount', error, {
               vault: normalizedVault,
               requestedAssets: amountBigInt.toString(),
-              sharesToRedeem: sharesBigInt.toString(),
-              wethToReceive: actualAssetsToWithdraw.toString(),
             });
-          } catch {
             throw new Error('Failed to convert assets to shares. Please try again.');
           }
           
@@ -584,52 +657,21 @@ export function useVaultTransactions(vaultAddress?: string, enabled: boolean = t
         }
         
         // Add WETH unwrap operation to bundle if withdrawing to ETH
-        // Flow: Withdraw shares → Receive WETH → Unwrap exact WETH amount to ETH (no dust)
-        // IMPORTANT: Add unwrap AFTER withdrawal so it executes after WETH is received
-        // Use isWethVault which is already defined earlier in this function scope (line 182)
+        // Flow: Withdraw shares → Receive WETH → Unwrap WETH to ETH
         if (isWethVault && preferredAsset === 'ETH') {
-          // Unwrap the EXACT amount of WETH that will be received from the withdrawal
-          // This amount was calculated using convertToAssets(shares) to match on-chain rounding
-          // For withdrawAll: actualAssetsToWithdraw = convertToAssets(allShares)
-          // For regular withdraw: actualAssetsToWithdraw = convertToAssets(convertToShares(amount))
-          // This ensures we unwrap exactly what we receive, leaving no dust
+          // Unwrap the amount calculated from previewRedeem
+          // This is the exact amount that will be received from the withdrawal
           const wethAmountToUnwrap = actualAssetsToWithdraw;
           
-          logger.info('Preparing WETH unwrap for bundle', {
-            vault: normalizedVault,
-            action,
-            useSharesForWithdraw,
-            sharesAmount: amountBigInt.toString(),
-            calculatedWethAmount: wethAmountToUnwrap.toString(),
-          });
-          
-          // Only add unwrap operation if we have a valid amount
           if (wethAmountToUnwrap > BigInt(0)) {
-            // Add unwrap operation AFTER withdrawal in the operations array
-            // The bundler will execute them atomically in sequence:
-            // 1. Withdraw shares → Receive WETH
-            // 2. Unwrap exact WETH amount → Receive ETH
-            // This ensures no WETH dust remains
             inputOperations.push({
               type: 'Erc20_Unwrap',
               address: BASE_WETH_ADDRESS,
               sender: userAddress,
               args: {
-                amount: wethAmountToUnwrap, // Exact amount received from withdrawal
+                amount: wethAmountToUnwrap,
                 receiver: userAddress,
               },
-            });
-            logger.info('Added WETH unwrap to bundle', {
-              vault: normalizedVault,
-              amountToUnwrap: wethAmountToUnwrap.toString(),
-              totalOperations: inputOperations.length,
-            });
-          } else {
-            // Log a warning if unwrap amount is zero (shouldn't happen in normal flow)
-            logger.warn('WETH unwrap skipped: calculated amount is zero', {
-              vault: normalizedVault,
-              action,
-              useSharesForWithdraw,
             });
           }
         }
