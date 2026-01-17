@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 
 const TERMS_VERSION = '1.0.0'; // Increment this when terms change to force re-acceptance
 const STORAGE_KEY = 'advisory-agreement-accepted';
@@ -26,33 +26,19 @@ interface AdvisoryAgreementContextType {
 const AdvisoryAgreementContext = createContext<AdvisoryAgreementContextType | undefined>(undefined);
 
 export function AdvisoryAgreementProvider({ children }: { children: React.ReactNode }) {
-  const [isAccepted, setIsAccepted] = useState(false);
-  const [shouldShowModal, setShouldShowModal] = useState(false);
-  const [shouldOpenWalletConnect, setShouldOpenWalletConnect] = useState(false);
-  const [isInitialized, setIsInitialized] = useState(false);
-
-  // Load acceptance state from localStorage on mount
-  useEffect(() => {
+  // Use lazy initialization to avoid setState in effect and prevent SSR issues
+  const [isAccepted, setIsAccepted] = useState(() => {
+    if (typeof window === 'undefined') return false;
     try {
       const storedAccepted = localStorage.getItem(STORAGE_KEY);
       const storedVersion = localStorage.getItem(VERSION_KEY);
-      
-      if (storedAccepted === 'true' && storedVersion === TERMS_VERSION) {
-        setIsAccepted(true);
-        setShouldShowModal(false);
-      } else {
-        // If version changed or no acceptance found, don't show modal until user clicks connect
-        setIsAccepted(false);
-        setShouldShowModal(false); // Only show when user clicks "Connect Wallet"
-      }
+      return storedAccepted === 'true' && storedVersion === TERMS_VERSION;
     } catch {
-      // If localStorage is not available (SSR), default to not showing modal
-      setIsAccepted(false);
-      setShouldShowModal(false); // Only show when user clicks "Connect Wallet"
-    } finally {
-      setIsInitialized(true);
+      return false;
     }
-  }, []);
+  });
+  const [shouldShowModal, setShouldShowModal] = useState(false);
+  const [shouldOpenWalletConnect, setShouldOpenWalletConnect] = useState(false);
 
   const acceptAgreement = useCallback(() => {
     try {
@@ -109,11 +95,6 @@ export function AdvisoryAgreementProvider({ children }: { children: React.ReactN
     closeModal,
     clearWalletConnectFlag,
   };
-
-  // Don't render children until initialized to prevent flash
-  if (!isInitialized) {
-    return null;
-  }
 
   return (
     <AdvisoryAgreementContext.Provider value={value}>
