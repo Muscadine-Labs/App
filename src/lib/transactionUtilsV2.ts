@@ -5,7 +5,7 @@
 
 import { type Address, type PublicClient, type WalletClient, parseUnits, formatUnits, getAddress } from 'viem';
 import { BASE_WETH_ADDRESS } from './constants';
-import type { TransactionProgressStep, TransactionProgressCallback } from '../types/transactions';
+import type { TransactionProgressCallback } from '../types/transactions';
 
 // ERC20 ABI for approvals and balance checks
 const ERC20_ABI = [

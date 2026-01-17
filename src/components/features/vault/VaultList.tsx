@@ -3,7 +3,7 @@ import VaultListCard from "./VaultListCard";
 import { Vault } from "../../../types/vault";
 import { useWallet } from "../../../contexts/WalletContext";
 import { useVaultVersion } from "../../../contexts/VaultVersionContext";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 
 interface VaultListProps {
     onVaultSelect?: (vault: Vault | null) => void;
@@ -13,11 +13,8 @@ interface VaultListProps {
 export default function VaultList({ onVaultSelect, selectedVaultAddress }: VaultListProps = {} as VaultListProps) {
     const { morphoHoldings } = useWallet();
     const { version } = useVaultVersion();
-    const [isMounted, setIsMounted] = useState(false);
-    
-    useEffect(() => {
-        setIsMounted(true);
-    }, []);
+    // Use function initializer to avoid setState in effect
+    const [isMounted] = useState(() => typeof window !== 'undefined');
     
     // Get base vault list (stable order for SSR - use 'v1' during SSR to prevent hydration mismatch)
     // After mount, use actual version from context
