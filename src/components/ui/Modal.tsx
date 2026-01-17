@@ -48,8 +48,8 @@ export function Modal({
 
   if (!isOpen) return null;
 
-  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (closeOnOverlayClick && e.target === e.currentTarget) {
+  const handleOverlayClick = () => {
+    if (closeOnOverlayClick) {
       onClose();
     }
   };
@@ -63,7 +63,10 @@ export function Modal({
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" />
       
       {/* Modal */}
-      <div className="relative w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] bg-[var(--surface)] rounded-lg sm:rounded-2xl shadow-xl border border-[var(--border)] flex flex-col overflow-hidden">
+      <div 
+        className="relative w-full max-w-2xl max-h-[95vh] sm:max-h-[90vh] bg-[var(--surface)] rounded-lg sm:rounded-2xl shadow-xl border border-[var(--border)] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         {(title || showCloseButton) && (
           <div className="flex items-center justify-between px-4 py-3 sm:px-6 sm:py-4 border-b border-[var(--border-subtle)]">
