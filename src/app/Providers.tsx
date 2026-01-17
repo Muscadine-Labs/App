@@ -17,7 +17,9 @@ import { TransactionProvider } from '../contexts/TransactionContext'
 import { ToastProvider } from '../contexts/ToastContext'
 import { ThemeProvider } from '../contexts/ThemeContext'
 import { VaultVersionProvider } from '../contexts/VaultVersionContext'
+import { AdvisoryAgreementProvider } from '../contexts/AdvisoryAgreementContext'
 import { ErrorBoundary } from '../components/common/ErrorBoundary'
+import { AdvisoryAgreementModal } from '../components/features/wallet/AdvisoryAgreementModal'
 import { logger } from '../lib/logger'
 
 export const client = new ApolloClient({
@@ -59,17 +61,20 @@ export function Providers({ children, initialState }: Props) {
               })}
             >
               <ThemeProvider>
-                <VaultVersionProvider>
-                  <ToastProvider>
-                    <WalletProvider>
-                      <VaultDataProvider>
-                        <TransactionProvider>
-                          {children}
-                        </TransactionProvider>
-                      </VaultDataProvider>
-                    </WalletProvider>
-                  </ToastProvider>
-                </VaultVersionProvider>
+                <AdvisoryAgreementProvider>
+                  <VaultVersionProvider>
+                    <ToastProvider>
+                      <WalletProvider>
+                        <VaultDataProvider>
+                          <TransactionProvider>
+                            <AdvisoryAgreementModal />
+                            {children}
+                          </TransactionProvider>
+                        </VaultDataProvider>
+                      </WalletProvider>
+                    </ToastProvider>
+                  </VaultVersionProvider>
+                </AdvisoryAgreementProvider>
               </ThemeProvider>
             </RainbowKitProvider>
           </QueryClientProvider>
