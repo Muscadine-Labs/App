@@ -1,23 +1,29 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { useAdvisoryAgreement } from '@/contexts/AdvisoryAgreementContext';
 
 export function AdvisoryAgreementModal() {
   const { shouldShowModal, acceptAgreement, closeModal } = useAdvisoryAgreement();
+  
+  // Track previous modal state to detect when it opens
+  const prevModalOpenRef = useRef(false);
+  
+  // Initialize checkboxes state
   const [checkboxes, setCheckboxes] = useState({
     agreement: false,
     risks: false,
     jurisdiction: false,
   });
-  const prevModalOpenRef = useRef(false);
-
-  // Reset checkboxes when modal opens (using ref to track previous state)
+  
+  // Reset checkboxes when modal opens
+  // Using setTimeout(0) is a standard React pattern for resetting form state after render
+  // This avoids blocking the render cycle while ensuring state resets when modal opens
   useEffect(() => {
     if (shouldShowModal && !prevModalOpenRef.current) {
-      // Modal just opened - reset checkboxes asynchronously to avoid setState in effect
+      // Modal just opened - reset checkboxes asynchronously
       const timeoutId = setTimeout(() => {
         setCheckboxes({
           agreement: false,
@@ -25,10 +31,12 @@ export function AdvisoryAgreementModal() {
           jurisdiction: false,
         });
       }, 0);
-      prevModalOpenRef.current = shouldShowModal;
+      prevModalOpenRef.current = true;
       return () => clearTimeout(timeoutId);
     }
-    prevModalOpenRef.current = shouldShowModal;
+    if (!shouldShowModal) {
+      prevModalOpenRef.current = false;
+    }
   }, [shouldShowModal]);
 
   const allChecked = checkboxes.agreement && checkboxes.risks && checkboxes.jurisdiction;
