@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, ReactNode } from 'react';
 
 type VaultVersion = 'v1' | 'v2' | 'all';
 
@@ -14,16 +14,15 @@ const VaultVersionContext = createContext<VaultVersionContextType | undefined>(u
 const VAULT_VERSION_STORAGE_KEY = 'muscadine-vault-version';
 
 export function VaultVersionProvider({ children }: { children: ReactNode }) {
-  // Safe SSR defaults - no localStorage access during render
-  const [version, setVersionState] = useState<VaultVersion>('v1'); // Default to v1
-
-  // Initialize version from localStorage after mount
-  useEffect(() => {
+  // Use lazy initialization to avoid setState in effect
+  const [version, setVersionState] = useState<VaultVersion>(() => {
+    if (typeof window === 'undefined') return 'v1';
     const stored = localStorage.getItem(VAULT_VERSION_STORAGE_KEY) as VaultVersion | null;
     if (stored && (stored === 'v1' || stored === 'v2' || stored === 'all')) {
-      setVersionState(stored);
+      return stored;
     }
-  }, []); // Run only once on mount
+    return 'v1';
+  });
 
   // Persist version to localStorage
   const setVersion = (newVersion: VaultVersion) => {
