@@ -209,7 +209,7 @@ async function ensureApproval(
   }
 
   let needsReset = false;
-  // Handle USDT-style ERC20s: if allowance > 0 && allowance < amount, reset to 0 first
+  // Handle USDC-style ERC20s: if allowance > 0 && allowance < amount, reset to 0 first
   if (allowance > BigInt(0) && allowance < amount) {
     needsReset = true;
     onProgress?.({
