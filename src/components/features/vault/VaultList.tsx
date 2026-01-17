@@ -3,7 +3,7 @@ import VaultListCard from "./VaultListCard";
 import { Vault } from "../../../types/vault";
 import { useWallet } from "../../../contexts/WalletContext";
 import { useVaultVersion } from "../../../contexts/VaultVersionContext";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 
 interface VaultListProps {
     onVaultSelect?: (vault: Vault | null) => void;
@@ -13,8 +13,12 @@ interface VaultListProps {
 export default function VaultList({ onVaultSelect, selectedVaultAddress }: VaultListProps = {} as VaultListProps) {
     const { morphoHoldings } = useWallet();
     const { version } = useVaultVersion();
-    // Use function initializer to avoid setState in effect
-    const [isMounted] = useState(() => typeof window !== 'undefined');
+    // Initialize as false to ensure SSR/client match, then set to true after mount
+    const [isMounted, setIsMounted] = useState(false);
+    
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
     
     // Get base vault list (stable order for SSR - use 'v1' during SSR to prevent hydration mismatch)
     // After mount, use actual version from context
@@ -100,17 +104,16 @@ export default function VaultList({ onVaultSelect, selectedVaultAddress }: Vault
                     <div className="md:hidden w-full px-2 pb-2 border-b border-[var(--border)] mb-0">
                         <h1 className="text-md text-left text-[var(--foreground)]">Available Vaults</h1>
                     </div>
-                    <div className="flex flex-col items-start justify-start w-full h-full overflow-y-auto pt-0">
-                        {sortedVaults.map((vault, index) => (
-                            <div key={`${vault.address}-${index}`} className="w-full">
+                    {/* Note: Brave browser extensions may modify DOM before React hydration, causing hydration warnings.
+                        This is expected behavior and doesn't affect functionality. The component is designed to handle this. */}
+                    <div className="flex flex-col items-start justify-start w-full h-full overflow-y-auto pt-0 [&>div:not(:last-child)]:border-b [&>div:not(:last-child)]:border-[var(--border)]">
+                        {sortedVaults.map((vault) => (
+                            <div key={vault.address} className="w-full">
                                 <VaultListCard 
                                     vault={vault} 
                                     onClick={handleVaultClick}
                                     isSelected={selectedVaultAddress ? vault.address === selectedVaultAddress : undefined}
                                 />
-                                {index < sortedVaults.length - 1 && (
-                                    <div className="w-full h-px bg-[var(--border)]"></div>
-                                )}
                             </div>
                         ))}
                     </div>
