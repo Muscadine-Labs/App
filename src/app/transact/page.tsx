@@ -16,9 +16,7 @@ import { Button } from '@/components/ui';
 import { Icon } from '@/components/ui/Icon';
 import { formatUnits } from 'viem';
 import { ERC4626_ABI } from '@/lib/abis';
-
-// cbBTC token address on Base
-const CBBTC_ADDRESS = '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf';
+import { TOKEN_ADDRESSES_LOWER, type TokenBalance } from '@/contexts/WalletContext';
 
 // Helper function to get asset decimals from vault symbol (no API needed)
 const getAssetDecimals = (symbol: string): number => {
@@ -32,6 +30,26 @@ const getAssetDecimals = (symbol: string): number => {
     return 18;
   }
   return 18; // Default to 18 for other tokens
+};
+
+// Helper function to find token by symbol using address-based matching for reliability
+// Note: wstETH and cbETH are intentionally excluded - only shown in wallet overview
+const findTokenBySymbol = (
+  symbol: string,
+  tokenBalances: TokenBalance[]
+): TokenBalance | undefined => {
+  // Address-based matching for major tokens (Alchemy may return different symbol variants)
+  if (symbol === 'cbBTC' || symbol === 'CBBTC') {
+    return tokenBalances.find((t) => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.cbBTC);
+  }
+  if (symbol === 'USDC') {
+    return tokenBalances.find((t) => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.USDC);
+  }
+  if (symbol === 'WETH') {
+    return tokenBalances.find((t) => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.WETH);
+  }
+  // Fallback to symbol-based matching for other tokens
+  return tokenBalances.find((t) => t.symbol.toUpperCase() === symbol.toUpperCase());
 };
 
 type TransactionTab = 'deposit' | 'withdraw';
@@ -292,7 +310,7 @@ export default function TransactionsPage() {
       if (isWethVault && (derivedAsset.symbol === 'WETH' || derivedAsset.symbol === 'ETH')) {
         const combinedBal = getCombinedEthWethBalance;
         const ethBal = parseFloat(ethBalance || '0');
-        const wethToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'WETH');
+        const wethToken = tokenBalances.find((t) => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.WETH);
         const wethBal = wethToken ? parseFloat(formatUnits(wethToken.balance, wethToken.decimals)) : 0;
         
         if (wethBal > 0 && ethBal > 0) {
@@ -310,13 +328,8 @@ export default function TransactionsPage() {
       return formatAvailableBalance(ethBalance || '0', derivedAsset.symbol);
     }
     
-    // Special handling for cbBTC - use address-based matching for reliability
-    let token;
-    if (derivedAsset.symbol === 'cbBTC' || derivedAsset.symbol === 'CBBTC') {
-      token = tokenBalances.find((t) => t.address.toLowerCase() === CBBTC_ADDRESS.toLowerCase());
-    } else {
-      token = tokenBalances.find((t) => t.symbol.toUpperCase() === derivedAsset.symbol.toUpperCase());
-    }
+    // Use helper function for reliable token lookup
+    const token = findTokenBySymbol(derivedAsset.symbol, tokenBalances);
     
     if (token) {
       // Use raw balance string from formatUnits to preserve full precision for small amounts
@@ -381,7 +394,7 @@ export default function TransactionsPage() {
             return ethBal;
           } else if (assetPreference === 'WETH') {
             // Only use WETH balance
-            const wethToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'WETH');
+            const wethToken = tokenBalances.find((t) => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.WETH);
             if (wethToken) {
               return parseFloat(formatUnits(wethToken.balance, wethToken.decimals));
             }
@@ -401,22 +414,16 @@ export default function TransactionsPage() {
       }
       
       if (symbol === 'WETH') {
-        // For WETH: use full balance (no dust)
-        const wethToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'WETH');
+        // For WETH: use full balance (no dust) - use address-based matching for reliability
+        const wethToken = tokenBalances.find((t) => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.WETH);
         if (wethToken) {
           return parseFloat(formatUnits(wethToken.balance, wethToken.decimals));
         }
         return 0;
       }
       
-      // For all other tokens (USDC, cbBTC, etc.): use full balance (no dust)
-      // Special handling for cbBTC - use address-based matching for reliability
-      let token;
-      if (symbol === 'cbBTC' || symbol === 'CBBTC') {
-        token = tokenBalances.find((t) => t.address.toLowerCase() === CBBTC_ADDRESS.toLowerCase());
-      } else {
-        token = tokenBalances.find((t) => t.symbol.toUpperCase() === symbol.toUpperCase());
-      }
+      // For all other tokens: use full balance (no dust)
+      const token = findTokenBySymbol(symbol, tokenBalances);
       if (token) {
         return parseFloat(formatUnits(token.balance, token.decimals));
       }
@@ -471,7 +478,7 @@ export default function TransactionsPage() {
             setAmount(maxAmount > 0 ? formatAssetAmountForMax(maxAmount, 'ETH', decimals) : '0');
           } else if (assetPreference === 'WETH') {
             // Use WETH balance directly
-            const wethToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'WETH');
+            const wethToken = tokenBalances.find((t) => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.WETH);
             if (wethToken) {
               setAmount(formatBigIntForInput(wethToken.balance, wethToken.decimals));
             } else {
@@ -490,21 +497,15 @@ export default function TransactionsPage() {
         setAmount(maxAmount > 0 ? formatAssetAmountForMax(maxAmount, symbol) : '0');
       } else if (symbol === 'WETH') {
         // For WETH: use full balance
-        const wethToken = tokenBalances.find((t) => t.symbol.toUpperCase() === 'WETH');
+        const wethToken = tokenBalances.find((t) => t.address.toLowerCase() === TOKEN_ADDRESSES_LOWER.WETH);
         if (wethToken) {
           setAmount(formatBigIntForInput(wethToken.balance, wethToken.decimals));
         } else {
           setAmount('0');
         }
       } else {
-        // For all other tokens (USDC, cbBTC, etc.): use full balance
-        // Special handling for cbBTC - use address-based matching for reliability
-        let token;
-        if (symbol === 'cbBTC' || symbol === 'CBBTC') {
-          token = tokenBalances.find((t) => t.address.toLowerCase() === CBBTC_ADDRESS.toLowerCase());
-        } else {
-          token = tokenBalances.find((t) => t.symbol.toUpperCase() === symbol.toUpperCase());
-        }
+        // For all other tokens: use full balance
+        const token = findTokenBySymbol(symbol, tokenBalances);
         if (token) {
           setAmount(formatBigIntForInput(token.balance, token.decimals));
         } else {

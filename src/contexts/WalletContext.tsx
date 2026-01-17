@@ -60,8 +60,8 @@ interface WalletContextType {
 const WalletContext = createContext<WalletContextType | undefined>(undefined);
 
 // Major token addresses on Base
-const TOKEN_ADDRESSES = {
-  USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913',
+export const TOKEN_ADDRESSES = {
+  USDC: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // Circle USD Coin on Base
   cbBTC: '0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf', // Coinbase Wrapped BTC on Base
   WETH: '0x4200000000000000000000000000000000000006', // Wrapped ETH on Base
   cbETH: '0x2Ae3F1Ec7F1F5012CFEab0185bfc7aa3cf0DEc22', // Coinbase Wrapped ETH on Base
@@ -69,7 +69,7 @@ const TOKEN_ADDRESSES = {
 } as const;
 
 // Pre-compute lowercased addresses for efficient comparisons (avoid repeated .toLowerCase() calls)
-const TOKEN_ADDRESSES_LOWER = {
+export const TOKEN_ADDRESSES_LOWER = {
   USDC: TOKEN_ADDRESSES.USDC.toLowerCase(),
   cbBTC: TOKEN_ADDRESSES.cbBTC.toLowerCase(),
   WETH: TOKEN_ADDRESSES.WETH.toLowerCase(),
@@ -300,9 +300,14 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
             const balance = BigInt(token.tokenBalance || '0');
             const decimals = metadataData.result.decimals || 18;
-            const symbol = metadataData.result.symbol || 'UNKNOWN';
+            let symbol = metadataData.result.symbol || 'UNKNOWN';
             const formatted = (Number(balance) / Math.pow(10, decimals)).toString();
 
+            // Normalize cbBTC to ensure consistent symbol
+            const addressLower = token.contractAddress.toLowerCase();
+            if (addressLower === TOKEN_ADDRESSES_LOWER.cbBTC) {
+              symbol = 'cbBTC'; // Always use cbBTC (not CBTC or BTC)
+            }
 
             return {
               address: token.contractAddress,
@@ -532,14 +537,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         });
 
         // Get unique symbols for price fetching
-        const symbols = new Set<string>(['ETH', 'USDC']);
+        const symbols = new Set<string>(['ETH', 'USDC', 'CBBTC']);
         alchemyBalances.forEach(token => {
           const symbol = token.symbol.toUpperCase();
-          if (symbol === 'CBBTC' || symbol === 'CBTC') {
-            symbols.add('CBBTC');
-          } else if (symbol === 'WETH') {
+          if (symbol === 'WETH') {
             symbols.add('WETH');
-          } else {
+          } else if (symbol !== 'USDC' && symbol !== 'CBBTC') {
             symbols.add(symbol);
           }
         });
@@ -549,7 +552,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         setTokenPrices({
           eth: prices.eth || 0,
           usdc: prices.usdc || 1, // USDC is pegged to $1
-          cbbtc: prices.cbbtc || prices.btc || 0, // cbBTC uses BTC price
+          cbbtc: prices.cbbtc || 0, // cbBTC price only
           weth: prices.weth || prices.eth || 0, // WETH uses ETH price
           ...Object.fromEntries(
             Object.entries(prices).map(([key, value]) => [key.toLowerCase(), value])
@@ -611,14 +614,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
     await Promise.all(refetchPromises);
 
-    const symbols = new Set<string>(['ETH', 'USDC']);
+    const symbols = new Set<string>(['ETH', 'USDC', 'CBBTC']);
     alchemyBalances.forEach(token => {
       const symbol = token.symbol.toUpperCase();
-      if (symbol === 'CBBTC' || symbol === 'CBTC') {
-        symbols.add('CBBTC');
-      } else if (symbol === 'WETH') {
+      if (symbol === 'WETH') {
         symbols.add('WETH');
-      } else {
+      } else if (symbol !== 'USDC' && symbol !== 'CBBTC') {
         symbols.add(symbol);
       }
     });
@@ -627,7 +628,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setTokenPrices({
       eth: prices.eth || 0,
       usdc: prices.usdc || 1,
-      cbbtc: prices.cbbtc || prices.btc || 0,
+      cbbtc: prices.cbbtc || 0, // cbBTC price only
       weth: prices.weth || prices.eth || 0,
       ...Object.fromEntries(
         Object.entries(prices).map(([key, value]) => [key.toLowerCase(), value])
@@ -702,14 +703,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
     await Promise.all(refetchPromises);
 
-    const symbols = new Set<string>(['ETH', 'USDC']);
+    const symbols = new Set<string>(['ETH', 'USDC', 'CBBTC']);
     alchemyBalances.forEach(token => {
       const symbol = token.symbol.toUpperCase();
-      if (symbol === 'CBBTC' || symbol === 'CBTC') {
-        symbols.add('CBBTC');
-      } else if (symbol === 'WETH') {
+      if (symbol === 'WETH') {
         symbols.add('WETH');
-      } else {
+      } else if (symbol !== 'USDC' && symbol !== 'CBBTC') {
         symbols.add(symbol);
       }
     });
@@ -718,7 +717,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     setTokenPrices({
       eth: prices.eth || 0,
       usdc: prices.usdc || 1,
-      cbbtc: prices.cbbtc || prices.btc || 0,
+      cbbtc: prices.cbbtc || 0, // cbBTC price only
       weth: prices.weth || prices.eth || 0,
       ...Object.fromEntries(
         Object.entries(prices).map(([key, value]) => [key.toLowerCase(), value])
@@ -833,22 +832,23 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // Build token balances array - combine ETH, manually fetched tokens, and Alchemy tokens
   // Calculate USD values for Alchemy tokens
   const alchemyBalancesWithPrices = alchemyTokenBalances.map(token => {
-    const symbolUpper = token.symbol.toUpperCase();
+    const addressLower = token.address.toLowerCase();
     let price = 0;
     
-    // Map token symbols to price keys
-    if (symbolUpper === 'CBBTC' || symbolUpper === 'CBTC') {
-      price = tokenPrices.cbbtc || tokenPrices.btc || 0;
-    } else if (symbolUpper === 'WETH') {
-      price = tokenPrices.weth || tokenPrices.eth || 0;
-    } else if (symbolUpper === 'CBETH') {
-      price = tokenPrices.cbeth || tokenPrices.eth || 0;
-    } else if (symbolUpper === 'WSTETH') {
-      price = tokenPrices.wsteth || tokenPrices.eth || 0;
-    } else if (symbolUpper === 'USDC') {
+    // Use address-based matching for major tokens (same as detection)
+    if (addressLower === TOKEN_ADDRESSES_LOWER.cbBTC) {
+      price = tokenPrices.cbbtc || 0;
+    } else if (addressLower === TOKEN_ADDRESSES_LOWER.USDC) {
       price = tokenPrices.usdc || 1;
+    } else if (addressLower === TOKEN_ADDRESSES_LOWER.WETH) {
+      price = tokenPrices.weth || tokenPrices.eth || 0;
+    } else if (addressLower === TOKEN_ADDRESSES_LOWER.cbETH) {
+      price = tokenPrices.cbeth || tokenPrices.eth || 0;
+    } else if (addressLower === TOKEN_ADDRESSES_LOWER.wstETH) {
+      price = tokenPrices.wsteth || tokenPrices.eth || 0;
     } else {
       // Try to find price by symbol (case insensitive)
+      const symbolUpper = token.symbol.toUpperCase();
       price = tokenPrices[symbolUpper.toLowerCase()] || tokenPrices[token.symbol.toLowerCase()] || 0;
     }
     
