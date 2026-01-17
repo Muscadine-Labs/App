@@ -614,11 +614,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
     await Promise.all(refetchPromises);
 
-    const symbols = new Set<string>(['ETH', 'USDC', 'CBBTC']);
+    const symbols = new Set<string>(['ETH', 'USDC', 'CBBTC', 'CBETH', 'WSTETH']);
     alchemyBalances.forEach(token => {
       const symbol = token.symbol.toUpperCase();
       if (symbol === 'WETH') {
         symbols.add('WETH');
+      } else if (symbol === 'CBETH') {
+        symbols.add('CBETH');
+      } else if (symbol === 'WSTETH') {
+        symbols.add('WSTETH');
       } else if (symbol !== 'USDC' && symbol !== 'CBBTC') {
         symbols.add(symbol);
       }
@@ -703,11 +707,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     }
     await Promise.all(refetchPromises);
 
-    const symbols = new Set<string>(['ETH', 'USDC', 'CBBTC']);
+    const symbols = new Set<string>(['ETH', 'USDC', 'CBBTC', 'CBETH', 'WSTETH']);
     alchemyBalances.forEach(token => {
       const symbol = token.symbol.toUpperCase();
       if (symbol === 'WETH') {
         symbols.add('WETH');
+      } else if (symbol === 'CBETH') {
+        symbols.add('CBETH');
+      } else if (symbol === 'WSTETH') {
+        symbols.add('WSTETH');
       } else if (symbol !== 'USDC' && symbol !== 'CBBTC') {
         symbols.add(symbol);
       }
