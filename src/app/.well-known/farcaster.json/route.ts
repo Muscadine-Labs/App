@@ -27,15 +27,15 @@ export async function GET() {
     },
     miniapp: withValidProperties({
       version: '1',
-      name: 'Muscadine Earn',
+      name: 'Muscadine',
       homeUrl: URL,
       iconUrl: `${URL}/favicon.png`,
       splashImageUrl: `${URL}/favicon.png`,
       // eslint-disable-next-line no-restricted-syntax
       splashBackgroundColor: '#000000', // Base mini app requires hex color, not CSS variable
       webhookUrl: process.env.NEXT_PUBLIC_WEBHOOK_URL || '',
-      subtitle: 'DeFi Vaults on Base',
-      description: 'Access Muscadine Vaults.',
+      subtitle: 'Vaults on Base',
+      description: 'Muscadine Vaults.',
       screenshotUrls: [
         // Add screenshot URLs when available
       ],
@@ -43,8 +43,8 @@ export async function GET() {
       tags: ['defi', 'vaults', 'yield', 'base', 'muscadine'],
       heroImageUrl: `${URL}/favicon.png`,
       tagline: 'Earn yield on Base',
-      ogTitle: 'Muscadine Earn',
-      ogDescription: 'Access Muscadine Vaults and earn yield on your assets.',
+      ogTitle: 'Muscadine',
+      ogDescription: 'Muscadine Vaults.',
       ogImageUrl: `${URL}/favicon.png`,
       noindex: false,
     }),
