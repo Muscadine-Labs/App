@@ -48,6 +48,7 @@ export const metadata: Metadata = {
     apple: '/favicon.png',
   },
   other: {
+    'base:app_id': '6925cdc1547fca5d08131407',
     'fc:miniapp': JSON.stringify({
       version: 'next',
       imageUrl: `${appUrl}/miniapp-image.png`,
