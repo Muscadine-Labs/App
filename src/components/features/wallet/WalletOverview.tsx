@@ -314,7 +314,7 @@ export default function WalletOverview() {
                                     <span className="text-xs text-[var(--foreground-secondary)] whitespace-nowrap">
                                         {formatNumber(asset.formatted, {
                                             minimumFractionDigits: 0,
-                                            maximumFractionDigits: asset.decimals ?? 18,
+                                            maximumFractionDigits: Math.min(asset.decimals ?? 18, 20),
                                         })}
                                     </span>
                                 </div>

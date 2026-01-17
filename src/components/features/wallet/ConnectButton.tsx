@@ -4,11 +4,7 @@ import React, { useRef, useEffect } from 'react';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import { useAdvisoryAgreement } from '@/contexts/AdvisoryAgreementContext';
 
-interface ConnectButtonProps {
-    centerContent?: boolean;
-}
-
-export default function ConnectButtonComponent({}: ConnectButtonProps) {
+export default function ConnectButtonComponent() {
     const { isAccepted, openModal, shouldOpenWalletConnect, clearWalletConnectFlag } = useAdvisoryAgreement();
     const openConnectModalRef = useRef<(() => void) | null>(null);
     const accountRef = useRef<any>(null);

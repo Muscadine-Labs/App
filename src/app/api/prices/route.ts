@@ -9,6 +9,8 @@ const SYMBOL_TO_COINGECKO_ID: Record<string, string> = {
   'USDC': 'usd-coin',
   'WETH': 'ethereum',
   'CBBTC': 'bitcoin', // cbBTC maps to Bitcoin price
+  'CBETH': 'coinbase-wrapped-staked-eth', // cbETH - Coinbase Wrapped Staked ETH
+  'WSTETH': 'wrapped-steth', // wstETH - Wrapped Lido Staked ETH
 };
 
 // Input validation helpers
