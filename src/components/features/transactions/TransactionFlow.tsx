@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { useWaitForTransactionReceipt, useReadContract, useWalletClient, usePublicClient, useAccount } from 'wagmi';
+import { useState, useEffect, useMemo } from 'react';
+import { useWaitForTransactionReceipt, useReadContract, useWalletClient, usePublicClient } from 'wagmi';
 import { formatUnits, type Address } from 'viem';
 import { VaultAccount } from '@/types/vault';
 import { useTransactionState } from '@/contexts/TransactionContext';
@@ -13,8 +13,6 @@ import { TransactionStatus as TransactionStatusComponent } from './TransactionSt
 import { useToast } from '@/contexts/ToastContext';
 import { useWallet } from '@/contexts/WalletContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
-import { BASE_WETH_ADDRESS } from '@/lib/constants';
-import { VAULTS } from '@/lib/vaults';
 import { logger } from '@/lib/logger';
 import { useRouter } from 'next/navigation';
 import { ERC4626_ABI } from '@/lib/abis';
@@ -43,13 +41,10 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
   const router = useRouter();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
-  const { address: accountAddress } = useAccount();
 
   const [currentTxHash, setCurrentTxHash] = useState<string | null>(null);
   const [stepsInfo, setStepsInfo] = useState<Array<{ stepIndex: number; label: string; type: 'signing' | 'approving' | 'confirming'; txHash?: string }>>([]);
   const [totalSteps, setTotalSteps] = useState<number>(0);
-  // Track pre-withdraw WETH balance to only unwrap the delta
-  const preWithdrawWethRef = useRef<bigint | null>(null);
 
   // Determine which vault address to use for transaction hook
   // Enable simulation when we're in preview or executing
@@ -224,94 +219,9 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
             timestamp: new Date().toISOString(),
           });
           
-          // Handle WETH unwrapping for withdrawals to ETH (v1 only - v2 handles it internally)
-          if (transactionType === 'withdraw' && 
-              fromAccount?.type === 'vault' && 
-              preferredAsset === 'ETH' &&
-              walletClient &&
-              publicClient &&
-              accountAddress) {
-            const vaultAccount = fromAccount as VaultAccount;
-            const isV2Vault = getVaultVersion(vaultAccount.address) === 'v2';
-            const isWethVault = vaultAccount.address.toLowerCase() === VAULTS.WETH_VAULT.address.toLowerCase() ||
-                               vaultAccount.address.toLowerCase() === VAULTS.WETH_VAULT_V2.address.toLowerCase();
-            
-            // Skip unwrapping for v2 vaults (they handle it in transactionUtilsV2)
-            if (isWethVault && !isV2Vault) {
-              try {
-                // Get current WETH balance
-                const wethBalance = await publicClient.readContract({
-                  address: BASE_WETH_ADDRESS,
-                  abi: [
-                    {
-                      inputs: [{ name: "account", type: "address" }],
-                      name: "balanceOf",
-                      outputs: [{ name: "", type: "uint256" }],
-                      stateMutability: "view",
-                      type: "function",
-                    },
-                  ],
-                  functionName: 'balanceOf',
-                  args: [accountAddress as Address],
-                }) as bigint;
-                
-                // Calculate delta (only unwrap what was withdrawn)
-                const preWeth = preWithdrawWethRef.current ?? BigInt(0);
-                const delta = wethBalance > preWeth ? wethBalance - preWeth : BigInt(0);
-                
-                // Only unwrap if there's a positive delta
-                if (delta > BigInt(0)) {
-                  logger.info('Unwrapping WETH delta to ETH after withdrawal', {
-                    wethDelta: delta.toString(),
-                    preWeth: preWeth.toString(),
-                    postWeth: wethBalance.toString(),
-                    timestamp: new Date().toISOString(),
-                  });
-                  
-                  const unwrapHash = await walletClient.writeContract({
-                    address: BASE_WETH_ADDRESS,
-                    abi: [
-                      {
-                        inputs: [{ internalType: "uint256", name: "amount", type: "uint256" }],
-                        name: "withdraw",
-                        outputs: [],
-                        stateMutability: "nonpayable",
-                        type: "function",
-                      },
-                    ],
-                    functionName: 'withdraw',
-                    args: [delta],
-                  });
-                  
-                  logger.info('WETH unwrap transaction sent', {
-                    txHash: unwrapHash,
-                    timestamp: new Date().toISOString(),
-                  });
-                  
-                  // Wait for unwrap transaction to complete
-                  await publicClient.waitForTransactionReceipt({ hash: unwrapHash });
-                  
-                  logger.info('WETH successfully unwrapped to ETH', {
-                    txHash: unwrapHash,
-                    timestamp: new Date().toISOString(),
-                  });
-                  
-                  // Refresh balances again after unwrapping
-                  await refreshBalances();
-                }
-                
-                // Reset ref after processing
-                preWithdrawWethRef.current = null;
-              } catch (err) {
-                // Log error but don't fail the entire transaction
-                logger.error('Failed to unwrap WETH to ETH', err, {
-                  txHash: hashToUse,
-                  timestamp: new Date().toISOString(),
-                });
-                preWithdrawWethRef.current = null;
-              }
-            }
-          }
+          // Note: WETH unwrapping for v1 vault withdrawals is now handled in the bundle
+          // (via Erc20_Unwrap operation in useVaultTransactions.ts)
+          // v2 vaults handle unwrapping internally in transactionUtilsV2.ts
         },
       }).catch((err: unknown) => {
         logger.error('Failed to refresh wallet balances after polling', err, { txHash: hashToUse });
@@ -370,34 +280,9 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
       return;
     }
 
-    // Capture pre-withdraw WETH balance if withdrawing to ETH (to only unwrap delta)
-    if (transactionType === 'withdraw' && preferredAsset === 'ETH' && accountAddress && publicClient) {
-      const vaultAccount = fromAccount as VaultAccount;
-      const isWethVault = vaultAccount.address.toLowerCase() === VAULTS.WETH_VAULT.address.toLowerCase() ||
-                         vaultAccount.address.toLowerCase() === VAULTS.WETH_VAULT_V2.address.toLowerCase();
-      
-      if (isWethVault) {
-        try {
-          const preWeth = await publicClient.readContract({
-            address: BASE_WETH_ADDRESS,
-            abi: [
-              {
-                inputs: [{ name: 'account', type: 'address' }],
-                name: 'balanceOf',
-                outputs: [{ name: '', type: 'uint256' }],
-                stateMutability: 'view',
-                type: 'function',
-              },
-            ],
-            functionName: 'balanceOf',
-            args: [accountAddress as Address],
-          }) as bigint;
-          preWithdrawWethRef.current = preWeth;
-        } catch {
-          preWithdrawWethRef.current = null;
-        }
-      }
-    }
+    // Note: WETH unwrapping is now handled:
+    // - v1 vaults: via Erc20_Unwrap operation in the bundle (useVaultTransactions.ts)
+    // - v2 vaults: internally in transactionUtilsV2.ts using amountBigInt directly
 
     try {
       // Don't set status here - let onProgress callback set it based on actual step
