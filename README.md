@@ -1,4 +1,4 @@
-# Muscadine Earn
+# Muscadine App
 
 A Next.js application for managing and interacting with Muscadine vaults.
 
