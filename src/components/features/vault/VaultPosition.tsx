@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAccount, useReadContract } from 'wagmi';
 import { MorphoVaultData } from '@/types/vault';
@@ -317,19 +317,10 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     return 0;
   }, [vaultData.symbol, ethPrice, btcPrice]);
 
-  // Use GraphQL position history data directly - no calculation needed
-  const userDepositHistory = useMemo(() => {
-    // Use hourly data for 7D and 30D periods, otherwise use daily data
-    let sourceData = userPositionHistory;
-    if (selectedTimeFrame === '7D' && hourly7dPositionHistory.length > 0) {
-      sourceData = hourly7dPositionHistory;
-    } else if (selectedTimeFrame === '30D' && hourly30dPositionHistory.length > 0) {
-      sourceData = hourly30dPositionHistory;
-    }
-    
+  // Helper function to map position history to chart data format
+  const mapPositionHistoryToChartData = useCallback((sourceData: Array<{ timestamp: number; assets: number; assetsUsd: number; shares: number }>) => {
     if (sourceData.length === 0) return [];
-
-    // Map GraphQL position history to chart data format
+    
     return sourceData.map((point) => {
       // If assetsUsd is 0 but assets exists, calculate USD value from assets * assetPrice
       let calculatedUsd = point.assetsUsd;
@@ -343,14 +334,23 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
         valueToken: Math.max(0, point.assets),
       };
     });
-  }, [userPositionHistory, hourly7dPositionHistory, hourly30dPositionHistory, selectedTimeFrame, getAssetPrice]);
+  }, [getAssetPrice]);
 
-  // Calculate available time frames based on data range
+  // Map full position history to chart data format (for determining available time frames)
+  // This should always use the full userPositionHistory, not filtered by selectedTimeFrame
+  const fullUserDepositHistory = useMemo(() => {
+    return mapPositionHistoryToChartData(userPositionHistory);
+  }, [userPositionHistory, mapPositionHistoryToChartData]);
+
+  // Calculate available time frames based on FULL data range (not filtered by selectedTimeFrame)
+  // Find the minimum timestamp to ensure correctness even if data isn't sorted
   const availableTimeFrames = useMemo(() => {
-    if (userDepositHistory.length === 0) return ['all' as TimeFrame];
+    if (fullUserDepositHistory.length === 0) return ['all' as TimeFrame];
     
     const now = Math.floor(Date.now() / 1000);
-    const oldestTimestamp = userDepositHistory[0]?.timestamp || now;
+    // Find minimum timestamp to ensure correctness regardless of sort order
+    // Use reduce instead of Math.min spread to avoid potential stack overflow with large arrays
+    const oldestTimestamp = fullUserDepositHistory.reduce((min, d) => Math.min(min, d.timestamp), fullUserDepositHistory[0].timestamp);
     const dataRangeSeconds = now - oldestTimestamp;
     
     const frames: TimeFrame[] = ['all'];
@@ -371,7 +371,22 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
     }
     
     return frames;
-  }, [userDepositHistory]);
+  }, [fullUserDepositHistory]);
+
+  // Use GraphQL position history data directly - no calculation needed
+  // This is used for displaying the chart, and switches between hourly/daily based on selectedTimeFrame
+  // Reuses fullUserDepositHistory when not using hourly data to avoid redundant mapping
+  const userDepositHistory = useMemo(() => {
+    // Use hourly data for 7D and 30D periods, otherwise reuse fullUserDepositHistory
+    if (selectedTimeFrame === '7D' && hourly7dPositionHistory.length > 0) {
+      return mapPositionHistoryToChartData(hourly7dPositionHistory);
+    } else if (selectedTimeFrame === '30D' && hourly30dPositionHistory.length > 0) {
+      return mapPositionHistoryToChartData(hourly30dPositionHistory);
+    }
+    
+    // Reuse fullUserDepositHistory when using daily data to avoid redundant mapping
+    return fullUserDepositHistory;
+  }, [selectedTimeFrame, hourly7dPositionHistory, hourly30dPositionHistory, fullUserDepositHistory, mapPositionHistoryToChartData]);
 
   // Filter chart data based on selected time frame and map to correct value type
   const filteredChartData = useMemo(() => {
@@ -503,7 +518,11 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                   {formatAssetAmount(
                     BigInt(Math.floor(userVaultAssetAmount * Math.pow(10, vaultData.assetDecimals || 18))),
                     vaultData.assetDecimals || 18,
-                    vaultData.symbol
+                    vaultData.symbol,
+                    { 
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: (vaultData.symbol === 'WETH' || vaultData.symbol === 'cbBTC') ? 8 : undefined
+                    }
                   )}
                 </p>
                 <p className="text-sm text-[var(--foreground-secondary)] mt-1">
@@ -599,7 +618,7 @@ export default function VaultPosition({ vaultData }: VaultPositionProps) {
                 </div>
               </div>
             </div>
-          ) : userDepositHistory.length > 0 ? (
+          ) : fullUserDepositHistory.length > 0 ? (
             <div className="bg-[var(--surface-elevated)] rounded-lg p-2 sm:p-4">
               {/* Controls Row */}
               <div className="flex items-center justify-between mb-4">

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useMemo, ReactNode } from 'react';
 
 export type Theme = 'Dark' | 'Light' | 'Auto';
 
@@ -15,40 +15,44 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 const THEME_STORAGE_KEY = 'muscadine-theme';
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  // Safe SSR defaults - no localStorage or matchMedia access during render
-  const [theme, setThemeState] = useState<Theme>('Auto');
-  const [effectiveTheme, setEffectiveTheme] = useState<'dark' | 'light'>('dark');
-
-  // Initialize theme from localStorage after mount
-  useEffect(() => {
+  // Use lazy initialization to avoid setState in effect
+  const [theme, setThemeState] = useState<Theme>(() => {
+    if (typeof window === 'undefined') return 'Auto';
     const stored = localStorage.getItem(THEME_STORAGE_KEY) as Theme | null;
     if (stored && (stored === 'Dark' || stored === 'Light' || stored === 'Auto')) {
-      setThemeState(stored);
+      return stored;
     }
-  }, []); // Run only once on mount
+    return 'Auto';
+  });
+  const [systemTheme, setSystemTheme] = useState<'dark' | 'light'>(() => {
+    if (typeof window === 'undefined') return 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  });
 
-  // Update effective theme when theme changes and subscribe to matchMedia changes
+  // Subscribe to system preference changes when theme is Auto
   useEffect(() => {
     if (theme === 'Auto') {
       const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      const updateEffectiveTheme = () => {
-        setEffectiveTheme(mediaQuery.matches ? 'dark' : 'light');
+      const updateSystemTheme = () => {
+        setSystemTheme(mediaQuery.matches ? 'dark' : 'light');
       };
-      
-      // Set initial effective theme
-      updateEffectiveTheme();
       
       // Subscribe to system preference changes
-      mediaQuery.addEventListener('change', updateEffectiveTheme);
+      mediaQuery.addEventListener('change', updateSystemTheme);
       
       return () => {
-        mediaQuery.removeEventListener('change', updateEffectiveTheme);
+        mediaQuery.removeEventListener('change', updateSystemTheme);
       };
-    } else {
-      // For explicit themes, set effectiveTheme directly
-      setEffectiveTheme(theme === 'Dark' ? 'dark' : 'light');
     }
   }, [theme]);
+
+  // Compute effective theme - use memoization to avoid setState in effect
+  const effectiveTheme = useMemo(() => {
+    if (theme === 'Auto') {
+      return systemTheme;
+    }
+    return theme === 'Dark' ? 'dark' : 'light';
+  }, [theme, systemTheme]);
 
   // Apply theme to document
   useEffect(() => {

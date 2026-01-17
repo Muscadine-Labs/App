@@ -142,6 +142,17 @@ export default function WalletOverview() {
         .sort((a, b) => b.usdValue - a.usdValue)
         .slice(0, 10);
     
+    // Extract Floating UI refs and styles before conditional render to avoid ESLint warnings
+    // These are callback functions from Floating UI, not React refs with .current
+    const totalAssetsSetReference = totalAssets.refs.setReference;
+    const totalAssetsSetFloating = totalAssets.refs.setFloating;
+    const totalAssetsFloatingStyles = totalAssets.floatingStyles;
+    const liquidAssetsSetReference = liquidAssets.refs.setReference;
+    const liquidAssetsSetFloating = liquidAssets.refs.setFloating;
+    const liquidAssetsFloatingStyles = liquidAssets.floatingStyles;
+    const morphoVaultsSetReference = morphoVaults.refs.setReference;
+    const morphoVaultsSetFloating = morphoVaults.refs.setFloating;
+    const morphoVaultsFloatingStyles = morphoVaults.floatingStyles;
 
     return (
         <div className="flex flex-col items-start justify-start w-full h-full bg-[var(--surface)] rounded-lg px-4 sm:px-6 md:px-8 py-4 gap-4 md:gap-6 overflow-x-auto">
@@ -160,7 +171,7 @@ export default function WalletOverview() {
                         Total Assets
                     </h1>
                     <div 
-                        ref={totalAssets.refs.setReference}
+                        ref={totalAssetsSetReference}
                         {...totalAssetsInteractions.getReferenceProps()}
                         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     >
@@ -187,7 +198,7 @@ export default function WalletOverview() {
                         Morpho Vaults
                     </h1>
                     <div 
-                        ref={morphoVaults.refs.setReference}
+                        ref={morphoVaultsSetReference}
                         {...morphoVaultsInteractions.getReferenceProps()}
                         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     >
@@ -214,7 +225,7 @@ export default function WalletOverview() {
                         Liquid Assets
                     </h1>
                     <div 
-                        ref={liquidAssets.refs.setReference}
+                        ref={liquidAssetsSetReference}
                         {...liquidAssetsInteractions.getReferenceProps()}
                         className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
                     >
@@ -242,8 +253,8 @@ export default function WalletOverview() {
             {isMounted && totalAssetsOpen && (
                 <FloatingPortal>
                     <div 
-                        ref={totalAssets.refs.setFloating}
-                        style={totalAssets.floatingStyles}
+                        ref={totalAssetsSetFloating}
+                        style={totalAssetsFloatingStyles}
                         {...totalAssetsInteractions.getFloatingProps()}
                         className="bg-[var(--surface-elevated)] rounded-lg p-4 shadow-lg border border-[var(--border-subtle)] min-w-[280px] z-[9999]"
                     >
@@ -288,8 +299,8 @@ export default function WalletOverview() {
             {isMounted && liquidAssetsOpen && (
                 <FloatingPortal>
                     <div 
-                        ref={liquidAssets.refs.setFloating}
-                        style={liquidAssets.floatingStyles}
+                        ref={liquidAssetsSetFloating}
+                        style={liquidAssetsFloatingStyles}
                         {...liquidAssetsInteractions.getFloatingProps()}
                         className="bg-[var(--surface-elevated)] rounded-lg p-4 shadow-lg border border-[var(--border-subtle)] min-w-[280px] z-[9999]"
                     >
@@ -331,8 +342,8 @@ export default function WalletOverview() {
             {isMounted && morphoVaultsOpen && (
                 <FloatingPortal>
                     <div 
-                        ref={morphoVaults.refs.setFloating}
-                        style={morphoVaults.floatingStyles}
+                        ref={morphoVaultsSetFloating}
+                        style={morphoVaultsFloatingStyles}
                         {...morphoVaultsInteractions.getFloatingProps()}
                         className="bg-[var(--surface-elevated)] rounded-lg p-4 shadow-lg border border-[var(--border-subtle)] min-w-[280px] z-[9999]"
                     >

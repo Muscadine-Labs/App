@@ -1,18 +1,20 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useWaitForTransactionReceipt, useReadContract } from 'wagmi';
-import { formatUnits } from 'viem';
+import { useWaitForTransactionReceipt, useReadContract, useWalletClient, usePublicClient, useAccount } from 'wagmi';
+import { formatUnits, type Address } from 'viem';
 import { VaultAccount } from '@/types/vault';
 import { useTransactionState } from '@/contexts/TransactionContext';
 import { useVaultTransactions, TransactionProgressStep } from '@/hooks/useVaultTransactions';
 import { isCancellationError, formatTransactionError } from '@/lib/transactionUtils';
+import { depositToVaultV2, withdrawFromVaultV2, redeemFromVaultV2, TransactionProgressStep as V2TransactionProgressStep } from '@/lib/transactionUtilsV2';
 import { TransactionConfirmation } from './TransactionConfirmation';
 import { TransactionStatus as TransactionStatusComponent } from './TransactionStatus';
 import { useToast } from '@/contexts/ToastContext';
 import { useWallet } from '@/contexts/WalletContext';
 import { useVaultData } from '@/contexts/VaultDataContext';
-
+import { BASE_WETH_ADDRESS } from '@/lib/constants';
+import { VAULTS } from '@/lib/vaults';
 import { logger } from '@/lib/logger';
 import { useRouter } from 'next/navigation';
 import { ERC4626_ABI } from '@/lib/abis';
@@ -32,12 +34,16 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
     txHash,
     transactionType,
     derivedAsset,
+    preferredAsset,
     setStatus,
   } = useTransactionState();
   const { success, error: showErrorToast } = useToast();
   const { refreshBalancesWithPolling, morphoHoldings, refreshBalances } = useWallet();
   const { fetchVaultData } = useVaultData();
   const router = useRouter();
+  const { data: walletClient } = useWalletClient();
+  const publicClient = usePublicClient();
+  const { address: accountAddress } = useAccount();
 
   const [currentTxHash, setCurrentTxHash] = useState<string | null>(null);
   const [stepsInfo, setStepsInfo] = useState<Array<{ stepIndex: number; label: string; type: 'signing' | 'approving' | 'confirming'; txHash?: string }>>([]);
@@ -210,11 +216,88 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
       refreshBalancesWithPolling({
         maxAttempts: 10, // Try up to 10 times (30 seconds total with 3s intervals)
         intervalMs: 3000, // 3 seconds between attempts
-        onComplete: () => {
+        onComplete: async () => {
           logger.info('Wallet balances refreshed successfully after transaction', {
             txHash: hashToUse,
             timestamp: new Date().toISOString(),
           });
+          
+          // Handle WETH unwrapping for withdrawals to ETH
+          if (transactionType === 'withdraw' && 
+              fromAccount?.type === 'vault' && 
+              preferredAsset === 'ETH' &&
+              walletClient &&
+              publicClient &&
+              accountAddress) {
+            const vaultAccount = fromAccount as VaultAccount;
+            const isWethVault = vaultAccount.address.toLowerCase() === VAULTS.WETH_VAULT.address.toLowerCase() ||
+                               vaultAccount.address.toLowerCase() === VAULTS.WETH_VAULT_V2.address.toLowerCase();
+            
+            if (isWethVault) {
+              try {
+                // Get WETH balance to unwrap (the amount we just withdrew)
+                const wethBalance = await publicClient.readContract({
+                  address: BASE_WETH_ADDRESS,
+                  abi: [
+                    {
+                      inputs: [{ name: "account", type: "address" }],
+                      name: "balanceOf",
+                      outputs: [{ name: "", type: "uint256" }],
+                      stateMutability: "view",
+                      type: "function",
+                    },
+                  ],
+                  functionName: 'balanceOf',
+                  args: [accountAddress as Address],
+                }) as bigint;
+                
+                // Unwrap all WETH to ETH
+                if (wethBalance > BigInt(0)) {
+                  logger.info('Unwrapping WETH to ETH after withdrawal', {
+                    wethAmount: wethBalance.toString(),
+                    timestamp: new Date().toISOString(),
+                  });
+                  
+                  const unwrapHash = await walletClient.writeContract({
+                    address: BASE_WETH_ADDRESS,
+                    abi: [
+                      {
+                        inputs: [{ internalType: "uint256", name: "amount", type: "uint256" }],
+                        name: "withdraw",
+                        outputs: [],
+                        stateMutability: "nonpayable",
+                        type: "function",
+                      },
+                    ],
+                    functionName: 'withdraw',
+                    args: [wethBalance],
+                  });
+                  
+                  logger.info('WETH unwrap transaction sent', {
+                    txHash: unwrapHash,
+                    timestamp: new Date().toISOString(),
+                  });
+                  
+                  // Wait for unwrap transaction to complete
+                  await publicClient.waitForTransactionReceipt({ hash: unwrapHash });
+                  
+                  logger.info('WETH successfully unwrapped to ETH', {
+                    txHash: unwrapHash,
+                    timestamp: new Date().toISOString(),
+                  });
+                  
+                  // Refresh balances again after unwrapping
+                  await refreshBalances();
+                }
+              } catch (err) {
+                // Log error but don't fail the entire transaction
+                logger.error('Failed to unwrap WETH to ETH', err, {
+                  txHash: hashToUse,
+                  timestamp: new Date().toISOString(),
+                });
+              }
+            }
+          }
         },
       }).catch((err: unknown) => {
         logger.error('Failed to refresh wallet balances after polling', err, { txHash: hashToUse });
@@ -249,13 +332,7 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
     // Check if transaction involves a v2 vault
     const fromVaultVersion = fromAccount.type === 'vault' ? getVaultVersion((fromAccount as VaultAccount).address) : null;
     const toVaultVersion = toAccount.type === 'vault' ? getVaultVersion((toAccount as VaultAccount).address) : null;
-    
-    if (fromVaultVersion === 'v2' || toVaultVersion === 'v2') {
-      const errorMessage = 'Depositing / withdrawing to Muscadine V2 Prime vaults are not available right now.';
-      setStatus('error', errorMessage);
-      showErrorToast(errorMessage, 5000);
-      return;
-    }
+    const isV2Transaction = fromVaultVersion === 'v2' || toVaultVersion === 'v2';
 
     // Derive asset if not already computed
     const assetToUse = derivedAsset || (fromAccount.type === 'vault' 
@@ -271,6 +348,14 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
       return;
     }
 
+    // Validate wallet and public clients are available
+    if (!walletClient || !publicClient) {
+      const errorMessage = 'Wallet not connected. Please connect your wallet and try again.';
+      setStatus('error', errorMessage);
+      showErrorToast(errorMessage, 5000);
+      return;
+    }
+
     try {
       // Don't set status here - let onProgress callback set it based on actual step
       // This ensures we start with the correct status (signing/approving) for pre-authorization
@@ -281,10 +366,11 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
         toAccount: toAccount?.type === 'wallet' ? 'wallet' : (toAccount as VaultAccount)?.address,
         amount,
         assetSymbol: assetToUse.symbol,
+        isV2: isV2Transaction,
         timestamp: new Date().toISOString(),
       });
       
-      const onProgress = (step: TransactionProgressStep) => {
+      const onProgress = (step: TransactionProgressStep | V2TransactionProgressStep) => {
         if (step.type === 'confirming' && step.txHash) {
           logger.info('Transaction sent, waiting for confirmation', {
             txHash: step.txHash,
@@ -331,24 +417,73 @@ export function TransactionFlow({ onSuccess }: TransactionFlowProps) {
 
       let txHash: string;
 
-      if (transactionType === 'deposit') {
-        const vaultAddress = (toAccount as VaultAccount).address;
-        txHash = await executeVaultAction('deposit', vaultAddress, amount, onProgress, undefined, assetToUse.decimals);
-      } else if (transactionType === 'withdraw') {
-        const vaultAddress = (fromAccount as VaultAccount).address;
-        // Use withdrawAll (redeem) if amount matches max, otherwise use regular withdraw
-        if (shouldUseWithdrawAll) {
-          txHash = await executeVaultAction('withdrawAll', vaultAddress, undefined, onProgress, undefined, assetToUse.decimals);
+      // Use v2 transaction functions for v2 vaults, otherwise use bundler (v1)
+      if (isV2Transaction) {
+        // Type assertion needed because wagmi's usePublicClient/useWalletClient return types
+        // that are compatible but TypeScript can't infer the exact match
+        if (transactionType === 'deposit') {
+          const vaultAddress = (toAccount as VaultAccount).address as Address;
+          txHash = await depositToVaultV2(
+            publicClient as any,
+            walletClient as any,
+            vaultAddress,
+            amount,
+            assetToUse.decimals,
+            preferredAsset,
+            onProgress
+          );
+        } else if (transactionType === 'withdraw') {
+          const vaultAddress = (fromAccount as VaultAccount).address as Address;
+          // For withdrawals, preferredAsset should be 'ETH' or 'WETH' (not 'ALL')
+          const withdrawPreferredAsset = preferredAsset === 'ALL' ? undefined : (preferredAsset as 'ETH' | 'WETH' | undefined);
+          // Use redeem (withdraw all) if amount matches max, otherwise use regular withdraw
+          if (shouldUseWithdrawAll) {
+            txHash = await redeemFromVaultV2(
+              publicClient as any,
+              walletClient as any,
+              vaultAddress,
+              assetToUse.decimals,
+              withdrawPreferredAsset,
+              onProgress
+            );
+          } else {
+            txHash = await withdrawFromVaultV2(
+              publicClient as any,
+              walletClient as any,
+              vaultAddress,
+              amount,
+              assetToUse.decimals,
+              withdrawPreferredAsset,
+              onProgress
+            );
+          }
+        } else if (transactionType === 'transfer') {
+          // Transfer not supported for v2 yet (would need to combine withdraw + deposit)
+          throw new Error('Vault-to-vault transfers are not yet supported for v2 vaults');
         } else {
-          txHash = await executeVaultAction('withdraw', vaultAddress, amount, onProgress, undefined, assetToUse.decimals);
+          throw new Error('Invalid transaction type');
         }
-      } else if (transactionType === 'transfer') {
-        // For transfer, withdraw from source vault and deposit to destination vault in single bundle
-        const sourceVaultAddress = (fromAccount as VaultAccount).address;
-        const destVaultAddress = (toAccount as VaultAccount).address;
-        txHash = await executeVaultAction('transfer', sourceVaultAddress, amount, onProgress, destVaultAddress, assetToUse.decimals);
       } else {
-        throw new Error('Invalid transaction type');
+        // Use v1 bundler-based transactions
+        if (transactionType === 'deposit') {
+          const vaultAddress = (toAccount as VaultAccount).address;
+          txHash = await executeVaultAction('deposit', vaultAddress, amount, onProgress, undefined, assetToUse.decimals, preferredAsset);
+        } else if (transactionType === 'withdraw') {
+          const vaultAddress = (fromAccount as VaultAccount).address;
+          // Use withdrawAll (redeem) if amount matches max, otherwise use regular withdraw
+          if (shouldUseWithdrawAll) {
+            txHash = await executeVaultAction('withdrawAll', vaultAddress, undefined, onProgress, undefined, assetToUse.decimals, preferredAsset);
+          } else {
+            txHash = await executeVaultAction('withdraw', vaultAddress, amount, onProgress, undefined, assetToUse.decimals, preferredAsset);
+          }
+        } else if (transactionType === 'transfer') {
+          // For transfer, withdraw from source vault and deposit to destination vault in single bundle
+          const sourceVaultAddress = (fromAccount as VaultAccount).address;
+          const destVaultAddress = (toAccount as VaultAccount).address;
+          txHash = await executeVaultAction('transfer', sourceVaultAddress, amount, onProgress, destVaultAddress, assetToUse.decimals);
+        } else {
+          throw new Error('Invalid transaction type');
+        }
       }
 
       if (!currentTxHash && txHash) {

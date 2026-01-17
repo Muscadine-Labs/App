@@ -7,12 +7,8 @@ const SYMBOL_TO_COINGECKO_ID: Record<string, string> = {
   'BTC': 'bitcoin',
   'ETH': 'ethereum',
   'USDC': 'usd-coin',
-  'USDT': 'tether',
-  'DAI': 'dai',
   'WETH': 'ethereum',
-  'WBTC': 'wrapped-bitcoin',
   'CBBTC': 'bitcoin', // cbBTC maps to Bitcoin price
-  'CBTC': 'bitcoin', // cBTC also maps to Bitcoin price
 };
 
 // Input validation helpers
