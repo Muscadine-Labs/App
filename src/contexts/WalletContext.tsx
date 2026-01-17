@@ -537,7 +537,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         });
 
         // Get unique symbols for price fetching
-        const symbols = new Set<string>(['ETH', 'USDC', 'CBBTC']);
+        const symbols = new Set<string>(['ETH', 'USDC', 'CBBTC', 'CBETH', 'WSTETH']);
         alchemyBalances.forEach(token => {
           const symbol = token.symbol.toUpperCase();
           if (symbol === 'WETH') {
