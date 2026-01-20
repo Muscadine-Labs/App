@@ -13,8 +13,8 @@ export async function GET() {
 
   const manifest = {
     accountAssociation: {
-      // These will be generated via Base Build Account association tool
-      // See: https://build.base.org/account-association
+      // These were generated via Base Build Account association tool
+      // See: https://www.base.dev/
       ...(process.env.NEXT_PUBLIC_ACCOUNT_ASSOCIATION_HEADER && {
         header: process.env.NEXT_PUBLIC_ACCOUNT_ASSOCIATION_HEADER,
       }),
@@ -34,17 +34,17 @@ export async function GET() {
       // eslint-disable-next-line no-restricted-syntax
       splashBackgroundColor: '#000000', // Base mini app requires hex color, not CSS variable
       webhookUrl: process.env.NEXT_PUBLIC_WEBHOOK_URL || '',
-      subtitle: 'Vaults on Base',
-      description: 'Muscadine Vaults.',
+      subtitle: 'Curated vaults. Real yield.',
+      description: 'Muscadine curates and manages non-custodial vaults to help users earn real onchain yield on Base.',
       screenshotUrls: [
         // Add screenshot URLs when available
       ],
       primaryCategory: 'finance',
       tags: ['defi', 'vaults', 'yield', 'base', 'muscadine'],
       heroImageUrl: `${URL}/favicon.png`,
-      tagline: 'Earn yield on Base',
+      tagline: 'Real yield, onchain',
       ogTitle: 'Muscadine',
-      ogDescription: 'Muscadine Vaults.',
+      ogDescription: 'Muscadine curates and manages non-custodial vaults to help users earn real onchain yield on Base.',
       ogImageUrl: `${URL}/favicon.png`,
       noindex: false,
     }),
