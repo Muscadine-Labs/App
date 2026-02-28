@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useMemo, useCallback } from 'react';
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { VAULTS } from '@/lib/vaults';
 import { getVaultRoute, findVaultByAddress } from '@/lib/vault-utils';
@@ -55,10 +55,27 @@ export function VaultsDropdown({ isActive, onVaultSelect }: VaultsDropdownProps)
 
   const handleToggleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    // If already open (from hover), keep it open; otherwise open it
-    if (!isOpen) {
-      setIsOpen(true);
-    }
+    setIsOpen((prev) => !prev);
+  }, []);
+
+  // Close on click outside (essential for mobile where onMouseLeave doesn't fire)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, [isOpen]);
 
   return (

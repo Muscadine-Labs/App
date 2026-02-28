@@ -133,7 +133,7 @@ export function AdvisoryAgreementModal() {
               </h3>
               <div className="space-y-0">
                 <a
-                  href="https://curator.muscadine.io"
+                  href="https://analytics.muscadine.io"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="block py-1 sm:py-1.5 text-xs sm:text-sm text-[var(--foreground)] hover:text-[var(--primary)] transition-colors cursor-pointer"

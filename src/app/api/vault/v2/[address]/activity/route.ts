@@ -59,30 +59,21 @@ export async function GET(
     }
 
     const chainId = parseInt(chainIdParam, 10);
-    
-    // Properly escape for GraphQL
-    const escapedAddress = address.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    const escapedUserAddress = userAddress ? userAddress.replace(/\\/g, '\\\\').replace(/"/g, '\\"') : null;
-    
+    const transactionLimit = userAddress ? 1000 : 100;
+
+    // Use GraphQL variables to safely pass user input (prevents injection)
     // V2 vaults use vaultV2transactions query per Morpho API docs
     // https://docs.morpho.org/tools/offchain/api/morpho-vaults/
-    const transactionLimit = userAddress ? 1000 : 100;
-    
-    // Build where clause for vaultV2transactions
-    const whereClause = [
-      `vaultAddress_in: ["${escapedAddress}"]`,
-      ...(escapedUserAddress ? [`userAddress_in: ["${escapedUserAddress}"]`] : [])
-    ].join(', ');
-    
     const query = `
-      query VaultV2Activity {
+      query VaultV2Activity($vaultAddress: String!, $userAddressIn: [String!], $first: Int!) {
         vaultV2transactions(
-          first: ${transactionLimit}
+          first: $first
           skip: 0
           orderBy: Time
           orderDirection: Desc
           where: { 
-            ${whereClause}
+            vaultAddress_in: [$vaultAddress]
+            userAddress_in: $userAddressIn
           }
         ) {
           items {
@@ -125,6 +116,11 @@ export async function GET(
         },
         body: JSON.stringify({
           query,
+          variables: {
+            vaultAddress: address,
+            userAddressIn: userAddress ? [userAddress] : null,
+            first: transactionLimit,
+          },
         }),
         next: { 
           revalidate: 60,
