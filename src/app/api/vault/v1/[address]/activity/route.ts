@@ -59,30 +59,19 @@ export async function GET(
     }
 
     const chainId = chainIdParam;
-    
-    // Properly escape for GraphQL
-    const escapedAddress = address.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    const escapedUserAddress = userAddress ? userAddress.replace(/\\/g, '\\\\').replace(/"/g, '\\"') : null;
-    
-    // V1 vaults use MetaMorphoDeposit and MetaMorphoWithdraw
-    const transactionTypes = '[MetaMorphoDeposit, MetaMorphoWithdraw]';
-    
-    const whereClause = [
-      `vaultAddress_in: ["${escapedAddress}"]`,
-      `type_in: ${transactionTypes}`,
-      ...(escapedUserAddress ? [`userAddress_in: ["${escapedUserAddress}"]`] : [])
-    ].join(', ');
-
     const transactionLimit = userAddress ? 1000 : 100;
-    
+
+    // Use GraphQL variables to safely pass user input (prevents injection)
     const query = `
-      query VaultActivity {
+      query VaultActivity($vaultAddress: String!, $userAddressIn: [String!], $first: Int!) {
         transactions(
-          first: ${transactionLimit}
+          first: $first
           orderBy: Timestamp
           orderDirection: Desc
           where: { 
-            ${whereClause}
+            vaultAddress_in: [$vaultAddress]
+            type_in: [MetaMorphoDeposit, MetaMorphoWithdraw]
+            userAddress_in: $userAddressIn
           }
         ) {
           items {
@@ -124,6 +113,11 @@ export async function GET(
         },
         body: JSON.stringify({
           query,
+          variables: {
+            vaultAddress: address,
+            userAddressIn: userAddress ? [userAddress] : null,
+            first: transactionLimit,
+          },
         }),
         next: { 
           revalidate: 60,

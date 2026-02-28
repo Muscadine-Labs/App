@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useMemo, useCallback } from 'react';
+import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { VAULTS } from '@/lib/vaults';
 import { getVaultRoute, findVaultByAddress } from '@/lib/vault-utils';
@@ -55,18 +55,33 @@ export function VaultsDropdown({ isActive, onVaultSelect }: VaultsDropdownProps)
 
   const handleToggleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    // If already open (from hover), keep it open; otherwise open it
-    if (!isOpen) {
-      setIsOpen(true);
-    }
+    setIsOpen((prev) => !prev);
+  }, []);
+
+  // Close on click outside (essential for mobile where onMouseLeave doesn't fire)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('click', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
   }, [isOpen]);
 
   return (
     <div 
       ref={dropdownRef} 
       className="relative"
-      onMouseEnter={() => setIsOpen(true)}
-      onMouseLeave={() => setIsOpen(false)}
       onClick={(e) => e.stopPropagation()} // Stop clicks from bubbling
     >
       <Button
@@ -94,16 +109,9 @@ export function VaultsDropdown({ isActive, onVaultSelect }: VaultsDropdownProps)
 
       {isOpen && (
         <>
-          {/* Invisible bridge to prevent gap closing dropdown */}
-          <div 
-            className="absolute top-full left-0 w-full h-2 z-[60]"
-            onMouseEnter={() => setIsOpen(true)}
-          />
           <div 
             className="absolute top-full left-0 mt-2 w-64 border border-[var(--border-subtle)] rounded-lg shadow-lg z-[60] overflow-hidden" 
             style={{ backgroundColor: 'var(--surface-elevated)', opacity: 1 }}
-            onMouseEnter={() => setIsOpen(true)}
-            onMouseLeave={() => setIsOpen(false)}
           >
           <div className="max-h-96 overflow-y-auto">
             {vaults.map((vault) => {

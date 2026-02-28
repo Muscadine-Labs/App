@@ -146,7 +146,7 @@ export function NavBar({ isRightSidebarCollapsed, onToggleSidebar }: NavBarProps
                                             Protocol
                                         </h3>
                                         <a
-                                            href="https://curator.muscadine.io"
+                                            href="https://analytics.muscadine.io"
                                             target="_blank"
                                             rel="noopener noreferrer"
                                             className="block py-2 text-sm text-[var(--foreground)] hover:text-[var(--primary)] transition-colors cursor-pointer"
