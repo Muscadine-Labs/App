@@ -82,8 +82,6 @@ export function VaultsDropdown({ isActive, onVaultSelect }: VaultsDropdownProps)
     <div 
       ref={dropdownRef} 
       className="relative"
-      onMouseEnter={() => setIsOpen(true)}
-      onMouseLeave={() => setIsOpen(false)}
       onClick={(e) => e.stopPropagation()} // Stop clicks from bubbling
     >
       <Button
@@ -111,16 +109,9 @@ export function VaultsDropdown({ isActive, onVaultSelect }: VaultsDropdownProps)
 
       {isOpen && (
         <>
-          {/* Invisible bridge to prevent gap closing dropdown */}
-          <div 
-            className="absolute top-full left-0 w-full h-2 z-[60]"
-            onMouseEnter={() => setIsOpen(true)}
-          />
           <div 
             className="absolute top-full left-0 mt-2 w-64 border border-[var(--border-subtle)] rounded-lg shadow-lg z-[60] overflow-hidden" 
             style={{ backgroundColor: 'var(--surface-elevated)', opacity: 1 }}
-            onMouseEnter={() => setIsOpen(true)}
-            onMouseLeave={() => setIsOpen(false)}
           >
           <div className="max-h-96 overflow-y-auto">
             {vaults.map((vault) => {
